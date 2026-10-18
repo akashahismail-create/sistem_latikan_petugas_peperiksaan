@@ -109,34 +109,19 @@ def load_mapping():
 
 mapping_df, file_used = load_mapping()
 
-
 @st.cache_data
 def load_pusat_calon():
-    """Load pusat_2026.csv - 506 pusat dengan calon, kelas, petugas - ONLY pusat ada calon"""
-    possible = [
-        "pusat_2026.csv",
-        "data/pusat_2026.csv",
-        "Pusat-SELANGOR-2026-FULL-GITHUB.csv",
-        "data/Pusat-SELANGOR-2026-FULL-GITHUB.csv",
-        "pusat_SELANGOR_2026_FULL_GITHUB.csv",
-        "data/pusat_SELANGOR_2026_FULL_GITHUB.csv",
-        "/mnt/data/pusat_2026.csv"
-    ]
-    for p in possible:
+    for p in ["pusat_2026.csv", "data/pusat_2026.csv", "Pusat-SELANGOR-2026-FULL-GITHUB.csv", "data/Pusat-SELANGOR-2026-FULL-GITHUB.csv", "/mnt/data/pusat_2026.csv"]:
         if os.path.exists(p):
             try:
-                if p.endswith(".csv"):
-                    df = pd.read_csv(p)
-                else:
-                    df = pd.read_excel(p)
-                if "NO_PUSAT" in df.columns and "JUMLAH_CALON" in df.columns and len(df) > 20:
+                df = pd.read_csv(p) if p.endswith(".csv") else pd.read_excel(p)
+                if "NO_PUSAT" in df.columns and len(df)>20:
                     return df
             except:
-                continue
+                pass
     return pd.DataFrame()
 
 df_calon_master = load_pusat_calon()
-
 
 
 # Debug info
@@ -659,41 +644,19 @@ with col_kanan:
                     pusat_to_nama[p] = p
         
         semua_pusat = sorted(list(set(semua_pusat)))
-        
-        # === FIX KASHAH: Filter hanya pusat yang ada dalam pusat_2026.csv (43 untuk BK, bukan 71 spare) ===
-        if not df_calon_master.empty and "NO_PUSAT" in df_calon_master.columns:
-            # Only keep pusat that exist in calon file for this PPD code
-            calon_pusat_list = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]["NO_PUSAT"].astype(str).str.strip().tolist()
-            calon_set = set(calon_pusat_list)
-            # If calon file has data for this PPD, use it as truth (43 for BK)
+        # FILTER ikut pusat_2026.csv (43 bukan 71)
+        if not df_calon_master.empty:
+            calon_set = set(df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]["NO_PUSAT"].astype(str).tolist())
             if calon_set:
-                semua_pusat = sorted([p for p in semua_pusat if p in calon_set])
-                # If mapping gave less than calon file (e.g. mapping old), add missing from calon file
-                for p in calon_set:
-                    if p not in semua_pusat:
-                        semua_pusat.append(p)
-                semua_pusat = sorted(list(set(semua_pusat)))
-                # Update pusat_to_nama and pusat_to_sekolah from calon file
-                for _, rc in df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])].iterrows():
-                    p = str(rc["NO_PUSAT"]).strip()
-                    pusat_to_nama[p] = str(rc.get("NAMA_PUSAT", pusat_to_nama.get(p, p)))
-                    if p not in pusat_to_sekolah:
-                        pusat_to_sekolah[p] = str(rc.get("KOD_SEKOLAH", ""))
-        # === END FIX ===
-
+                semua_pusat = sorted([p for p in semua_pusat if p in calon_set] + [p for p in calon_set if p not in semua_pusat])
         
         if menu=="Senarai Pusat":
             st.header(f"🏢 PPD {info['ppd_nama']} - {len(df_ppd)} sekolah, {len(semua_pusat)} pusat")
-            # Show calon info if available
             if not df_calon_master.empty:
-                df_calon_ppd = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]
-                total_calon = int(df_calon_ppd["JUMLAH_CALON"].sum()) if "JUMLAH_CALON" in df_calon_ppd.columns else 0
-                total_kelas = int(df_calon_ppd["JUMLAH_KELAS"].sum()) if "JUMLAH_KELAS" in df_calon_ppd.columns else 0
-                total_petugas = int(df_calon_ppd["PETUGAS_NEEDED"].sum()) if "PETUGAS_NEEDED" in df_calon_ppd.columns else len(semua_pusat)*10
-                st.info(f"Daerah {info['kod']} = {info['ppd_nama']} | {len(semua_pusat)} pusat ada calon (bukan 71 spare) | 📊 {total_calon} calon, {total_kelas} kelas, {total_petugas} petugas")
+                d = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]
+                st.info(f"Daerah {info['kod']} = {info['ppd_nama']} | {len(semua_pusat)} pusat ada calon (bukan 71 spare) | 📊 {int(d['JUMLAH_CALON'].sum()) if not d.empty else 0} calon, {int(d['JUMLAH_KELAS'].sum()) if not d.empty else 0} kelas, {int(d['PETUGAS_NEEDED'].sum()) if not d.empty else 0} petugas")
             else:
                 st.info(f"Daerah {info['kod']} = {info['ppd_nama']} | {len(semua_pusat)} pusat peperiksaan")
-
             
             # Load penempatan untuk kira status
             penempatan_all = read_sheet("penempatan_ppd")
@@ -703,36 +666,29 @@ with col_kanan:
             for pusat in semua_pusat:
                 kod_sek_pusat = pusat_to_sekolah.get(pusat, "")
                 nama_sek_pusat = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat]["NAMA SEKOLAH"].values[0] if not df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat].empty else pusat
-# Get petugas needed from calon file
-                petugas_needed = 10
-                if not df_calon_master.empty:
-                    row_c = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat]
-                    if not row_c.empty and "PETUGAS_NEEDED" in row_c.columns:
-                        petugas_needed = int(row_c.iloc[0]["PETUGAS_NEEDED"])
-                
                 if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                     bil = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==pusat])
-                    # Status ikut petugas diperlukan sebenar (17, bukan 10)
-                    if bil >= petugas_needed:
-                        status = f"✅ Lengkap ({bil}/{petugas_needed})"
-                    elif bil>0:
-                        status = f"⚠️ Separa ({bil}/{petugas_needed})"
-                    else:
-                        status = f"❌ Belum (0/{petugas_needed})"
+                    status = "✅ Lengkap" if bil>=3 else ("⚠️ Separa" if bil>0 else "❌ Belum")
                 else:
                     bil = 0
-                    status = f"❌ Belum (0/{petugas_needed})"
-                # Get calon data
-                calon_info = 0
-                kelas_info = 0
-                petugas_info = 10
+                    status = "❌ Belum"
+                pn = 10
+                calon_c = 0
+                kelas_c = 0
                 if not df_calon_master.empty:
-                    row_calon = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat]
-                    if not row_calon.empty:
-                        calon_info = int(row_calon.iloc[0].get("JUMLAH_CALON", 0))
-                        kelas_info = int(row_calon.iloc[0].get("JUMLAH_KELAS", 0))
-                        petugas_info = int(row_calon.iloc[0].get("PETUGAS_NEEDED", 10))
-                status_data.append({"NO PUSAT": pusat, "SEKOLAH TUAN RUMAH": nama_sek_pusat, "KOD SEKOLAH": kod_sek_pusat, "JUMLAH CALON": calon_info, "KELAS": kelas_info, "PETUGAS DIPERLUKAN": petugas_info, "BIL DILANTIK": bil, "STATUS": status})
+                    rc = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat]
+                    if not rc.empty:
+                        pn = int(rc.iloc[0].get("PETUGAS_NEEDED",10))
+                        calon_c = int(rc.iloc[0].get("JUMLAH_CALON",0))
+                        kelas_c = int(rc.iloc[0].get("JUMLAH_KELAS",0))
+                # status ikut pn sebenar (17 bukan 10)
+                if bil >= pn:
+                    stt = f"✅ Lengkap ({bil}/{pn})"
+                elif bil>0:
+                    stt = f"⚠️ Separa ({bil}/{pn})"
+                else:
+                    stt = f"❌ Belum (0/{pn})"
+                status_data.append({"NO PUSAT": pusat, "SEKOLAH TUAN RUMAH": nama_sek_pusat, "KOD SEKOLAH": kod_sek_pusat, "JUMLAH CALON": calon_c, "KELAS": kelas_c, "PETUGAS DIPERLUKAN": pn, "BIL DILANTIK": bil, "STATUS": stt})
 
             status_df = pd.DataFrame(status_data)
             st.dataframe(status_df, use_container_width=True)
@@ -828,19 +784,18 @@ with col_kanan:
             
             # BULK GENERATE SEMUA PUSAT - DUMMY DATA
             st.markdown("### 🚀 Jana Semua Pusat (Dummy Data)")
-            # Calculate total petugas needed from calon file (43 pusat x 17 etc = 573 for BK)
-            total_petugas_needed = 0
+            tot_need = 0
             if not df_calon_master.empty:
-                df_calon_ppd = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]
-                if not df_calon_ppd.empty and "PETUGAS_NEEDED" in df_calon_ppd.columns:
-                    total_petugas_needed = int(df_calon_ppd["PETUGAS_NEEDED"].sum())
-                else:
-                    total_petugas_needed = len(semua_pusat)*10
+                dppd = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]
+                tot_need = int(dppd["PETUGAS_NEEDED"].sum()) if not dppd.empty else len(semua_pusat)*10
             else:
-                total_petugas_needed = len(semua_pusat)*10
-            
-            st.warning(f"⚠️ Akan jana {len(semua_pusat)} pusat = {total_petugas_needed} petugas (ikut pusat_2026.csv: BK001=17, BK005=10 etc, bukan 10 setiap pusat!) dari {len(cadangan_ppd) if not cadangan_ppd.empty else 0} cadangan!")
-
+                tot_need = len(semua_pusat)*10
+            st.warning(f"⚠️ Akan jana {len(semua_pusat)} pusat = {tot_need} petugas (ikut pusat_2026.csv, BK001=17 bukan 10) dari {len(cadangan_ppd) if not cadangan_ppd.empty else 0} cadangan!")
+            # Show current total
+            curr = 0
+            if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
+                curr = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)])
+            st.metric("Total Dilantik Sekarang", f"{curr}/{tot_need}")
             
             col_bulk1, col_bulk2, col_bulk3 = st.columns(3)
             with col_bulk1:
@@ -861,30 +816,22 @@ with col_kanan:
                             existing_count = 0
                             if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                                 existing_count = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_code)])
-                            # Get petugas needed for this pusat from calon file (17 for BK001, 10 for BK005 etc)
-                            petugas_needed_bulk = 10
+                            # Petugas needed ikut calon file (17 untuk BK001)
+                            need_this = 10
                             if not df_calon_master.empty:
-                                rc_bulk = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat_code]
-                                if not rc_bulk.empty and "PETUGAS_NEEDED" in rc_bulk.columns:
-                                    petugas_needed_bulk = int(rc_bulk.iloc[0]["PETUGAS_NEEDED"])
-                            perlu = petugas_needed_bulk - existing_count
+                                rcc = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat_code]
+                                if not rcc.empty and "PETUGAS_NEEDED" in rcc.columns:
+                                    need_this = int(rcc.iloc[0]["PETUGAS_NEEDED"])
+                            perlu = need_this - existing_count
                             if perlu <= 0:
-                                status_text.text(f"⏭️ {pusat_code} dah lengkap ({existing_count}/{petugas_needed_bulk}) - skip")
+                                status_text.text(f"⏭️ {pusat_code} dah lengkap ({existing_count}/{need_this}) - skip")
                                 progress.progress((i_pusat+1)/len(semua_pusat))
                                 continue
                             
                             status_text.text(f"🔄 Jana {pusat_code} - {nama_pusat_bulk} - perlukan {perlu} lagi...")
                             
-                            # Jawatan list - ikut petugas_needed (17 = 1 KP + 1 TKP + 11 Pengawas + 1 Pengemas + 1 Penyelia + 2 Extra)
-                            # Formula: KP=1, TKP=1, Pengawas=kelas, Pengemas=1, Penyelia=1, Extra=kelas-4
-                            kelas_for_pusat = petugas_needed_bulk - 8  # because petugas = 10 + (kelas-4) = kelas+6, so kelas = petugas-6? Wait: petugas=10+max(0,kelas-4). For kelas>4, petugas=kelas+6. So kelas=petugas-6
-                            if petugas_needed_bulk <= 10:
-                                kelas_for_pusat = 4
-                            else:
-                                kelas_for_pusat = petugas_needed_bulk - 6
-                            jawatan_all = ["Ketua Pengawas", "Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*kelas_for_pusat + ["Pengemas Bilik", "Penyelia Kawasan"] + ["Pengawas Peperiksaan"]*max(0, kelas_for_pusat-4)
-                            jawatan_all = jawatan_all[:petugas_needed_bulk]  # trim to exact needed
-
+                            # Jawatan list BETUL: 1 KP, 1 TKP, selebihnya Pengawas (total = need_this, 17 untuk BK001)
+                            jawatan_all = ["Ketua Pengawas"] + ["Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*(need_this-2)
                             # Existing jawatan
                             existing_jawatan = []
                             if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns and "JAWATAN FINAL" in penempatan_all.columns:
