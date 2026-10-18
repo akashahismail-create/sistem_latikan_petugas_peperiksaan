@@ -370,28 +370,97 @@ with col_kanan:
             st.header(f"🏫 {info['nama']} - {info['senarai_pusat']}")
             st.info(f"Kod {info['kod_sekolah']} | {info['bil_pusat']} pusat | Masuk ikut sekolah bukan pusat")
             maklumat = read_sheet("maklumat_sekolah")
+            # === AUTO-LOAD data sedia ada dari Google Sheet ===
+            existing = pd.DataFrame()
+            if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
+                existing = maklumat[maklumat["KOD SEKOLAH"].astype(str) == str(info['kod_sekolah'])]
+            
+            # Default values dari mapping
+            def_val_nama = info['nama']
+            def_val_email = ""
+            def_val_poskod = 46000
+            def_val_bil_pusat = int(info['bil_pusat'])
+            def_val_senarai = info['senarai_pusat']
+            def_val_bil_kelas = 12
+            def_val_nama_sup = f"SUP {info['nama']}"
+            def_val_tel = ""
+            def_val_pengetua = ""
+            
+            # Kalau ada data lama dalam Sheet, guna tu
+            if not existing.empty:
+                row = existing.iloc[-1]  # ambil last kalau duplicate lama
+                def_val_nama = str(row.get("NAMA SEKOLAH", def_val_nama))
+                # Cari column email - pelbagai nama
+                for col in ["EMAIL SEKOLAH", "EMAIL", "Email"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        def_val_email = str(row.get(col, ""))
+                        break
+                for col in ["POSKOD SEKOLAH", "POSKOD", "SKOD SEH", "SKOD SEKOLAH"]:
+                    if col in existing.columns:
+                        try:
+                            def_val_poskod = int(float(str(row.get(col, def_val_poskod)).strip() or def_val_poskod))
+                        except:
+                            pass
+                        break
+                for col in ["BIL NO PUSAT", "BIL PUSAT", "NO PUSAT", "BIL"]:
+                    if col in existing.columns:
+                        try:
+                            def_val_bil_pusat = int(float(str(row.get(col, def_val_bil_pusat)).strip() or def_val_bil_pusat))
+                        except:
+                            pass
+                        break
+                for col in ["SENARAI NO PUSAT", "NO PUSAT", "SENARAI"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        def_val_senarai = str(row.get(col, def_val_senarai))
+                        break
+                for col in ["BIL KELAS DIGUNAKAN", "BIL KELAS", "JUM CALON", "CALON"]:
+                    if col in existing.columns:
+                        try:
+                            def_val_bil_kelas = int(float(str(row.get(col, def_val_bil_kelas)).strip() or def_val_bil_kelas))
+                        except:
+                            pass
+                        break
+                for col in ["NAMA SUP", "NAMA PENYELIA", "NAMA"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        # elak ambil yang salah
+                        val = str(row.get(col, ""))
+                        if "SUP" in val or "SMK" not in val:
+                            def_val_nama_sup = val
+                        break
+                for col in ["NO TELEFON SEKOLAH", "TELEFON", "LEFON SEKOLAH", "TEL"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        def_val_tel = str(row.get(col, ""))
+                        break
+            
+            if not existing.empty:
+                st.success(f"✅ Data sedia ada dijumpai untuk {info['kod_sekolah']} - form auto-isi dari Google Sheet")
+            
             with st.form("sekolah"):
                 c1,c2 = st.columns(2)
                 with c1:
-                    nama_sek = st.text_input("NAMA SEKOLAH", value=info['nama'])
-                    email = st.text_input("EMAIL")
-                    poskod_sek = st.number_input("POSKOD SEKOLAH",40000,49000,46000)
-                    bil_pusat = st.number_input("BIL PUSAT",1,10,int(info['bil_pusat']))
+                    nama_sek = st.text_input("NAMA SEKOLAH", value=def_val_nama)
+                    email = st.text_input("EMAIL SEKOLAH", value=def_val_email, placeholder="bea8640@moe.edu.my")
+                    no_tel = st.text_input("NO TELEFON SEKOLAH", value=def_val_tel, placeholder="03-XXXXXXX")
+                    poskod_sek = st.number_input("POSKOD SEKOLAH",40000,49000,def_val_poskod)
+                    bil_pusat = st.number_input("BIL PUSAT",1,10,def_val_bil_pusat)
                 with c2:
-                    senarai = st.text_input("SENARAI NO PUSAT", value=info['senarai_pusat'])
-                    bil_kelas = st.number_input("BIL KELAS",1,30,12)
-                    nama_sup = st.text_input("NAMA SUP", value=f"SUP {info['nama']}")
+                    senarai = st.text_input("SENARAI NO PUSAT", value=def_val_senarai)
+                    bil_kelas = st.number_input("BIL KELAS DIGUNAKAN",1,30,def_val_bil_kelas)
+                    nama_sup = st.text_input("NAMA SUP", value=def_val_nama_sup)
+                    nama_pengetua = st.text_input("NAMA PENGETUA", value=def_val_pengetua)
                 if st.form_submit_button("💾 Simpan", use_container_width=True):
-                    # Data baru - semua field
+                    # Data baru - semua field - ikut format sheet sedia ada
                     new_row = {
                         "KOD SEKOLAH": info['kod_sekolah'], 
                         "NAMA SEKOLAH": nama_sek, 
                         "EMAIL SEKOLAH": email,
+                        "TELEFON SEKOLAH": no_tel,
+                        "NAMA PENGETUA": nama_pengetua,
+                        "NAMA SUP": nama_sup,
                         "POSKOD SEKOLAH": poskod_sek,
                         "BIL NO PUSAT": bil_pusat, 
                         "SENARAI NO PUSAT": senarai, 
                         "BIL KELAS DIGUNAKAN": bil_kelas,
-                        "NAMA SUP": nama_sup,
                         "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
                     # === LOGIK ANTI-DUPLICATE ===
