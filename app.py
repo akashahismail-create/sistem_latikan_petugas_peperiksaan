@@ -1,6 +1,6 @@
 """
 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN SELANGOR 2026
-Muka Depan + Login ID Password
+Muka Depan + Login ID Password - FIXED SYNTAX ERROR
 JPN: 1 user | PPD: 10 user | SUP: 300 user
 Repo: sistem_latikan_petugas_peperiksaan
 Link GS: 11XotkvoHEiT-b1qtgXH1oGNDVlcXYtvg
@@ -13,12 +13,10 @@ from datetime import datetime
 st.set_page_config(page_title="Sistem Pelantikan Selangor 2026", layout="centered", page_icon="📚")
 
 # --- DATA LOGIN ---
-# JPN
 JPN_USERS = {
     "1": {"password": "a", "nama": "JPN Selangor", "role": "JPN"}
 }
 
-# PPD - 10 PPD
 PPD_LIST = [
     ("1", "a", "Klang", "BA"),
     ("2", "b", "Kuala Langat", "BB"),
@@ -36,13 +34,10 @@ PPD_USERS = {}
 for id_, pwd, nama, kod in PPD_LIST:
     PPD_USERS[id_] = {"password": pwd, "nama": f"PPD {nama}", "ppd_nama": nama, "kod": kod, "role": "PPD"}
 
-# SUP - 300 sekolah (dummy 1-300, ikut KOD SEKOLAH nanti)
-# Untuk demo kita buat 1-300, password sama dengan id
 SUP_USERS = {}
 for i in range(1, 301):
     SUP_USERS[str(i)] = {"password": str(i), "nama": f"Sekolah {i}", "role": "SUP", "kod_sekolah": f"SEKOLAH{i}"}
 
-# Kalau ada data master sekolah, override nama
 try:
     df_sekolah_master = pd.read_excel("data/senarai_506_PLUS_calon2026_FINAL.xlsx")
     df_sekolah_list = df_sekolah_master.groupby("KOD SEKOLAH").first().reset_index().head(300)
@@ -51,10 +46,9 @@ try:
         if sid in SUP_USERS:
             SUP_USERS[sid]["nama"] = row["NAMA PUSAT"]
             SUP_USERS[sid]["kod_sekolah"] = row["KOD SEKOLAH"]
-except:
+except Exception:
     pass
 
-# --- SESSION ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user_role" not in st.session_state:
@@ -62,7 +56,6 @@ if "user_role" not in st.session_state:
 if "user_info" not in st.session_state:
     st.session_state.user_info = {}
 
-# --- MUKA DEPAN ---
 if not st.session_state.logged_in:
     st.markdown("""
     <style>
@@ -84,10 +77,9 @@ if not st.session_state.logged_in:
             
             peranan = st.selectbox("Pilih Peranan", ["-- Pilih --", "JPN Selangor", "PPD", "SUP Sekolah"], index=0)
             
-            id_input = st.text_input("ID Pengguna", placeholder="Contoh: JPN=1, PPD=1-10, SUP=1-300")
+            id_input = st.text_input("ID Pengguna", placeholder="JPN=1, PPD=1-10, SUP=1-300")
             pwd_input = st.text_input("Kata Laluan", type="password", placeholder="JPN/PPD: a-j, SUP: sama dengan ID")
             
-            # Info bantuan
             with st.expander("ℹ️ Lihat Senarai ID & Password"):
                 st.markdown("""
                 **JPN Selangor (1 pengguna):**
@@ -151,7 +143,6 @@ if not st.session_state.logged_in:
     st.stop()
 
 # --- JIKA DAH LOGIN ---
-# Header logged in
 role = st.session_state.user_role
 info = st.session_state.user_info
 uid = st.session_state.user_id
@@ -167,33 +158,33 @@ with col_head2:
         st.session_state.user_info = {}
         st.rerun()
 
-# --- LOAD DATA ---
 @st.cache_data
 def load_master():
     try:
         pusat = pd.read_excel("data/senarai_506_PLUS_calon2026_FINAL.xlsx")
-    except:
+    except Exception:
         pusat = pd.DataFrame({"NO PUSAT":["BK009"],"NAMA PUSAT":["SMJK KATHOLIK"],"PPD":["Petaling Utama"]})
     return pusat
 
 pusat_master = load_master()
 
-# Try GSheets
 try:
     from streamlit_gsheets import GSheetsConnection
     conn = st.connection("gsheets", type=GSheetsConnection)
     USE_GSHEET = True
-except:
+    st.sidebar.success("✅ Connected Google Sheet")
+except Exception as e:
     USE_GSHEET = False
+    st.sidebar.warning("Guna Local Dummy - Google Sheet belum connect")
+    st.sidebar.caption(str(e))
 
 def read_sheet(name):
     if USE_GSHEET:
         try:
             return conn.read(worksheet=name, ttl=0)
-        except:
+        except Exception:
             return pd.DataFrame()
     else:
-        # fallback local
         try:
             if name=="maklumat_sekolah":
                 return pd.read_excel("data/TEMPLATE_1_MAKLUMAT_SEKOLAH_SUP.xlsx")
@@ -203,7 +194,7 @@ def read_sheet(name):
                 return pd.read_excel("data/TEMPLATE_3_PENEMPATAN_AUTO_POSKOD.xlsx")
             else:
                 return pd.DataFrame()
-        except:
+        except Exception:
             return pd.DataFrame()
 
 def write_sheet(name, df):
@@ -211,13 +202,12 @@ def write_sheet(name, df):
         try:
             conn.update(worksheet=name, data=df)
             return True
-        except as e:
-            st.error(f"Gagal tulis {name}: {e}")
+        except Exception as ex:
+            st.error(f"Gagal tulis {name}: {ex}")
             return False
     else:
         return True
 
-# --- CONTENT IKUT ROLE ---
 exam_type = st.selectbox("Pilih Jenis Peperiksaan", ["SPM Bertulis", "SPM Ujian Amali Sains", "Ujian Mendengar", "Ujian Bertutur"])
 
 if role == "SUP":
@@ -277,7 +267,6 @@ elif role == "PPD":
     st.dataframe(cadangan_all.head(20), use_container_width=True)
     
     if st.button("🤖 Jana Auto Penempatan Ikut Poskod"):
-        # simple auto nearest
         pool = cadangan_all[~cadangan_all["JAWATAN CADANG"].astype(str).str.contains("Pengemas")].copy()
         penempatan = []
         for _, p in pusat_ppd.head(10).iterrows():
@@ -285,7 +274,6 @@ elif role == "PPD":
             kod_sek_pusat = p["KOD SEKOLAH"]
             eligible = pool[pool["KOD SEKOLAH ASAL"]!=kod_sek_pusat].copy()
             if eligible.empty: continue
-            # assume poskod pusat 46000 for demo, real need mapping
             eligible["JARAK"] = (eligible["POSKOD RUMAH"]-46000).abs()
             eligible = eligible.sort_values("JARAK")
             kp = eligible[eligible["JAWATAN CADANG"]=="Ketua Pengawas"].head(1)
