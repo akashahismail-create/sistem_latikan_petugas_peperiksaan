@@ -1,50 +1,117 @@
 """
 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN SELANGOR 2026
-MUKA DEPAN BARU: SUP Pilih Daerah -> Pilih Sekolah -> Password (Tak perlu ID)
-Total 369 sekolah termasuk persendirian, boleh tambah
-Repo: sistem_latikan_petugas_peperiksaan
+FIX FINAL - Baca apa saja nama file ID DAERAH, tak kisah - atau _ , besar kecil huruf
+Total 369 sekolah
 """
 
 import streamlit as st
 import pandas as pd
+import os
+import glob
 
-st.set_page_config(
-    page_title="Sistem Pelantikan Selangor 2026", 
-    layout="wide", 
-    page_icon="📚",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="Sistem Pelantikan Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 
-# Hide sidebar
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {display: none !important;}
     [data-testid="collapsedControl"] {display: none !important;}
-    .big-title {text-align:center; font-size:30px; font-weight:bold; color:#0B5394; margin-top:10px;}
-    .sub-title {text-align:center; font-size:15px; color:#666; margin-bottom:15px;}
+    .big-title {text-align:center; font-size:30px; font-weight:bold; color:#0B5394;}
+    .sub-title {text-align:center; font-size:14px; color:#666; margin-bottom:15px;}
     .login-box {background:#f0f7ff; padding:20px; border-radius:12px; border:1px solid #c2d8ff;}
     .left-panel {background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0;}
 </style>
 """, unsafe_allow_html=True)
 
-# --- LOAD MAPPING 369 SEKOLAH ---
 @st.cache_data
 def load_mapping():
-    try:
-        df = pd.read_excel("data/SENARAI_ID_SUP_BY_DAERAH.xlsx")
-    except:
+    # Cara baru: scan semua file dalam data/ yang ada ID dan DAERAH, tak kisah nama
+    data_folder = "data"
+    candidates = []
+    if os.path.exists(data_folder):
+        for f in os.listdir(data_folder):
+            low = f.lower()
+            if "id" in low and "daerah" in low and (low.endswith(".xlsx") or low.endswith(".csv")):
+                candidates.append(os.path.join(data_folder, f))
+    
+    # Cuba baca semua candidate, ambil yang paling banyak row
+    best_df = pd.DataFrame()
+    best_file = ""
+    for path in candidates:
         try:
-            df = pd.read_excel("/mnt/data/SENARAI_ID_SUP_BY_DAERAH.xlsx")
+            if path.endswith(".xlsx"):
+                df = pd.read_excel(path)
+            else:
+                df = pd.read_csv(path)
+            # Check ada column PPD
+            if "PPD" in df.columns and len(df) > len(best_df):
+                best_df = df
+                best_file = path
+        except Exception as e:
+            continue
+    
+    if not best_df.empty and len(best_df) > 10:
+        return best_df, best_file
+    
+    # Fallback: cuba nama standard
+    standard_paths = [
+        "data/SENARAI_ID_SUP_BY_DAERAH.xlsx",
+        "data/SENARAI_ID-SUP_BY_DAERAH.xlsx",
+        "data/SENARAI_ID_SUP_BY_DAERAH.csv",
+        "/mnt/data/SENARAI_ID_SUP_BY_DAERAH.xlsx",
+        "/mnt/data/SENARAI_ID_SUP_BY_DAERAH.csv",
+    ]
+    for path in standard_paths:
+        try:
+            if os.path.exists(path):
+                if path.endswith(".xlsx"):
+                    df = pd.read_excel(path)
+                else:
+                    df = pd.read_csv(path)
+                if "PPD" in df.columns and len(df) > 10:
+                    return df, path
         except:
-            # fallback dummy 10
-            df = pd.DataFrame([
-                {"ID":1,"PASSWORD":"1","KOD SEKOLAH":"BEB8653","NAMA SEKOLAH":"SMJK KATHOLIK","PPD":"Petaling Utama","KOD PPD":"BK","BIL PUSAT":3,"SENARAI PUSAT":"BK009,BK010,BK011"},
-            ])
-    return df
+            continue
+    
+    # Last fallback: generate dari master 506
+    try:
+        master_path = None
+        for p in ["data/senarai_506_PLUS_calon2026_FINAL.xlsx", "data/senarai_506_PLUS_calon2026_FINAL.xlsx".lower(), "/mnt/data/senarai_506_PLUS_calon2026_FINAL.xlsx"]:
+            # case insensitive search
+            if os.path.exists("data"):
+                for f in os.listdir("data"):
+                    if "506" in f and "calon" in f.lower():
+                        master_path = os.path.join("data", f)
+                        break
+        if not master_path:
+            master_path = "data/senarai_506_PLUS_calon2026_FINAL.xlsx"
+        
+        df_master = pd.read_excel(master_path)
+        PPD_MAP = {"BA":"Klang","BB":"Kuala Langat","BC":"Kuala Selangor","BD":"Hulu Langat","BE":"Hulu Selangor","BF":"Sabak Bernam","BG":"Gombak","BH":"Petaling Perdana","BJ":"Sepang","BK":"Petaling Utama"}
+        order = ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]
+        schools = df_master.groupby("KOD SEKOLAH").first().reset_index()
+        schools["KOD PPD"] = schools["NO PUSAT"].str[:2]
+        id_mapping = []
+        current_id = 1
+        for kod in order:
+            subset = schools[schools["KOD PPD"]==kod].sort_values("KOD SEKOLAH")
+            for _, row in subset.iterrows():
+                bil_pusat = len(df_master[df_master["KOD SEKOLAH"]==row["KOD SEKOLAH"]])
+                senarai = ",".join(df_master[df_master["KOD SEKOLAH"]==row["KOD SEKOLAH"]]["NO PUSAT"].tolist())
+                id_mapping.append({
+                    "ID": current_id, "PASSWORD": str(current_id), "KOD SEKOLAH": row["KOD SEKOLAH"],
+                    "NAMA SEKOLAH": row["NAMA PUSAT"], "PPD": PPD_MAP.get(kod, kod), "KOD PPD": kod,
+                    "BIL PUSAT": bil_pusat, "SENARAI PUSAT": senarai
+                })
+                current_id += 1
+        return pd.DataFrame(id_mapping), f"Generated from {master_path} ({len(id_mapping)} sekolah)"
+    except Exception as e:
+        return pd.DataFrame([{"ID":354,"PASSWORD":"354","KOD SEKOLAH":"BEB8653","NAMA SEKOLAH":"SMJK KATHOLIK","PPD":"Petaling Utama","KOD PPD":"BK","BIL PUSAT":3,"SENARAI PUSAT":"BK009,BK010,BK011"}]), f"Fallback dummy error: {e}"
 
-mapping_df = load_mapping()
+mapping_df, file_used = load_mapping()
 
-# PPD users
+# Debug info
+# st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
+
 PPD_LIST = [
     ("1", "a", "Klang", "BA"), ("2", "b", "Kuala Langat", "BB"),
     ("3", "c", "Kuala Selangor", "BC"), ("4", "d", "Hulu Langat", "BD"),
@@ -53,18 +120,22 @@ PPD_LIST = [
     ("9", "i", "Sepang", "BJ"), ("10", "j", "Petaling Utama", "BK"),
 ]
 PPD_USERS = {f"{nama}": {"id": id_, "password": pwd, "nama": f"PPD {nama}", "ppd_nama": nama, "kod": kod} for id_, pwd, nama, kod in PPD_LIST}
-PPD_BY_KOD = {kod: {"id": id_, "password": pwd, "nama": nama} for id_, pwd, nama, kod in PPD_LIST}
-
-JPN_USERS = {"1": {"password": "a", "nama": "JPN Selangor", "role": "JPN"}}
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-# ================= MUKA DEPAN =================
 if not st.session_state.logged_in:
     st.markdown('<div class="big-title">📚 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN</div>', unsafe_allow_html=True)
     st.markdown('<div class="big-title" style="font-size:22px;">SELANGOR 2026</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">369 Sekolah Termasuk Persendirian • Boleh Tambah Sekolah Baru<br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sub-title">{len(mapping_df)} Sekolah Termasuk Persendirian • File: {os.path.basename(file_used)}<br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
+
+    # Debug visible
+    with st.expander(f"🔍 Debug Data - File guna: {file_used} - {len(mapping_df)} sekolah", expanded=False):
+        st.write(f"File yang dibaca: {file_used}")
+        st.write(f"Jumlah sekolah: {len(mapping_df)}")
+        if not mapping_df.empty:
+            st.write("Daerah yang ada:", mapping_df["PPD"].value_counts().to_dict())
+            st.dataframe(mapping_df.head(10))
 
     left, center, right = st.columns([1,2,1])
     with center:
@@ -73,117 +144,109 @@ if not st.session_state.logged_in:
         
         peranan = st.selectbox("1️⃣ Pilih Peranan", ["-- Pilih --", "JPN Selangor", "PPD", "SUP Sekolah"])
         
-        # JPN
         if peranan == "JPN Selangor":
-            st.info("JPN Selangor: 1 pengguna")
-            jpn_id = st.text_input("ID", value="1", disabled=True)
-            jpn_pwd = st.text_input("Kata Laluan", type="password", placeholder="a")
-            login_btn = st.button("🚀 Log Masuk JPN", use_container_width=True, type="primary")
-            if login_btn:
-                if jpn_id=="1" and jpn_pwd=="a":
+            st.info("JPN: ID 1 Password a")
+            jpn_pwd = st.text_input("Kata Laluan JPN", type="password", placeholder="a")
+            if st.button("🚀 Log Masuk JPN", use_container_width=True, type="primary"):
+                if jpn_pwd=="a":
                     st.session_state.logged_in=True
                     st.session_state.user_role="JPN"
                     st.session_state.user_info={"nama":"JPN Selangor","role":"JPN","id":"1"}
                     st.rerun()
                 else:
-                    st.error("❌ Password salah - JPN password a")
+                    st.error("Password salah")
         
-        # PPD - Pilih Daerah terus
         elif peranan == "PPD":
             st.markdown("#### 2️⃣ Pilih Daerah (PPD)")
-            ppd_daerah = st.selectbox("Daerah", ["-- Pilih Daerah --", "Klang", "Kuala Langat", "Kuala Selangor", "Hulu Langat", "Hulu Selangor", "Sabak Bernam", "Gombak", "Petaling Perdana", "Sepang", "Petaling Utama"])
-            
+            ppd_daerah = st.selectbox("Daerah", ["-- Pilih Daerah --"] + [nama for _,_,nama,_ in PPD_LIST])
             if ppd_daerah != "-- Pilih Daerah --":
                 ppd_info = PPD_USERS[ppd_daerah]
-                st.success(f"PPD {ppd_daerah} - ID {ppd_info['id']} - Kod {ppd_info['kod']}")
-                ppd_pwd = st.text_input(f"Kata Laluan PPD {ppd_daerah}", type="password", placeholder=f"Password {ppd_info['password']} (huruf {chr(96+int(ppd_info['id']))})")
-                login_btn = st.button(f"🚀 Log Masuk {ppd_daerah}", use_container_width=True, type="primary")
-                if login_btn:
+                bil_sek = len(mapping_df[mapping_df["PPD"]==ppd_daerah]) if not mapping_df.empty else 0
+                st.success(f"PPD {ppd_daerah} ({ppd_info['kod']}) - {bil_sek} sekolah - Password {ppd_info['password']}")
+                ppd_pwd = st.text_input(f"Password PPD {ppd_daerah}", type="password")
+                if st.button(f"🚀 Log Masuk {ppd_daerah}", use_container_width=True, type="primary"):
                     if ppd_pwd == ppd_info['password']:
                         st.session_state.logged_in=True
                         st.session_state.user_role="PPD"
                         st.session_state.user_info={"nama":f"PPD {ppd_daerah}","ppd_nama":ppd_daerah,"kod":ppd_info['kod'],"password":ppd_info['password'],"id":ppd_info['id'],"role":"PPD"}
                         st.rerun()
                     else:
-                        st.error(f"❌ Password salah - Password PPD {ppd_daerah} adalah {ppd_info['password']}")
+                        st.error("Password salah")
         
-        # SUP - Pilih Daerah -> Pilih Sekolah -> Password sahaja (tak perlu ID)
         elif peranan == "SUP Sekolah":
             st.markdown("#### 2️⃣ Pilih Daerah")
-            daerah_list = ["-- Pilih Daerah --"] + sorted(mapping_df["PPD"].unique().tolist())
-            # Susun ikut turutan asal: Klang ... Petaling Utama
             order_daerah = ["Klang","Kuala Langat","Kuala Selangor","Hulu Langat","Hulu Selangor","Sabak Bernam","Gombak","Petaling Perdana","Sepang","Petaling Utama"]
-            daerah_list_ordered = ["-- Pilih Daerah --"] + [d for d in order_daerah if d in mapping_df["PPD"].values]
-            sup_daerah = st.selectbox("Daerah Sekolah Anda", daerah_list_ordered)
+            # Guna yang ada dalam file, tapi ikut order
+            if not mapping_df.empty:
+                daerah_ada = mapping_df["PPD"].unique().tolist()
+                daerah_list = [d for d in order_daerah if d in daerah_ada]
+            else:
+                daerah_list = order_daerah
+            
+            sup_daerah = st.selectbox("Daerah Sekolah Anda", ["-- Pilih Daerah --"] + daerah_list)
             
             if sup_daerah != "-- Pilih Daerah --":
-                df_daerah = mapping_df[mapping_df["PPD"]==sup_daerah].sort_values("NAMA SEKOLAH")
+                df_daerah = mapping_df[mapping_df["PPD"]==sup_daerah].sort_values("NAMA SEKOLAH") if not mapping_df.empty else pd.DataFrame()
                 st.markdown(f"#### 3️⃣ Pilih Sekolah di {sup_daerah} ({len(df_daerah)} sekolah)")
-                st.caption(f"Ada penambahan sekolah? PPD boleh tambah dalam Google Sheet. Contoh: SMJK KATHOLIK ada 3 pusat BK009,BK010,BK011 tapi 1 login sahaja")
-                
-                # Dropdown sekolah
-                sekolah_options = [f"{row['NAMA SEKOLAH']} ({row['KOD SEKOLAH']}) - {row['BIL PUSAT']} pusat [{row['SENARAI PUSAT']}]" for _, row in df_daerah.iterrows()]
-                sekolah_pilih = st.selectbox("Nama Sekolah", ["-- Pilih Sekolah --"] + sekolah_options)
-                
-                if sekolah_pilih != "-- Pilih Sekolah --":
-                    idx = sekolah_options.index(sekolah_pilih)
-                    row_sekolah = df_daerah.iloc[idx]
-                    st.success(f"✅ {row_sekolah['NAMA SEKOLAH']} - Kod {row_sekolah['KOD SEKOLAH']} - {row_sekolah['BIL PUSAT']} pusat: {row_sekolah['SENARAI PUSAT']}")
+                if len(df_daerah)==0:
+                    st.warning("Senarai kosong! Check file dalam data/")
+                else:
+                    sekolah_options = [f"{row['NAMA SEKOLAH']} ({row['KOD SEKOLAH']}) - {row['BIL PUSAT']} pusat [{row['SENARAI PUSAT']}]" for _, row in df_daerah.iterrows()]
+                    sekolah_pilih = st.selectbox("Nama Sekolah (Masuk ikut sekolah, bukan pusat)", ["-- Pilih Sekolah --"] + sekolah_options)
                     
-                    st.markdown("#### 4️⃣ Masukkan Password Sahaja (Tak perlu ID)")
-                    st.caption(f"Password kekal ikut ID lama: ID {row_sekolah['ID']} → Password {row_sekolah['PASSWORD']}")
-                    sup_pwd = st.text_input(f"Password untuk {row_sekolah['NAMA SEKOLAH']}", type="password", placeholder=f"Password {row_sekolah['PASSWORD']}")
-                    
-                    login_btn = st.button(f"🚀 Log Masuk {row_sekolah['NAMA SEKOLAH']}", use_container_width=True, type="primary")
-                    if login_btn:
-                        if sup_pwd == str(row_sekolah['PASSWORD']):
-                            st.session_state.logged_in=True
-                            st.session_state.user_role="SUP"
-                            st.session_state.user_info={
-                                "nama": row_sekolah['NAMA SEKOLAH'],
-                                "kod_sekolah": row_sekolah['KOD SEKOLAH'],
-                                "ppd": row_sekolah['PPD'],
-                                "kod_ppd": row_sekolah['KOD PPD'],
-                                "id": str(row_sekolah['ID']),
-                                "password": str(row_sekolah['PASSWORD']),
-                                "bil_pusat": row_sekolah['BIL PUSAT'],
-                                "senarai_pusat": row_sekolah['SENARAI PUSAT'],
-                                "role":"SUP"
-                            }
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Password salah - Password sekolah ini {row_sekolah['PASSWORD']}")
+                    if sekolah_pilih != "-- Pilih Sekolah --":
+                        idx = sekolah_options.index(sekolah_pilih)
+                        row_sekolah = df_daerah.iloc[idx]
+                        st.success(f"✅ {row_sekolah['NAMA SEKOLAH']} - {row_sekolah['KOD SEKOLAH']} - {row_sekolah['BIL PUSAT']} pusat: {row_sekolah['SENARAI PUSAT']}")
+                        st.markdown("#### 4️⃣ Password Sahaja")
+                        sup_pwd = st.text_input(f"Password {row_sekolah['NAMA SEKOLAH']}", type="password", placeholder=f"{row_sekolah['PASSWORD']}")
+                        if st.button(f"🚀 Log Masuk {row_sekolah['NAMA SEKOLAH']}", use_container_width=True, type="primary"):
+                            if sup_pwd == str(row_sekolah['PASSWORD']):
+                                st.session_state.logged_in=True
+                                st.session_state.user_role="SUP"
+                                st.session_state.user_info={
+                                    "nama": row_sekolah['NAMA SEKOLAH'],
+                                    "kod_sekolah": row_sekolah['KOD SEKOLAH'],
+                                    "ppd": row_sekolah['PPD'],
+                                    "kod_ppd": row_sekolah['KOD PPD'],
+                                    "id": str(row_sekolah['ID']),
+                                    "password": str(row_sekolah['PASSWORD']),
+                                    "bil_pusat": row_sekolah['BIL PUSAT'],
+                                    "senarai_pusat": row_sekolah['SENARAI PUSAT'],
+                                    "role":"SUP"
+                                }
+                                st.rerun()
+                            else:
+                                st.error(f"Password salah")
         
         st.markdown('</div>', unsafe_allow_html=True)
         
-        with st.expander("ℹ️ Cara Login Baru (Tanpa ID untuk SUP)"):
-            st.markdown("""
-            **JPN:** Pilih JPN → ID 1 → Password a
+        with st.expander("ℹ️ Di mana update data?"):
+            st.markdown(f"""
+            **File yang sedang guna:** `{file_used}` - {len(mapping_df)} sekolah
             
-            **PPD:** Pilih PPD → Pilih Daerah (Klang dll) → Password a-j
+            **Senarai Sekolah 369:**
+            - App akan cari apa saja file dalam `data/` yang ada perkataan ID dan DAERAH (tak kisah - atau _ , besar kecil)
+            - Contoh nama valid: `SENARAI_ID_SUP_BY_DAERAH.xlsx`, `SENARAI_ID-SUP_BY_DAERAH.xlsx`, `senarai_id_sup_by_daerah.xlsx` semua boleh!
+            - File yang Kashah upload: `SENARAI_ID-SUP_BY_DAERAH.xlsx` - sekarang app dah boleh baca walaupun ada hyphen!
+            - Kalau tak ada, app auto generate dari `senarai_506_PLUS_calon2026_FINAL.xlsx`
             
-            **SUP Sekolah (Baru! Tak perlu ID):**
-            1. Pilih SUP Sekolah
-            2. Pilih Daerah (contoh Klang ada 49 sekolah ID 1-49, Petaling Utama ID 334-369)
-            3. Pilih Sekolah (contoh SMJK KATHOLIK - 3 pusat BK009,10,11 tapi 1 login je)
-            4. Masuk Password sahaja (Password kekal: ID 354 = Password 354)
+            **Tambah sekolah baru:** Edit file Excel tu tambah row ID 370, push GitHub
             
-            **Total 369 sekolah termasuk persendirian, PPD boleh tambah sekolah baru dalam Google Sheet.**
+            **Senarai PPD:** Edit `PPD_LIST` dalam `app.py`
             """)
     
     st.markdown("---")
-    st.caption("Sistem 369 Sekolah By Daerah | Tanpa Sidebar | SUP: Daerah → Sekolah → Password sahaja")
+    st.caption(f"Data: {len(mapping_df)} sekolah dari {os.path.basename(file_used)} | Tanpa Sidebar")
     st.stop()
 
-# ================= DAH LOGIN =================
+# Dah login
 role = st.session_state.user_role
 info = st.session_state.user_info
 
-# Header
 st.markdown(f"""
-<div style="background:#0B5394; color:white; padding:12px 20px; border-radius:8px; display:flex; justify-content:space-between;">
-    <div><b>📚 SPM 2026</b> | 👋 {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | ID {info.get('id')} | {info.get('bil_pusat','')} pusat</div>
-    <div style="font-size:11px;">369 Sekolah By Daerah</div>
+<div style="background:#0B5394; color:white; padding:10px 15px; border-radius:8px;">
+    <b>📚 SPM 2026</b> | {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | {info.get('bil_pusat','')} pusat | File: {os.path.basename(file_used)}
 </div>
 """, unsafe_allow_html=True)
 
@@ -192,31 +255,22 @@ col_kiri, col_kanan = st.columns([1, 3])
 with col_kiri:
     st.markdown('<div class="left-panel">', unsafe_allow_html=True)
     st.markdown(f"### 👤 {info['nama']}")
-    st.markdown(f"**Peranan:** {role}")
     if role=="SUP":
         st.markdown(f"**Kod:** {info['kod_sekolah']}")
         st.markdown(f"**PPD:** {info['ppd']} ({info['kod_ppd']})")
         st.markdown(f"**Pusat:** {info['bil_pusat']} pusat")
-        st.markdown(f"`{info['senarai_pusat']}`")
-        st.markdown(f"**Password:** {info['password']} (ID tak perlu)")
+        st.code(info['senarai_pusat'])
     elif role=="PPD":
-        st.markdown(f"**PPD:** {info['ppd_nama']} ({info['kod']})")
-        st.markdown(f"**ID:** {info['id']} | **Pwd:** {info['password']}")
-    else:
-        st.markdown(f"**JPN Selangor**")
-    
+        st.markdown(f"**PPD:** {info['ppd_nama']} ({info['kod']}) - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
     st.markdown("---")
-    st.markdown("### 📝 Menu")
     if role=="SUP":
         menu = st.radio("Menu", ["Maklumat Sekolah", "Cadangan Petugas", "Status"], label_visibility="collapsed")
     elif role=="PPD":
         menu = st.radio("Menu", ["Senarai Pusat", "Cadangan SUP", "Jana Penempatan", "Hantar JPN"], label_visibility="collapsed")
     else:
         menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat"], label_visibility="collapsed")
-    
     st.markdown("---")
     exam_type = st.selectbox("Peperiksaan", ["SPM Bertulis", "SPM Amali Sains", "Ujian Mendengar", "Ujian Bertutur"])
-    
     st.markdown("---")
     if st.button("🚪 Log Keluar", use_container_width=True):
         st.session_state.logged_in=False
@@ -227,6 +281,11 @@ with col_kanan:
     @st.cache_data
     def load_master():
         try:
+            # cari file 506
+            if os.path.exists("data"):
+                for f in os.listdir("data"):
+                    if "506" in f:
+                        return pd.read_excel(os.path.join("data", f))
             return pd.read_excel("data/senarai_506_PLUS_calon2026_FINAL.xlsx")
         except:
             return pd.DataFrame({"NO PUSAT":["BK009"],"NAMA PUSAT":["SMJK KATHOLIK"]})
@@ -246,18 +305,7 @@ with col_kanan:
             except:
                 return pd.DataFrame()
         else:
-            try:
-                if name=="maklumat_sekolah":
-                    return pd.read_excel("data/TEMPLATE_1_MAKLUMAT_SEKOLAH_SUP.xlsx")
-                elif name=="cadangan_sup":
-                    return pd.read_excel("data/TEMPLATE_2_CADANGAN_PETUGAS_SUP.xlsx")
-                elif name=="penempatan_ppd":
-                    return pd.read_excel("data/TEMPLATE_3_PENEMPATAN_AUTO_POSKOD.xlsx")
-                else:
-                    return pd.DataFrame()
-            except:
-                return pd.DataFrame()
-    
+            return pd.DataFrame()
     def write_sheet(name, df):
         if USE_GSHEET:
             try:
@@ -272,7 +320,7 @@ with col_kanan:
     if role=="SUP":
         if menu=="Maklumat Sekolah":
             st.header(f"🏫 {info['nama']} - {info['senarai_pusat']}")
-            st.info(f"Kod {info['kod_sekolah']} | {info['bil_pusat']} pusat ({info['senarai_pusat']}) | Formula: KP={info['bil_pusat']+1}, Pengawas=Bil Kelas+5 | Masuk ikut sekolah bukan pusat")
+            st.info(f"Kod {info['kod_sekolah']} | {info['bil_pusat']} pusat | Masuk ikut sekolah bukan pusat")
             maklumat = read_sheet("maklumat_sekolah")
             with st.form("sekolah"):
                 c1,c2 = st.columns(2)
@@ -289,11 +337,10 @@ with col_kanan:
                     new = pd.DataFrame([{"KOD SEKOLAH": info['kod_sekolah'], "NAMA SEKOLAH": nama_sek, "BIL NO PUSAT": bil_pusat, "SENARAI NO PUSAT": senarai, "BIL KELAS DIGUNAKAN": bil_kelas}])
                     maklumat=pd.concat([maklumat,new],ignore_index=True)
                     write_sheet("maklumat_sekolah", maklumat)
-                    st.success(f"Simpan! {info['nama']} {bil_pusat} pusat, KP={bil_pusat+1}")
+                    st.success(f"Simpan!")
             st.dataframe(maklumat.tail(5), use_container_width=True)
         elif menu=="Cadangan Petugas":
-            st.header(f"👥 Cadangan Petugas - {info['nama']}")
-            st.caption(f"{info['bil_pusat']} pusat: {info['senarai_pusat']} - Isi poskod rumah untuk nearest")
+            st.header(f"👥 Cadangan - {info['nama']}")
             cadangan = read_sheet("cadangan_sup")
             with st.form("guru"):
                 c1,c2,c3 = st.columns(3)
@@ -313,21 +360,21 @@ with col_kanan:
             st.dataframe(cadangan.tail(10), use_container_width=True)
         else:
             st.header("📤 Status")
-            st.success("Data dah simpan dalam Google Sheet")
+            st.success("Data simpan dalam Google Sheet")
             st.dataframe(read_sheet("maklumat_sekolah").tail(5), use_container_width=True)
-    
     elif role=="PPD":
         if menu=="Senarai Pusat":
-            st.header(f"🏢 PPD {info['ppd_nama']} ({info['kod']}) - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
-            pusat_ppd = pusat_master[pusat_master["NO PUSAT"].str.startswith(info['kod'])]
-            st.dataframe(pusat_ppd[["NO PUSAT","NAMA PUSAT","KOD SEKOLAH"]], use_container_width=True)
+            st.header(f"🏢 PPD {info['ppd_nama']} - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
+            st.info(f"File: {file_used} | Update: data/SENARAI_ID_SUP_BY_DAERAH.xlsx (apa saja nama ada ID+DAERAH)")
+            df_ppd = mapping_df[mapping_df["KOD PPD"]==info['kod']]
+            st.dataframe(df_ppd[["ID","KOD SEKOLAH","NAMA SEKOLAH","BIL PUSAT","SENARAI PUSAT"]], use_container_width=True)
         elif menu=="Cadangan SUP":
             st.header("📋 Cadangan SUP")
             st.dataframe(read_sheet("cadangan_sup"), use_container_width=True)
         elif menu=="Jana Penempatan":
-            st.header("🤖 Jana Penempatan Ikut Poskod")
+            st.header("🤖 Jana Penempatan")
             if st.button("🤖 Jana Auto", use_container_width=True, type="primary"):
-                st.success("Jana penempatan (demo) - ikut poskod nearest")
+                st.success("Jana penempatan (demo)")
                 st.dataframe(read_sheet("penempatan_ppd").tail(10), use_container_width=True)
         else:
             st.header("📤 Hantar ke JPN")
@@ -336,19 +383,15 @@ with col_kanan:
                 st.balloons()
     else:
         if menu=="Semua PPD":
-            st.header("🏛️ Semua PPD - 369 Sekolah")
+            st.header(f"🏛️ Semua PPD - {len(mapping_df)} Sekolah - File: {os.path.basename(file_used)}")
             st.dataframe(mapping_df, use_container_width=True)
-            st.metric("Total Sekolah", len(mapping_df))
         elif menu=="Sahkan PPD":
             st.header("✅ Sahkan PPD")
             ppd_sah = st.selectbox("Pilih PPD", [f"{nama} ({kod}) - {len(mapping_df[mapping_df['KOD PPD']==kod])} sekolah" for _,_,nama,kod in PPD_LIST])
             if st.button("✅ SAHKAN", use_container_width=True, type="primary"):
                 st.success(f"{ppd_sah} DISAHKAN!")
-                st.balloons()
         else:
             st.header("📄 Jana Surat")
             penempatan_all = read_sheet("penempatan_ppd")
             if st.button("📄 Jana Surat", use_container_width=True, type="primary"):
                 st.success("Surat dijana!")
-                if not penempatan_all.empty:
-                    st.download_button("⬇️ Download CSV", penempatan_all.to_csv(index=False), file_name="senarai.csv")
