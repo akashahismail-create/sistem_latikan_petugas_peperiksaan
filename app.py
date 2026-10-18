@@ -533,23 +533,72 @@ with col_kanan:
             st.success("Data simpan dalam Google Sheet")
             st.dataframe(read_sheet("maklumat_sekolah").tail(5), use_container_width=True)
     elif role=="PPD":
+        # Senarai kod sekolah bawah PPD ini
+        df_ppd = mapping_df[mapping_df["KOD PPD"]==info['kod']]
+        kod_sekolah_ppd = df_ppd["KOD SEKOLAH"].astype(str).tolist()
+        
         if menu=="Senarai Pusat":
-            st.header(f"🏢 PPD {info['ppd_nama']} - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
-            st.info(f"File: {file_used} | Update: data/SENARAI_ID_SUP_BY_DAERAH.xlsx (apa saja nama ada ID+DAERAH)")
-            df_ppd = mapping_df[mapping_df["KOD PPD"]==info['kod']]
+            st.header(f"🏢 PPD {info['ppd_nama']} - {len(df_ppd)} sekolah")
+            st.info(f"File: {os.path.basename(file_used)} | Daerah {info['kod']} = {info['ppd_nama']}")
             st.dataframe(df_ppd[["ID","KOD SEKOLAH","NAMA SEKOLAH","BIL PUSAT","SENARAI PUSAT"]], use_container_width=True)
+            
+            # Status hantar maklumat sekolah
+            maklumat_all = read_sheet("maklumat_sekolah")
+            if not maklumat_all.empty and "KOD SEKOLAH" in maklumat_all.columns:
+                maklumat_ppd = maklumat_all[maklumat_all["KOD SEKOLAH"].astype(str).isin(kod_sekolah_ppd)]
+                st.markdown(f"#### 📊 Status Maklumat Sekolah - {info['ppd_nama']}: {len(maklumat_ppd)}/{len(df_ppd)} dah isi")
+                if not maklumat_ppd.empty:
+                    st.dataframe(maklumat_ppd, use_container_width=True)
+                # Senarai belum isi
+                belum = df_ppd[~df_ppd["KOD SEKOLAH"].astype(str).isin(maklumat_all["KOD SEKOLAH"].astype(str) if not maklumat_all.empty else [])]
+                if not belum.empty:
+                    st.warning(f"⚠️ {len(belum)} sekolah belum isi maklumat")
+                    st.dataframe(belum[["KOD SEKOLAH","NAMA SEKOLAH"]], use_container_width=True)
+        
         elif menu=="Cadangan SUP":
-            st.header("📋 Cadangan SUP")
-            st.dataframe(read_sheet("cadangan_sup"), use_container_width=True)
+            st.header(f"📋 Cadangan SUP - PPD {info['ppd_nama']} sahaja")
+            cadangan_all = read_sheet("cadangan_sup")
+            if not cadangan_all.empty and "KOD SEKOLAH ASAL" in cadangan_all.columns:
+                cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)]
+                st.success(f"✅ {len(cadangan_ppd)} cadangan dari {info['ppd_nama']} (bukan campur daerah lain)")
+                if not cadangan_ppd.empty:
+                    st.dataframe(cadangan_ppd, use_container_width=True)
+                    # Ringkasan ikut sekolah
+                    st.markdown("#### Ringkasan ikut sekolah")
+                    st.dataframe(cadangan_ppd.groupby("KOD SEKOLAH ASAL").size().reset_index(name="BIL GURU"), use_container_width=True)
+                else:
+                    st.info(f"Belum ada cadangan untuk {info['ppd_nama']}")
+            else:
+                st.info("Belum ada cadangan")
+                st.dataframe(cadangan_all.tail(5), use_container_width=True)
+                
         elif menu=="Jana Penempatan":
-            st.header("🤖 Jana Penempatan")
-            if st.button("🤖 Jana Auto", use_container_width=True, type="primary"):
-                st.success("Jana penempatan (demo)")
-                st.dataframe(read_sheet("penempatan_ppd").tail(10), use_container_width=True)
+            st.header(f"🤖 Jana Penempatan - {info['ppd_nama']}")
+            cadangan_all = read_sheet("cadangan_sup")
+            if not cadangan_all.empty:
+                cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)] if "KOD SEKOLAH ASAL" in cadangan_all.columns else cadangan_all
+                st.info(f"Data untuk dijana: {len(cadangan_ppd)} guru dari {info['ppd_nama']}")
+                if st.button("🤖 Jana Auto (ikut poskod)", use_container_width=True, type="primary"):
+                    st.success(f"Jana penempatan untuk {info['ppd_nama']} (demo)")
+                    penempatan = read_sheet("penempatan_ppd")
+                    if not penempatan.empty and "KOD SEKOLAH ASAL GURU" in penempatan.columns:
+                        penempatan_ppd = penempatan[penempatan["KOD SEKOLAH ASAL GURU"].astype(str).isin(kod_sekolah_ppd)]
+                        st.dataframe(penempatan_ppd.tail(20), use_container_width=True)
+                    else:
+                        st.dataframe(penempatan.tail(20), use_container_width=True)
         else:
             st.header("📤 Hantar ke JPN")
+            maklumat_all = read_sheet("maklumat_sekolah")
+            cadangan_all = read_sheet("cadangan_sup")
+            if not maklumat_all.empty:
+                maklumat_ppd = maklumat_all[maklumat_all["KOD SEKOLAH"].astype(str).isin(kod_sekolah_ppd)] if "KOD SEKOLAH" in maklumat_all.columns else maklumat_all
+                st.metric("Maklumat Sekolah", f"{len(maklumat_ppd)}/{len(df_ppd)}")
+            if not cadangan_all.empty:
+                cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)] if "KOD SEKOLAH ASAL" in cadangan_all.columns else cadangan_all
+                st.metric("Cadangan Guru", f"{len(cadangan_ppd)}")
+            
             if st.button("📤 HANTAR ke JPN", use_container_width=True, type="primary"):
-                st.success(f"PPD {info['ppd_nama']} hantar ke JPN!")
+                st.success(f"✅ PPD {info['ppd_nama']} hantar ke JPN!")
                 st.balloons()
     else:
         if menu=="Semua PPD":
