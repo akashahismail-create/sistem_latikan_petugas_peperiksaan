@@ -5,6 +5,67 @@ Total 369 sekolah
 """
 
 import streamlit as st
+import math
+
+# === DATA CALON 2026 - GITHUB VERSION - BOLEH UBAH TAHUN DEPAN ===
+# File: pusat_BK_2026_GITHUB.csv di GitHub - ubah JUMLAH_CALON je tahun depan!
+PUSAT_CALON_DATA = [
+    {"NO_PUSAT": "BK001", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN ASSUNTA", "KOD_SEKOLAH": "BEB8651", "JUMLAH_CALON": 204, "JUMLAH_KELAS": 11, "PETUGAS_NEEDED": 17, "KP": 1, "TKP": 1, "PENGAWAS": 11, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 7},
+    {"NO_PUSAT": "BK005", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN (L) BUKIT BINTANG", "KOD_SEKOLAH": "BEB8652", "JUMLAH_CALON": 67, "JUMLAH_KELAS": 4, "PETUGAS_NEEDED": 10, "KP": 1, "TKP": 1, "PENGAWAS": 4, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 0},
+    {"NO_PUSAT": "BK009", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN KATHOLIK", "KOD_SEKOLAH": "BEB8653", "JUMLAH_CALON": 198, "JUMLAH_KELAS": 10, "PETUGAS_NEEDED": 16, "KP": 1, "TKP": 1, "PENGAWAS": 10, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 6},
+    {"NO_PUSAT": "BK010", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN KATHOLIK", "KOD_SEKOLAH": "BEB8653", "JUMLAH_CALON": 159, "JUMLAH_KELAS": 8, "PETUGAS_NEEDED": 14, "KP": 1, "TKP": 1, "PENGAWAS": 8, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 4},
+    {"NO_PUSAT": "BK011", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN KATHOLIK", "KOD_SEKOLAH": "BEB8653", "JUMLAH_CALON": 179, "JUMLAH_KELAS": 9, "PETUGAS_NEEDED": 15, "KP": 1, "TKP": 1, "PENGAWAS": 9, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 5},
+    {"NO_PUSAT": "BK013", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN LA SALLE PJ", "KOD_SEKOLAH": "BEB8654", "JUMLAH_CALON": 132, "JUMLAH_KELAS": 7, "PETUGAS_NEEDED": 13, "KP": 1, "TKP": 1, "PENGAWAS": 7, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 3},
+    {"NO_PUSAT": "BK017", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN (P) SRI AMAN", "KOD_SEKOLAH": "BEB8655", "JUMLAH_CALON": 157, "JUMLAH_KELAS": 8, "PETUGAS_NEEDED": 14, "KP": 1, "TKP": 1, "PENGAWAS": 8, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 4},
+    {"NO_PUSAT": "BK021", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN TAMAN SEA", "KOD_SEKOLAH": "BEB8656", "JUMLAH_CALON": 111, "JUMLAH_KELAS": 6, "PETUGAS_NEEDED": 12, "KP": 1, "TKP": 1, "PENGAWAS": 6, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 2},
+    {"NO_PUSAT": "BK022", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN TAMAN SEA", "KOD_SEKOLAH": "BEB8656", "JUMLAH_CALON": 124, "JUMLAH_KELAS": 7, "PETUGAS_NEEDED": 13, "KP": 1, "TKP": 1, "PENGAWAS": 7, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 3},
+    {"NO_PUSAT": "BK025", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN SULTAN ABDUL SAMAD", "KOD_SEKOLAH": "BEB8657", "JUMLAH_CALON": 231, "JUMLAH_KELAS": 12, "PETUGAS_NEEDED": 18, "KP": 1, "TKP": 1, "PENGAWAS": 12, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 8},
+    {"NO_PUSAT": "BK029", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN (P) TMN PETALING", "KOD_SEKOLAH": "BEB8658", "JUMLAH_CALON": 62, "JUMLAH_KELAS": 4, "PETUGAS_NEEDED": 10, "KP": 1, "TKP": 1, "PENGAWAS": 4, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 0},
+    {"NO_PUSAT": "BK033", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN SRI PERMATA", "KOD_SEKOLAH": "BEA8602", "JUMLAH_CALON": 208, "JUMLAH_KELAS": 11, "PETUGAS_NEEDED": 17, "KP": 1, "TKP": 1, "PENGAWAS": 11, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 7},
+    {"NO_PUSAT": "BK037", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN TAMAN DATO' HARUN", "KOD_SEKOLAH": "BEA8607", "JUMLAH_CALON": 143, "JUMLAH_KELAS": 8, "PETUGAS_NEEDED": 14, "KP": 1, "TKP": 1, "PENGAWAS": 8, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 4},
+    {"NO_PUSAT": "BK038", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN TAMAN DATO' HARUN", "KOD_SEKOLAH": "BEA8607", "JUMLAH_CALON": 122, "JUMLAH_KELAS": 7, "PETUGAS_NEEDED": 13, "KP": 1, "TKP": 1, "PENGAWAS": 7, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 3},
+    {"NO_PUSAT": "BK041", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN DAMANSARA JAYA", "KOD_SEKOLAH": "BEA8608", "JUMLAH_CALON": 217, "JUMLAH_KELAS": 11, "PETUGAS_NEEDED": 17, "KP": 1, "TKP": 1, "PENGAWAS": 11, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 7},
+    {"NO_PUSAT": "BK045", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN DAMANSARA UTAMA", "KOD_SEKOLAH": "BEA8611", "JUMLAH_CALON": 194, "JUMLAH_KELAS": 10, "PETUGAS_NEEDED": 16, "KP": 1, "TKP": 1, "PENGAWAS": 10, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 6},
+    {"NO_PUSAT": "BK049", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN TAMAN MEDAN", "KOD_SEKOLAH": "BEA8613", "JUMLAH_CALON": 158, "JUMLAH_KELAS": 8, "PETUGAS_NEEDED": 14, "KP": 1, "TKP": 1, "PENGAWAS": 8, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 4},
+    {"NO_PUSAT": "BK050", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN TAMAN MEDAN", "KOD_SEKOLAH": "BEA8613", "JUMLAH_CALON": 103, "JUMLAH_KELAS": 6, "PETUGAS_NEEDED": 12, "KP": 1, "TKP": 1, "PENGAWAS": 6, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 2},
+    {"NO_PUSAT": "BK053", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN KELANA JAYA", "KOD_SEKOLAH": "BEA8615", "JUMLAH_CALON": 97, "JUMLAH_KELAS": 5, "PETUGAS_NEEDED": 11, "KP": 1, "TKP": 1, "PENGAWAS": 5, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 1},
+    {"NO_PUSAT": "BK057", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN SRI UTAMA", "KOD_SEKOLAH": "BEA8624", "JUMLAH_CALON": 56, "JUMLAH_KELAS": 3, "PETUGAS_NEEDED": 10, "KP": 1, "TKP": 1, "PENGAWAS": 3, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 0},
+    {"NO_PUSAT": "BK065", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN SEKSYEN 10 KOTA DAMANSARA", "KOD_SEKOLAH": "BEA8638", "JUMLAH_CALON": 167, "JUMLAH_KELAS": 9, "PETUGAS_NEEDED": 15, "KP": 1, "TKP": 1, "PENGAWAS": 9, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 5},
+    {"NO_PUSAT": "BK066", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN SEKSYEN 10 KOTA DAMANSARA", "KOD_SEKOLAH": "BEA8638", "JUMLAH_CALON": 119, "JUMLAH_KELAS": 6, "PETUGAS_NEEDED": 12, "KP": 1, "TKP": 1, "PENGAWAS": 6, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 2},
+    {"NO_PUSAT": "BK069", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN TROPICANA", "KOD_SEKOLAH": "BEA8640", "JUMLAH_CALON": 205, "JUMLAH_KELAS": 11, "PETUGAS_NEEDED": 17, "KP": 1, "TKP": 1, "PENGAWAS": 11, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 7},
+    {"NO_PUSAT": "BK073", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN BANDAR SRI DAMANSARA 2", "KOD_SEKOLAH": "BEA8641", "JUMLAH_CALON": 192, "JUMLAH_KELAS": 10, "PETUGAS_NEEDED": 16, "KP": 1, "TKP": 1, "PENGAWAS": 10, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 6},
+    {"NO_PUSAT": "BK077", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN BANDAR UTAMA DAMANSARA 3", "KOD_SEKOLAH": "BEA8643", "JUMLAH_CALON": 212, "JUMLAH_KELAS": 11, "PETUGAS_NEEDED": 17, "KP": 1, "TKP": 1, "PENGAWAS": 11, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 7},
+    {"NO_PUSAT": "BK081", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN BANDAR UTAMA DAMANSARA (4)", "KOD_SEKOLAH": "BEA8644", "JUMLAH_CALON": 210, "JUMLAH_KELAS": 11, "PETUGAS_NEEDED": 17, "KP": 1, "TKP": 1, "PENGAWAS": 11, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 7},
+    {"NO_PUSAT": "BK085", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN DAMANSARA DAMAI 1", "KOD_SEKOLAH": "BEA8652", "JUMLAH_CALON": 176, "JUMLAH_KELAS": 9, "PETUGAS_NEEDED": 15, "KP": 1, "TKP": 1, "PENGAWAS": 9, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 5},
+    {"NO_PUSAT": "BK086", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN DAMANSARA DAMAI 1", "KOD_SEKOLAH": "BEA8652", "JUMLAH_CALON": 170, "JUMLAH_KELAS": 9, "PETUGAS_NEEDED": 15, "KP": 1, "TKP": 1, "PENGAWAS": 9, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 5},
+    {"NO_PUSAT": "BK089", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN SEKSYEN 4 KOTA DAMANSARA", "KOD_SEKOLAH": "BEA8655", "JUMLAH_CALON": 163, "JUMLAH_KELAS": 9, "PETUGAS_NEEDED": 15, "KP": 1, "TKP": 1, "PENGAWAS": 9, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 5},
+    {"NO_PUSAT": "BK093", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN BANDAR UTAMA DAMANSARA (2)", "KOD_SEKOLAH": "BEA8658", "JUMLAH_CALON": 126, "JUMLAH_KELAS": 7, "PETUGAS_NEEDED": 13, "KP": 1, "TKP": 1, "PENGAWAS": 7, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 3},
+    {"NO_PUSAT": "BK097", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN BANDAR SRI DAMANSARA 1", "KOD_SEKOLAH": "BEA8659", "JUMLAH_CALON": 95, "JUMLAH_KELAS": 5, "PETUGAS_NEEDED": 11, "KP": 1, "TKP": 1, "PENGAWAS": 5, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 1},
+    {"NO_PUSAT": "BK098", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN BANDAR SRI DAMANSARA 1", "KOD_SEKOLAH": "BEA8659", "JUMLAH_CALON": 173, "JUMLAH_KELAS": 9, "PETUGAS_NEEDED": 15, "KP": 1, "TKP": 1, "PENGAWAS": 9, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 5},
+    {"NO_PUSAT": "BK101", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN LEMBAH SUBANG", "KOD_SEKOLAH": "BEA8661", "JUMLAH_CALON": 133, "JUMLAH_KELAS": 7, "PETUGAS_NEEDED": 13, "KP": 1, "TKP": 1, "PENGAWAS": 7, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 3},
+    {"NO_PUSAT": "BK105", "NAMA_PUSAT": "SEKOLAH MENENGAH KEBANGSAAN SEKSYEN 8 KOTA DAMANSARA", "KOD_SEKOLAH": "BEA8666", "JUMLAH_CALON": 146, "JUMLAH_KELAS": 8, "PETUGAS_NEEDED": 14, "KP": 1, "TKP": 1, "PENGAWAS": 8, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 4},
+    {"NO_PUSAT": "BK550", "NAMA_PUSAT": "SEKOLAH SRI BESTARI", "KOD_SEKOLAH": "BGAJ003", "JUMLAH_CALON": 87, "JUMLAH_KELAS": 5, "PETUGAS_NEEDED": 11, "KP": 1, "TKP": 1, "PENGAWAS": 5, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 1},
+    {"NO_PUSAT": "BK554", "NAMA_PUSAT": "SM SRI KDU", "KOD_SEKOLAH": "BZB8055", "JUMLAH_CALON": 158, "JUMLAH_KELAS": 8, "PETUGAS_NEEDED": 14, "KP": 1, "TKP": 1, "PENGAWAS": 8, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 4},
+    {"NO_PUSAT": "BK566", "NAMA_PUSAT": "SM BESTARI ASIA PACIFIC", "KOD_SEKOLAH": "ZZZ0022", "JUMLAH_CALON": 72, "JUMLAH_KELAS": 4, "PETUGAS_NEEDED": 10, "KP": 1, "TKP": 1, "PENGAWAS": 4, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 0},
+    {"NO_PUSAT": "BK900", "NAMA_PUSAT": "SMK ASSUNTA (CP)", "KOD_SEKOLAH": "YYY8651", "JUMLAH_CALON": 103, "JUMLAH_KELAS": 6, "PETUGAS_NEEDED": 12, "KP": 1, "TKP": 1, "PENGAWAS": 6, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 2},
+    {"NO_PUSAT": "BK905", "NAMA_PUSAT": "SMK DAMANSARA DAMAI 1 (CP)", "KOD_SEKOLAH": "YYY8667", "JUMLAH_CALON": 69, "JUMLAH_KELAS": 4, "PETUGAS_NEEDED": 10, "KP": 1, "TKP": 1, "PENGAWAS": 4, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 0},
+    {"NO_PUSAT": "BK923", "NAMA_PUSAT": "SMK (L) BUKIT BINTANG (CP)", "KOD_SEKOLAH": "YYY8652", "JUMLAH_CALON": 90, "JUMLAH_KELAS": 5, "PETUGAS_NEEDED": 11, "KP": 1, "TKP": 1, "PENGAWAS": 5, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 1},
+    {"NO_PUSAT": "BK924", "NAMA_PUSAT": "SMK SRI UTAMA (CP)", "KOD_SEKOLAH": "YYY8624", "JUMLAH_CALON": 84, "JUMLAH_KELAS": 5, "PETUGAS_NEEDED": 11, "KP": 1, "TKP": 1, "PENGAWAS": 5, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 1},
+    {"NO_PUSAT": "BK926", "NAMA_PUSAT": "SMK BANDAR UTAMA DAMANSARA (4) (CP)", "KOD_SEKOLAH": "YYY8684", "JUMLAH_CALON": 73, "JUMLAH_KELAS": 4, "PETUGAS_NEEDED": 10, "KP": 1, "TKP": 1, "PENGAWAS": 4, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 0},
+    {"NO_PUSAT": "BK927", "NAMA_PUSAT": "SMK LEMBAH SUBANG (CP)", "KOD_SEKOLAH": "YYY8661", "JUMLAH_CALON": 68, "JUMLAH_KELAS": 4, "PETUGAS_NEEDED": 10, "KP": 1, "TKP": 1, "PENGAWAS": 4, "PENGEMAS": 1, "PENYELIA": 1, "EXTRA": 0}
+]
+
+def get_pusat_info(no_pusat):
+    for p in PUSAT_CALON_DATA:
+        if p["NO_PUSAT"]==no_pusat:
+            return p
+    return None
+
+# Map untuk cepat
+pusat_to_calon = {p["NO_PUSAT"]: p["JUMLAH_CALON"] for p in PUSAT_CALON_DATA}
+pusat_to_kelas = {p["NO_PUSAT"]: p["JUMLAH_KELAS"] for p in PUSAT_CALON_DATA}
+pusat_to_petugas = {p["NO_PUSAT"]: p["PETUGAS_NEEDED"] for p in PUSAT_CALON_DATA}
+
 import pandas as pd
 import os
 import glob
@@ -764,7 +825,8 @@ with col_kanan:
                             existing_count = 0
                             if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                                 existing_count = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_code)])
-                            perlu = 10 - existing_count
+                            petugas_needed_bulk = pusat_to_petugas.get(pusat_code, 10)
+                            perlu = petugas_needed_bulk - existing_count
                             if perlu <= 0:
                                 status_text.text(f"⏭️ {pusat_code} dah lengkap ({existing_count}) - skip")
                                 progress.progress((i_pusat+1)/len(semua_pusat))
@@ -843,9 +905,10 @@ with col_kanan:
                 # Show stats
                 if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                     total_ppd = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)])
-                    st.metric("Total Dilantik", f"{total_ppd}/{len(semua_pusat)*10}")
+                    total_needed = sum(pusat_to_petugas.get(p,10) for p in semua_pusat)
+                    st.metric("Total Dilantik", f"{total_ppd}/{total_needed}")
                 else:
-                    st.metric("Total Dilantik", f"0/{len(semua_pusat)*10}")
+                    st.metric("Total Dilantik", f"0/{sum(pusat_to_petugas.get(p,10) for p in semua_pusat)}")
             
             st.markdown("---")
             
@@ -875,10 +938,15 @@ with col_kanan:
                 else:
                     st.info(f"ℹ️ {pusat_pilih} ada {bil_sedia} petugas sekarang - boleh tambah/lengkapkan lagi")
                 
-                # JANA AUTO / LENGKAPKAN - sentiasa tunjuk
+                # JANA AUTO / LENGKAPKAN - guna keperluan sebenar dari calon
+                petugas_needed = pusat_to_petugas.get(pusat_pilih, 10)
+                kelas_needed = pusat_to_kelas.get(pusat_pilih, 5)
+                calon_needed = pusat_to_calon.get(pusat_pilih, 100)
+                st.info(f"📊 {pusat_pilih}: {calon_needed} calon = {kelas_needed} kelas (20 calon/kelas) = perlukan {petugas_needed} petugas (10 base + {max(0,kelas_needed-4)} extra)")
+                
                 col_j1, col_j2 = st.columns(2)
                 with col_j1:
-                    label_btn = f"🤖 Jana Auto untuk {pusat_pilih}" if bil_sedia==0 else f"➕ Lengkapkan {pusat_pilih} jadi 10 orang"
+                    label_btn = f"🤖 Jana Auto untuk {pusat_pilih} ({petugas_needed} petugas)" if bil_sedia==0 else f"➕ Lengkapkan {pusat_pilih} jadi {petugas_needed} orang (sekarang {bil_sedia})"
                     if st.button(label_btn, use_container_width=True, type="primary", key=f"jana_{pusat_pilih}"):
                         if cadangan_ppd.empty:
                             st.error("Tiada cadangan guru untuk daerah ini! Isi Cadangan SUP dulu")
@@ -891,8 +959,13 @@ with col_kanan:
                             if calon.empty:
                                 st.warning("Semua guru daerah ni dah dilantik di pusat ni atau tiada calon lain!")
                             else:
-                                # Kira berapa perlu tambah
-                                perlu = 10 - bil_sedia if bil_sedia>0 else 10
+                                # Kira berapa perlu tambah - guna keperluan sebenar
+                                petugas_needed = pusat_to_petugas.get(pusat_code, 10) if 'pusat_code' in locals() else pusat_to_petugas.get(pusat_pilih, 10)
+                                perlu = petugas_needed - bil_sedia if bil_sedia>0 else petugas_needed
+                                if 'pusat_code' in locals():
+                                    # bulk mode
+                                    petugas_needed_bulk = pusat_to_petugas.get(pusat_code, 10)
+                                    perlu = petugas_needed_bulk - existing_count
                                 calon_sample = calon.head(perlu)
                                 new_rows = []
                                 # Jawatan yang belum ada
