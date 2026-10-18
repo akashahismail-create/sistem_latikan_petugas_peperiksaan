@@ -591,16 +591,57 @@ with col_kanan:
             st.header(f"📋 Cadangan SUP - {info['ppd_nama']} ({len(kod_sekolah_ppd)} sekolah)")
             cadangan_all = read_sheet("cadangan_sup")
             if not cadangan_all.empty and "KOD SEKOLAH ASAL" in cadangan_all.columns:
-                cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)]
+                cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)].copy()
+                # Tambah NAMA PUSAT untuk setiap sekolah asal
+                def get_nama_pusat(kod):
+                    # cari nama sekolah dari df_ppd
+                    row = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==str(kod)]
+                    if not row.empty:
+                        return str(row.iloc[0]["NAMA SEKOLAH"])
+                    return str(kod)
+                
+                # Add NAMA PUSAT column kalau tak ada
+                if "NAMA PUSAT SEKOLAH" not in cadangan_ppd.columns:
+                    cadangan_ppd["NAMA PUSAT SEKOLAH"] = cadangan_ppd["KOD SEKOLAH ASAL"].apply(get_nama_pusat)
+                
                 st.success(f"✅ {len(cadangan_ppd)} guru dicadang dari {info['ppd_nama']}")
                 if not cadangan_ppd.empty:
-                    # Filter by sekolah
-                    pilih_sek = st.selectbox("Tapis ikut sekolah", ["SEMUA"] + sorted(cadangan_ppd["KOD SEKOLAH ASAL"].astype(str).unique().tolist()))
-                    if pilih_sek != "SEMUA":
-                        cadangan_ppd = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)==pilih_sek]
-                    st.dataframe(cadangan_ppd, use_container_width=True)
-                    st.markdown("#### Ringkasan ikut sekolah")
-                    st.dataframe(cadangan_ppd.groupby("KOD SEKOLAH ASAL").size().reset_index(name="BIL GURU"), use_container_width=True)
+                    # TAPIS IKUT PUSAT - guna NO PUSAT ASAL kalau ada, kalau tak guna KOD SEKOLAH
+                    if "NO PUSAT ASAL" in cadangan_ppd.columns and not cadangan_ppd["NO PUSAT ASAL"].astype(str).str.strip().eq("").all():
+                        pusat_options = sorted(cadangan_ppd["NO PUSAT ASAL"].dropna().astype(str).unique().tolist())
+                        # Build label dengan nama pusat
+                        def label_pusat(p):
+                            sek_kod = pusat_to_sekolah.get(p, "")
+                            nama = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==sek_kod]["NAMA SEKOLAH"].values[0] if not df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==sek_kod].empty else sek_kod
+                            return f"{p} - {nama}"
+                        pilih_pusat = st.selectbox("📌 Tapis ikut PUSAT", ["SEMUA PUSAT"] + pusat_options, format_func=lambda x: "SEMUA PUSAT" if x=="SEMUA PUSAT" else label_pusat(x))
+                        if pilih_pusat != "SEMUA PUSAT":
+                            cadangan_ppd = cadangan_ppd[cadangan_ppd["NO PUSAT ASAL"].astype(str)==str(pilih_pusat)]
+                    else:
+                        # Fallback tapis ikut sekolah tapi label ada nama pusat
+                        sekolah_opts = sorted(cadangan_ppd["KOD SEKOLAH ASAL"].astype(str).unique().tolist())
+                        def label_sek(k):
+                            nama = get_nama_pusat(k)
+                            return f"{k} - {nama}"
+                        pilih_sek = st.selectbox("📌 Tapis ikut PUSAT / Sekolah Asal", ["SEMUA"] + sekolah_opts, format_func=lambda x: "SEMUA" if x=="SEMUA" else label_sek(x))
+                        if pilih_sek != "SEMUA":
+                            cadangan_ppd = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)==pilih_sek]
+                    
+                    # Show dengan NAMA PUSAT
+                    cols_show = []
+                    for c in ["NO PUSAT ASAL", "KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "NAMA PUSAT SEKOLAH", "NAMA GURU", "JAWATAN CADANG", "IC", "JANTINA", "POSKOD RUMAH", "ALAMAT RUMAH", "NO TELEFON GURU", "EMAIL GURU"]:
+                        if c in cadangan_ppd.columns:
+                            cols_show.append(c)
+                    if cols_show:
+                        st.dataframe(cadangan_ppd[cols_show], use_container_width=True)
+                    else:
+                        st.dataframe(cadangan_ppd, use_container_width=True)
+                    
+                    st.markdown("#### Ringkasan ikut PUSAT")
+                    if "NO PUSAT ASAL" in cadangan_ppd.columns:
+                        st.dataframe(cadangan_ppd.groupby("NO PUSAT ASAL").size().reset_index(name="BIL GURU"), use_container_width=True)
+                    else:
+                        st.dataframe(cadangan_ppd.groupby("KOD SEKOLAH ASAL").size().reset_index(name="BIL GURU"), use_container_width=True)
                 else:
                     st.info(f"Belum ada cadangan untuk {info['ppd_nama']}")
             else:
@@ -684,41 +725,61 @@ with col_kanan:
                             st.dataframe(subset[["NAMA GURU","KOD SEKOLAH ASAL GURU","NAMA SEKOLAH ASAL","IC","JAWATAN FINAL"]], use_container_width=True)
                     
                     st.markdown("---")
-                    st.markdown("#### ✏️ Edit Lantikan - Tukar Pengawas")
-                    st.caption(f"Senarai guru daerah {info['ppd_nama']} (kecuali guru dari {kod_sek_pusat} - sekolah tuan rumah tidak boleh jaga pusat sendiri)")
+                    st.markdown(f"#### ✏️ Edit Lantikan {pusat_pilih} - Klik Nama Untuk Tukar")
+                    st.caption(f"📍 Pusat: {pusat_pilih} - {nama_pusat} ({kod_sek_pusat}) | Guru dari {kod_sek_pusat} tidak boleh jaga pusat sendiri - auto exclude")
                     
-                    # Senarai calon untuk edit - exclude sekolah tuan rumah
+                    # Senarai calon untuk edit - exclude sekolah tuan rumah - SEMUA sekolah daerah kecuali tuan rumah
                     if not cadangan_ppd.empty:
-                        calon_edit = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)]
-                        calon_options = [f"{r['NAMA GURU']} ({r['KOD SEKOLAH ASAL']}) - IC:{r['IC']}" for _, r in calon_edit.iterrows()]
+                        calon_edit = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].copy()
+                        # Tambah label dengan nama pusat sekolah
+                        def label_calon(row):
+                            return f"{row.get('NAMA GURU','')} | {row.get('KOD SEKOLAH ASAL','')} - {row.get('NAMA SEKOLAH ASAL','')} | IC:{row.get('IC','')} | Poskod:{row.get('POSKOD RUMAH','')}"
+                        calon_options = [label_calon(r) for _, r in calon_edit.iterrows()]
                     else:
                         calon_options = []
                         calon_edit = pd.DataFrame()
                     
-                    # Pilih petugas yang nak ditukar
+                    st.info(f"📋 Ada {len(calon_options)} guru dari daerah {info['ppd_nama']} boleh pilih (kecuali {kod_sek_pusat})")
+                    
+                    # Pilih petugas yang nak ditukar - BILA KLIK NAMA TU KELUAR PILIHAN
                     if not penempatan_pusat.empty:
+                        # Show table dengan index untuk klik
+                        penempatan_display = penempatan_pusat.copy()
+                        penempatan_display["PILIH UNTUK TUKAR"] = penempatan_display["NAMA GURU"]
+                        
+                        st.markdown("**👇 Senarai petugas sekarang - pilih yang nak ditukar:**")
+                        # Guna data_editor atau selectbox yang jelas
                         petugas_list = penempatan_pusat["NAMA GURU"].astype(str).tolist()
-                        petugas_pilih = st.selectbox("Pilih petugas nak tukar", ["-- Pilih --"] + petugas_list)
-                        if petugas_pilih != "-- Pilih --" and calon_options:
-                            guru_baru = st.selectbox(f"Ganti {petugas_pilih} dengan", ["-- Pilih guru baru --"] + calon_options)
-                            if guru_baru != "-- Pilih guru baru --":
-                                if st.button(f"🔄 Tukar {petugas_pilih}", use_container_width=True):
-                                    # Find old row index
-                                    idx_old = penempatan_all[(penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_pilih)) & (penempatan_all["NAMA GURU"].astype(str)==str(petugas_pilih))].index
-                                    if not idx_old.empty:
-                                        # Get new guru data
-                                        idx_new = calon_options.index(guru_baru)
-                                        guru_data = calon_edit.iloc[idx_new]
-                                        # Update
-                                        for idx in idx_old:
-                                            penempatan_all.at[idx, "NAMA GURU"] = guru_data.get("NAMA GURU","")
-                                            penempatan_all.at[idx, "KOD SEKOLAH ASAL GURU"] = guru_data.get("KOD SEKOLAH ASAL","")
-                                            penempatan_all.at[idx, "NAMA SEKOLAH ASAL"] = guru_data.get("NAMA SEKOLAH ASAL","")
-                                            penempatan_all.at[idx, "IC"] = guru_data.get("IC","")
-                                            penempatan_all.at[idx, "STATUS PENEMPATAN"] = "Tukar manual oleh PPD"
-                                        if write_sheet("penempatan_ppd", penempatan_all):
-                                            st.success(f"✅ {petugas_pilih} ditukar kepada {guru_data.get('NAMA GURU','')}")
-                                            st.rerun()
+                        # Tambah info jawatan dalam label
+                        petugas_labels = []
+                        for _, r in penempatan_pusat.iterrows():
+                            petugas_labels.append(f"{r.get('NAMA GURU','')} - {r.get('JAWATAN FINAL','')} ({r.get('KOD SEKOLAH ASAL GURU','')})")
+                        
+                        col_a, col_b = st.columns([1,2])
+                        with col_a:
+                            idx_pilih = st.selectbox("1️⃣ Klik nama pengawas nak tukar", ["-- Pilih nama --"] + petugas_labels, key=f"pilih_{pusat_pilih}")
+                        with col_b:
+                            if idx_pilih != "-- Pilih nama --" and calon_options:
+                                # Cari index
+                                petugas_pilih = petugas_list[petugas_labels.index(idx_pilih)] if idx_pilih in petugas_labels else ""
+                                guru_baru = st.selectbox(f"2️⃣ Ganti {petugas_pilih} dengan guru lain (dari daerah {info['ppd_nama']} kecuali {kod_sek_pusat})", ["-- Pilih guru baru dari senarai cadangan --"] + calon_options, key=f"ganti_{pusat_pilih}")
+                                if guru_baru != "-- Pilih guru baru dari senarai cadangan --":
+                                    if st.button(f"🔄 Tukar {petugas_pilih} → {guru_baru.split('|')[0].strip()}", use_container_width=True, type="primary"):
+                                        idx_old = penempatan_all[(penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_pilih)) & (penempatan_all["NAMA GURU"].astype(str)==str(petugas_pilih))].index
+                                        if not idx_old.empty:
+                                            idx_new = calon_options.index(guru_baru)
+                                            guru_data = calon_edit.iloc[idx_new]
+                                            for idx in idx_old:
+                                                penempatan_all.at[idx, "NAMA GURU"] = guru_data.get("NAMA GURU","")
+                                                penempatan_all.at[idx, "KOD SEKOLAH ASAL GURU"] = guru_data.get("KOD SEKOLAH ASAL","")
+                                                penempatan_all.at[idx, "NAMA SEKOLAH ASAL"] = guru_data.get("NAMA SEKOLAH ASAL","")
+                                                penempatan_all.at[idx, "IC"] = guru_data.get("IC","")
+                                                penempatan_all.at[idx, "JANTINA"] = guru_data.get("JANTINA","")
+                                                penempatan_all.at[idx, "POSKOD RUMAH"] = guru_data.get("POSKOD RUMAH","")
+                                                penempatan_all.at[idx, "STATUS PENEMPATAN"] = f"Tukar manual oleh PPD {info['ppd_nama']} - {pd.Timestamp.now().strftime('%Y-%m-%d')}"
+                                            if write_sheet("penempatan_ppd", penempatan_all):
+                                                st.success(f"✅ {petugas_pilih} ditukar kepada {guru_data.get('NAMA GURU','')} dari {guru_data.get('KOD SEKOLAH ASAL','')}")
+                                                st.rerun()
                     
                     # Full table edit
                     st.markdown("#### 📋 Semua Petugas di Pusat Ini")
