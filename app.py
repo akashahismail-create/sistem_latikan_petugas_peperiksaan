@@ -756,46 +756,81 @@ with col_kanan:
                 
                 # Show penempatan untuk pusat ini
                 if penempatan_all.empty or "NO PUSAT TUGAS" not in penempatan_all.columns:
-                    st.warning(f"❌ {pusat_pilih} belum ada lantikan. Tekan Jana Auto di bawah.")
                     penempatan_pusat = pd.DataFrame()
                 else:
                     penempatan_pusat = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_pilih)]
                 
-                if penempatan_pusat.empty:
-                    st.info(f"Belum dilantik untuk {pusat_pilih}")
-                    if st.button(f"🤖 Jana Auto untuk {pusat_pilih}", use_container_width=True, type="primary"):
-                        # Simple auto assign: ambil dari cadangan PPD, exclude sekolah tuan rumah
+                # Status + Jana Auto button SELALU ADA
+                bil_sedia = len(penempatan_pusat)
+                if bil_sedia == 0:
+                    st.warning(f"❌ {pusat_pilih} belum ada lantikan. Tekan Jana Auto di bawah.")
+                else:
+                    st.info(f"ℹ️ {pusat_pilih} ada {bil_sedia} petugas sekarang - boleh tambah/lengkapkan lagi")
+                
+                # JANA AUTO / LENGKAPKAN - sentiasa tunjuk
+                col_j1, col_j2 = st.columns(2)
+                with col_j1:
+                    label_btn = f"🤖 Jana Auto untuk {pusat_pilih}" if bil_sedia==0 else f"➕ Lengkapkan {pusat_pilih} jadi 10 orang"
+                    if st.button(label_btn, use_container_width=True, type="primary", key=f"jana_{pusat_pilih}"):
                         if cadangan_ppd.empty:
-                            st.error("Tiada cadangan guru untuk daerah ini!")
+                            st.error("Tiada cadangan guru untuk daerah ini! Isi Cadangan SUP dulu")
                         else:
-                            # Exclude guru dari sekolah tuan rumah
-                            calon = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)]
+                            calon = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].copy()
+                            # Exclude yang dah dilantik di pusat ni
+                            if not penempatan_pusat.empty and "IC" in penempatan_pusat.columns:
+                                ic_sedia = penempatan_pusat["IC"].astype(str).tolist()
+                                calon = calon[~calon["IC"].astype(str).isin(ic_sedia)]
                             if calon.empty:
-                                calon = cadangan_ppd
-                            # Ambil 10 contoh
-                            calon_sample = calon.head(10)
-                            new_rows = []
-                            jawatan_list = ["Ketua Pengawas", "Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*6 + ["Pengemas Bilik", "Penyelia Kawasan"]
-                            for i, (_, guru) in enumerate(calon_sample.iterrows()):
-                                if i < len(jawatan_list):
-                                    new_rows.append({
-                                        "NO PUSAT TUGAS": pusat_pilih,
-                                        "NAMA PUSAT TUGAS": nama_pusat,
-                                        "KOD SEKOLAH ASAL GURU": guru.get("KOD SEKOLAH ASAL",""),
-                                        "NAMA SEKOLAH ASAL": guru.get("NAMA SEKOLAH ASAL",""),
-                                        "NAMA GURU": guru.get("NAMA GURU",""),
-                                        "IC": guru.get("IC",""),
-                                        "JANTINA": guru.get("JANTINA",""),
-                                        "JAWATAN FINAL": jawatan_list[i],
-                                        "POSKOD RUMAH": guru.get("POSKOD RUMAH",""),
-                                        "STATUS PENEMPATAN": "Auto by PPD"
-                                    })
-                            if new_rows:
-                                df_new = pd.DataFrame(new_rows)
-                                penempatan_all = pd.concat([penempatan_all, df_new], ignore_index=True)
-                                if write_sheet("penempatan_ppd", penempatan_all):
-                                    st.success(f"✅ {pusat_pilih} berjaya dijana {len(new_rows)} petugas!")
-                                    st.rerun()
+                                st.warning("Semua guru daerah ni dah dilantik di pusat ni atau tiada calon lain!")
+                            else:
+                                # Kira berapa perlu tambah
+                                perlu = 10 - bil_sedia if bil_sedia>0 else 10
+                                calon_sample = calon.head(perlu)
+                                new_rows = []
+                                # Jawatan yang belum ada
+                                jawatan_sedia = penempatan_pusat["JAWATAN FINAL"].astype(str).tolist() if "JAWATAN FINAL" in penempatan_pusat.columns else []
+                                jawatan_all = ["Ketua Pengawas", "Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*6 + ["Pengemas Bilik", "Penyelia Kawasan"]
+                                # Cari jawatan yang belum isi
+                                jawatan_perlu = []
+                                for j in jawatan_all:
+                                    if j not in jawatan_sedia or jawatan_sedia.count(j) < jawatan_all.count(j):
+                                        # kalau dah ada, skip
+                                        count_need = jawatan_all.count(j) - jawatan_sedia.count(j)
+                                        for _ in range(count_need):
+                                            if len(jawatan_perlu) < perlu:
+                                                jawatan_perlu.append(j)
+                                if not jawatan_perlu:
+                                    jawatan_perlu = ["Pengawas Peperiksaan"]*perlu
+                                
+                                for i, (_, guru) in enumerate(calon_sample.iterrows()):
+                                    if i < len(jawatan_perlu):
+                                        new_rows.append({
+                                            "NO PUSAT TUGAS": pusat_pilih,
+                                            "NAMA PUSAT TUGAS": nama_pusat,
+                                            "KOD SEKOLAH ASAL GURU": guru.get("KOD SEKOLAH ASAL",""),
+                                            "NAMA SEKOLAH ASAL": guru.get("NAMA SEKOLAH ASAL",""),
+                                            "NAMA GURU": guru.get("NAMA GURU",""),
+                                            "IC": guru.get("IC",""),
+                                            "JANTINA": guru.get("JANTINA",""),
+                                            "JAWATAN FINAL": jawatan_perlu[i] if i < len(jawatan_perlu) else "Pengawas Peperiksaan",
+                                            "POSKOD RUMAH": guru.get("POSKOD RUMAH",""),
+                                            "STATUS PENEMPATAN": "Auto by PPD" if bil_sedia==0 else "Lengkapkan Auto by PPD"
+                                        })
+                                if new_rows:
+                                    df_new = pd.DataFrame(new_rows)
+                                    penempatan_all = pd.concat([penempatan_all, df_new], ignore_index=True)
+                                    if write_sheet("penempatan_ppd", penempatan_all):
+                                        st.success(f"✅ {pusat_pilih} berjaya ditambah {len(new_rows)} petugas! Sekarang total {bil_sedia+len(new_rows)}")
+                                        st.rerun()
+                with col_j2:
+                    if st.button(f"🗑️ Kosongkan {pusat_pilih} (Reset)", use_container_width=True, key=f"reset_{pusat_pilih}"):
+                        penempatan_all = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)!=str(pusat_pilih)]
+                        if write_sheet("penempatan_ppd", penempatan_all):
+                            st.success(f"✅ {pusat_pilih} dikosongkan!")
+                            st.rerun()
+                
+                if penempatan_pusat.empty:
+                    st.info(f"Belum dilantik untuk {pusat_pilih} - tekan Jana Auto di atas")
                 else:
                     st.success(f"✅ {pusat_pilih} - {len(penempatan_pusat)} petugas dilantik")
                     
