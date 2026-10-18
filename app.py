@@ -688,7 +688,7 @@ with col_kanan:
                     stt = f"⚠️ Separa ({bil}/{pn})"
                 else:
                     stt = f"❌ Belum (0/{pn})"
-                status_data.append({"NO PUSAT": pusat, "SEKOLAH TUAN RUMAH": nama_sek_pusat, "KOD SEKOLAH": kod_sek_pusat, "JUMLAH CALON": calon_c, "KELAS": kelas_c, "PETUGAS DIPERLUKAN": pn, "BIL DILANTIK": bil, "STATUS": stt})
+                status_data.append({"NO PUSAT": pusat, "SEKOLAH TUAN RUMAH": nama_sek_pusat, "KOD SEKOLAH": kod_sek_pusat, "JUMLAH CALON": calon_c, "KELAS": kelas_c, "PENGAWAS DIPERLUKAN": pn_pengawas, "TOTAL DI PUSAT (KP+TKP+PENGAWAS)": pn_total_pusat, "PETUGAS DIPERLUKAN": pn_total_pusat, "BIL DILANTIK": bil, "STATUS": stt})
 
             status_df = pd.DataFrame(status_data)
             st.dataframe(status_df, use_container_width=True)
@@ -785,12 +785,19 @@ with col_kanan:
             # BULK GENERATE SEMUA PUSAT - DUMMY DATA
             st.markdown("### 🚀 Jana Semua Pusat (Dummy Data)")
             tot_need = 0
+            tot_pengawas = 0
             if not df_calon_master.empty:
                 dppd = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]
-                tot_need = int(dppd["PETUGAS_NEEDED"].sum()) if not dppd.empty else len(semua_pusat)*10
+                if not dppd.empty:
+                    tot_pengawas = int(dppd["PETUGAS_NEEDED"].sum())  # 17 per BK001 = pengawas
+                    tot_need = tot_pengawas + (len(dppd)*2)  # + KP + TKP per pusat = 19
+                else:
+                    tot_need = len(semua_pusat)*12
+                    tot_pengawas = len(semua_pusat)*10
             else:
-                tot_need = len(semua_pusat)*10
-            st.warning(f"⚠️ Akan jana {len(semua_pusat)} pusat = {tot_need} petugas (ikut pusat_2026.csv, BK001=17 bukan 10) dari {len(cadangan_ppd) if not cadangan_ppd.empty else 0} cadangan!")
+                tot_need = len(semua_pusat)*12
+                tot_pengawas = len(semua_pusat)*10
+            st.warning(f"⚠️ Akan jana {len(semua_pusat)} pusat = {tot_need} petugas di pusat (1 KP + 1 TKP + {tot_pengawas} Pengawas = {tot_need} total, BK001=19: 17 Pengawas+2) | Penyelia Kawasan exclude (Bilik Kebal) | dari {len(cadangan_ppd) if not cadangan_ppd.empty else 0} cadangan!")
             # Show current total
             curr = 0
             if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
@@ -816,12 +823,15 @@ with col_kanan:
                             existing_count = 0
                             if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                                 existing_count = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_code)])
-                            # Petugas needed ikut calon file (17 untuk BK001)
-                            need_this = 10
+                            # Petugas needed ikut Kashah: 17 Pengawas + 1 KP + 1 TKP = 19 di pusat (BK001)
+                            # CSV PETUGAS_NEEDED = pengawas (17), total di pusat = pengawas+2
+                            need_pengawas = 10
+                            need_this = 12
                             if not df_calon_master.empty:
                                 rcc = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat_code]
                                 if not rcc.empty and "PETUGAS_NEEDED" in rcc.columns:
-                                    need_this = int(rcc.iloc[0]["PETUGAS_NEEDED"])
+                                    need_pengawas = int(rcc.iloc[0]["PETUGAS_NEEDED"])
+                                    need_this = need_pengawas + 2  # +KP+TKP, Penyelia exclude
                             perlu = need_this - existing_count
                             if perlu <= 0:
                                 status_text.text(f"⏭️ {pusat_code} dah lengkap ({existing_count}/{need_this}) - skip")
@@ -830,7 +840,7 @@ with col_kanan:
                             
                             status_text.text(f"🔄 Jana {pusat_code} - {nama_pusat_bulk} - perlukan {perlu} lagi...")
                             
-                            # Jawatan list BETUL: 1 KP, 1 TKP, selebihnya Pengawas (total = need_this, 17 untuk BK001)
+                            # Jawatan list BETUL ikut Kashah: 1 KP + 1 TKP + 17 Pengawas = 19 (BK001), Penyelia Kawasan exclude
                             jawatan_all = ["Ketua Pengawas"] + ["Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*(need_this-2)
                             # Existing jawatan
                             existing_jawatan = []
