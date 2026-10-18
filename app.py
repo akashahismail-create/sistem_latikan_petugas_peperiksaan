@@ -344,18 +344,21 @@ with col_kanan:
                 try:
                     ws = sh.worksheet(name)
                 except:
-                    # Create worksheet kalau tak ada
                     ws = sh.add_worksheet(title=name, rows=1000, cols=30)
                 
-                # Clear dan tulis baru
                 ws.clear()
                 if not df.empty:
-                    # Tukar NaN ke ""
                     df_fill = df.fillna("")
+                    # Pastikan header ikut sheet asal kalau maklumat_sekolah - guna order asal
+                    if name == "maklumat_sekolah":
+                        # Order betul dari file asal
+                        preferred_order = ["KOD SEKOLAH","NAMA SEKOLAH","EMAIL SEKOLAH","NO TELEFON SEKOLAH","NAMA PENGETUA","NAMA SUP","NO POSKOD SEKOLAH","BIL NO PUSAT","SENARAI NO PUSAT","BIL KELAS DIGUNAKAN","TOTAL CALON","PPD","KOD KAWASAN","POSKOD SEKOLAH","TARIKH KEMASKINI","TELEFON SEKOLAH"]
+                        # Reorder columns yang ada
+                        cols_in_df = [c for c in preferred_order if c in df_fill.columns]
+                        extra_cols = [c for c in df_fill.columns if c not in cols_in_df]
+                        final_cols = cols_in_df + extra_cols
+                        df_fill = df_fill[final_cols]
                     ws.update([df_fill.columns.values.tolist()] + df_fill.values.tolist())
-                else:
-                    # Kalau kosong, tulis header sahaja kalau ada
-                    pass
                 return True
             except Exception as ex:
                 st.error(f"Gagal {name}: {ex}")
@@ -449,20 +452,67 @@ with col_kanan:
                     nama_sup = st.text_input("NAMA SUP", value=def_val_nama_sup)
                     nama_pengetua = st.text_input("NAMA PENGETUA", value=def_val_pengetua)
                 if st.form_submit_button("💾 Simpan", use_container_width=True):
-                    # Data baru - semua field - ikut format sheet sedia ada
-                    new_row = {
+                    # Data baru - IKUT NAMA COLUMN BETUL dalam Google Sheet
+                    # Sheet guna NO TELEFON SEKOLAH & NO POSKOD SEKOLAH, bukan TELEFON SEKOLAH
+                    new_row_dict = {
                         "KOD SEKOLAH": info['kod_sekolah'], 
                         "NAMA SEKOLAH": nama_sek, 
                         "EMAIL SEKOLAH": email,
-                        "TELEFON SEKOLAH": no_tel,
+                        "NO TELEFON SEKOLAH": no_tel,
                         "NAMA PENGETUA": nama_pengetua,
                         "NAMA SUP": nama_sup,
-                        "POSKOD SEKOLAH": poskod_sek,
+                        "NO POSKOD SEKOLAH": poskod_sek,
                         "BIL NO PUSAT": bil_pusat, 
                         "SENARAI NO PUSAT": senarai, 
                         "BIL KELAS DIGUNAKAN": bil_kelas,
                         "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
+                    
+                    # Data baru - IKUT NAMA COLUMN BETUL dalam Google Sheet
+                    # Sheet guna NO TELEFON SEKOLAH & NO POSKOD SEKOLAH, bukan TELEFON SEKOLAH
+                    new_row_dict = {
+                        "KOD SEKOLAH": info['kod_sekolah'], 
+                        "NAMA SEKOLAH": nama_sek, 
+                        "EMAIL SEKOLAH": email,
+                        "NO TELEFON SEKOLAH": no_tel,
+                        "NAMA PENGETUA": nama_pengetua,
+                        "NAMA SUP": nama_sup,
+                        "NO POSKOD SEKOLAH": poskod_sek,
+                        "BIL NO PUSAT": bil_pusat, 
+                        "SENARAI NO PUSAT": senarai, 
+                        "BIL KELAS DIGUNAKAN": bil_kelas,
+                        "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    
+                    # Preserve columns lain kalau ada (PPD, KOD KAWASAN, TOTAL CALON dll)
+                    if not existing.empty:
+                        old_row = existing.iloc[-1].to_dict()
+                        for k,v in old_row.items():
+                            if k not in new_row_dict and pd.notna(v):
+                                new_row_dict[k] = v
+                    else:
+                        # Kalau baru, tambah PPD
+                        new_row_dict["PPD"] = info.get('ppd_nama','') if isinstance(info, dict) else "Petaling Utama"
+                    
+                    new_row = new_row_dict
+                    
+                    # Convert dict to DataFrame untuk gabung
+                    new_df = pd.DataFrame([new_row_dict])
+                    # Gabung dengan maklumat lama (buang yang sama KOD dulu)
+                    if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
+                        maklumat = maklumat[maklumat["KOD SEKOLAH"].astype(str) != str(info['kod_sekolah'])]
+                    # Align columns - guna semua columns dari maklumat + new
+                    all_cols = list(dict.fromkeys(list(maklumat.columns) + list(new_df.columns))) if not maklumat.empty else list(new_df.columns)
+                    maklumat = pd.concat([maklumat, new_df], ignore_index=True) if not maklumat.empty else new_df
+                    # Pastikan column order ikut asal kalau ada
+                    # Buang duplicate
+                    maklumat = maklumat.drop_duplicates(subset=["KOD SEKOLAH"], keep="last")
+                    
+                    if write_sheet("maklumat_sekolah", maklumat):
+                        st.success(f"✅ {nama_sek} berjaya! Telefon & Pengetua lekat dalam Sheet!")
+                        st.rerun()
+                    continue
+
                     # === LOGIK ANTI-DUPLICATE ===
                     if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
                         # Buang baris lama kalau KOD SEKOLAH sama
