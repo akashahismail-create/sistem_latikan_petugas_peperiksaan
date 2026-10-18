@@ -382,10 +382,34 @@ with col_kanan:
                     bil_kelas = st.number_input("BIL KELAS",1,30,12)
                     nama_sup = st.text_input("NAMA SUP", value=f"SUP {info['nama']}")
                 if st.form_submit_button("💾 Simpan", use_container_width=True):
-                    new = pd.DataFrame([{"KOD SEKOLAH": info['kod_sekolah'], "NAMA SEKOLAH": nama_sek, "BIL NO PUSAT": bil_pusat, "SENARAI NO PUSAT": senarai, "BIL KELAS DIGUNAKAN": bil_kelas}])
-                    maklumat=pd.concat([maklumat,new],ignore_index=True)
-                    write_sheet("maklumat_sekolah", maklumat)
-                    st.success(f"Simpan!")
+                    # Data baru - semua field
+                    new_row = {
+                        "KOD SEKOLAH": info['kod_sekolah'], 
+                        "NAMA SEKOLAH": nama_sek, 
+                        "EMAIL SEKOLAH": email,
+                        "POSKOD SEKOLAH": poskod_sek,
+                        "BIL NO PUSAT": bil_pusat, 
+                        "SENARAI NO PUSAT": senarai, 
+                        "BIL KELAS DIGUNAKAN": bil_kelas,
+                        "NAMA SUP": nama_sup,
+                        "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    # === LOGIK ANTI-DUPLICATE ===
+                    if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
+                        # Buang baris lama kalau KOD SEKOLAH sama
+                        maklumat = maklumat[maklumat["KOD SEKOLAH"].astype(str) != str(info['kod_sekolah'])]
+                    
+                    new_df = pd.DataFrame([new_row])
+                    maklumat = pd.concat([maklumat, new_df], ignore_index=True)
+                    # Buang duplicate kalau ada (keep last)
+                    if "KOD SEKOLAH" in maklumat.columns:
+                        maklumat = maklumat.drop_duplicates(subset=["KOD SEKOLAH"], keep="last")
+                    
+                    if write_sheet("maklumat_sekolah", maklumat):
+                        st.success(f"✅ {nama_sek} berjaya dikemaskini! (Satu rekod sahaja untuk {info['kod_sekolah']})")
+                        st.rerun()
+                    else:
+                        st.error("Gagal simpan")
             st.dataframe(maklumat.tail(5), use_container_width=True)
         elif menu=="Cadangan Petugas":
             st.header(f"👥 Cadangan - {info['nama']}")
@@ -401,10 +425,18 @@ with col_kanan:
                 with c3:
                     pos_rumah = st.number_input("POSKOD RUMAH *",40000,49000,46000)
                 if st.form_submit_button("➕ Tambah", use_container_width=True):
-                    new_g = pd.DataFrame([{"KOD SEKOLAH ASAL": info['kod_sekolah'], "NAMA SEKOLAH ASAL": info['nama'], "JAWATAN CADANG": jaw, "NAMA GURU": nama_g, "IC": ic, "JANTINA": jantina, "POSKOD RUMAH": pos_rumah}])
-                    cadangan=pd.concat([cadangan,new_g],ignore_index=True)
-                    write_sheet("cadangan_sup", cadangan)
-                    st.success(f"{nama_g} ditambah")
+                    if not nama_g or not ic:
+                        st.error("Nama Guru dan IC wajib isi!")
+                    else:
+                        new_g_row = {"KOD SEKOLAH ASAL": info['kod_sekolah'], "NAMA SEKOLAH ASAL": info['nama'], "JAWATAN CADANG": jaw, "NAMA GURU": nama_g.strip(), "IC": ic.strip(), "JANTINA": jantina, "POSKOD RUMAH": pos_rumah, "TARIKH": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")}
+                        # Anti-duplicate IC dalam sekolah yang sama
+                        if not cadangan.empty and "IC" in cadangan.columns:
+                            cadangan = cadangan[cadangan["IC"].astype(str) != str(ic.strip())]
+                        new_g = pd.DataFrame([new_g_row])
+                        cadangan = pd.concat([cadangan,new_g],ignore_index=True)
+                        if write_sheet("cadangan_sup", cadangan):
+                            st.success(f"✅ {nama_g} ditambah / dikemaskini!")
+                            st.rerun()
             st.dataframe(cadangan.tail(10), use_container_width=True)
         else:
             st.header("📤 Status")
