@@ -479,7 +479,15 @@ with col_kanan:
                         st.rerun()
                     else:
                         st.error("Gagal simpan")
-            st.dataframe(maklumat.tail(5), use_container_width=True)
+            # === FIX: Hanya papar sekolah sendiri sahaja ===
+            if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
+                maklumat_sendiri = maklumat[maklumat["KOD SEKOLAH"].astype(str) == str(info['kod_sekolah'])]
+                if not maklumat_sendiri.empty:
+                    st.markdown("#### 📋 Rekod Sekolah Anda (dari Google Sheet)")
+                    st.dataframe(maklumat_sendiri, use_container_width=True)
+                else:
+                    st.info("Belum ada rekod untuk sekolah ini dalam Google Sheet")
+            
         elif menu=="Cadangan Petugas":
             st.header(f"👥 Cadangan - {info['nama']}")
             cadangan = read_sheet("cadangan_sup")
@@ -504,9 +512,18 @@ with col_kanan:
                         new_g = pd.DataFrame([new_g_row])
                         cadangan = pd.concat([cadangan,new_g],ignore_index=True)
                         if write_sheet("cadangan_sup", cadangan):
-                            st.success(f"✅ {nama_g} ditambah / dikemaskini!")
+                            st.success(f"✅ {nama_g} ditambah / dikemaskini! - Hanya untuk {info['kod_sekolah']}")
                             st.rerun()
-            st.dataframe(cadangan.tail(10), use_container_width=True)
+            # === FIX: Hanya papar cadangan sekolah sendiri ===
+            if not cadangan.empty and "KOD SEKOLAH ASAL" in cadangan.columns:
+                cadangan_sendiri = cadangan[cadangan["KOD SEKOLAH ASAL"].astype(str) == str(info['kod_sekolah'])]
+                if not cadangan_sendiri.empty:
+                    st.markdown(f"#### 👥 Senarai Cadangan Anda - {info['kod_sekolah']} ({len(cadangan_sendiri)} orang)")
+                    st.dataframe(cadangan_sendiri, use_container_width=True)
+                else:
+                    st.info(f"Belum ada cadangan untuk {info['kod_sekolah']}")
+            else:
+                st.info("Belum ada cadangan")
         else:
             st.header("📤 Status")
             st.success("Data simpan dalam Google Sheet")
