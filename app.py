@@ -741,13 +741,121 @@ with col_kanan:
             else:
                 cadangan_ppd = cadangan_all
             
+            # BULK GENERATE SEMUA PUSAT - DUMMY DATA
+            st.markdown("### 🚀 Jana Semua Pusat (Dummy Data)")
+            st.warning(f"⚠️ Akan jana {len(semua_pusat)} pusat x 10 petugas = {len(semua_pusat)*10} petugas dari {len(cadangan_ppd) if not cadangan_ppd.empty else 0} cadangan! Data akan terus masuk Google Sheet penempatan_ppd!")
+            
+            col_bulk1, col_bulk2, col_bulk3 = st.columns(3)
+            with col_bulk1:
+                if st.button(f"🚀 JANA SEMUA {len(semua_pusat)} PUSAT SEKARANG", use_container_width=True, type="primary", key="jana_all"):
+                    if cadangan_ppd.empty:
+                        st.error("Tiada cadangan! Isi Cadangan SUP dulu - perlukan sekurang-kurangnya 20 guru")
+                    else:
+                        progress = st.progress(0)
+                        status_text = st.empty()
+                        new_all_rows = []
+                        # Cycle through cadangan
+                        cadangan_list = cadangan_ppd.to_dict('records')
+                        idx_calon = 0
+                        for i_pusat, pusat_code in enumerate(semua_pusat):
+                            kod_sek_pusat = pusat_to_sekolah.get(pusat_code, "")
+                            nama_pusat_bulk = pusat_to_nama.get(pusat_code, pusat_code)
+                            # Check existing
+                            existing_count = 0
+                            if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
+                                existing_count = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_code)])
+                            perlu = 10 - existing_count
+                            if perlu <= 0:
+                                status_text.text(f"⏭️ {pusat_code} dah lengkap ({existing_count}) - skip")
+                                progress.progress((i_pusat+1)/len(semua_pusat))
+                                continue
+                            
+                            status_text.text(f"🔄 Jana {pusat_code} - {nama_pusat_bulk} - perlukan {perlu} lagi...")
+                            
+                            # Jawatan list
+                            jawatan_all = ["Ketua Pengawas", "Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*6 + ["Pengemas Bilik", "Penyelia Kawasan"]
+                            # Existing jawatan
+                            existing_jawatan = []
+                            if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns and "JAWATAN FINAL" in penempatan_all.columns:
+                                existing_jawatan = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_code)]["JAWATAN FINAL"].astype(str).tolist()
+                            
+                            jawatan_perlu = []
+                            for j in jawatan_all:
+                                if existing_jawatan.count(j) < jawatan_all.count(j):
+                                    need = jawatan_all.count(j) - existing_jawatan.count(j)
+                                    for _ in range(need):
+                                        if len(jawatan_perlu) < perlu:
+                                            jawatan_perlu.append(j)
+                            
+                            # Pilih calon - exclude tuan rumah dan yang dah ada di pusat ni
+                            calon_pusat = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].copy()
+                            if not penempatan_all.empty and "IC" in penempatan_all.columns and "NO PUSAT TUGAS" in penempatan_all.columns:
+                                ic_pusat = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==str(pusat_code)]["IC"].astype(str).tolist()
+                                calon_pusat = calon_pusat[~calon_pusat["IC"].astype(str).isin(ic_pusat)]
+                            
+                            # Kalau habis, reset guna semua cadangan kecuali tuan rumah (boleh ulang)
+                            if calon_pusat.empty:
+                                calon_pusat = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].copy()
+                            
+                            calon_sample = calon_pusat.head(perlu)
+                            # Jika masih tak cukup, ulang guna cadangan (duplicate IC dengan suffix)
+                            while len(calon_sample) < perlu:
+                                extra = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].head(perlu - len(calon_sample))
+                                calon_sample = pd.concat([calon_sample, extra], ignore_index=True)
+                            
+                            for i, (_, guru) in enumerate(calon_sample.iterrows()):
+                                if i < len(jawatan_perlu):
+                                    new_all_rows.append({
+                                        "NO PUSAT TUGAS": pusat_code,
+                                        "NAMA PUSAT TUGAS": nama_pusat_bulk,
+                                        "KOD SEKOLAH ASAL GURU": guru.get("KOD SEKOLAH ASAL",""),
+                                        "NAMA SEKOLAH ASAL": guru.get("NAMA SEKOLAH ASAL",""),
+                                        "NAMA GURU": guru.get("NAMA GURU",""),
+                                        "IC": guru.get("IC",""),
+                                        "JANTINA": guru.get("JANTINA",""),
+                                        "JAWATAN FINAL": jawatan_perlu[i] if i < len(jawatan_perlu) else "Pengawas Peperiksaan",
+                                        "POSKOD RUMAH": guru.get("POSKOD RUMAH",""),
+                                        "ALAMAT RUMAH": guru.get("ALAMAT RUMAH",""),
+                                        "NO TELEFON GURU": guru.get("NO TELEFON GURU",""),
+                                        "EMAIL GURU": guru.get("EMAIL GURU",""),
+                                        "STATUS PENEMPATAN": "Dummy Auto Jana Semua PPD"
+                                    })
+                            progress.progress((i_pusat+1)/len(semua_pusat))
+                        
+                        if new_all_rows:
+                            df_new_all = pd.DataFrame(new_all_rows)
+                            penempatan_all = pd.concat([penempatan_all, df_new_all], ignore_index=True)
+                            if write_sheet("penempatan_ppd", penempatan_all):
+                                st.success(f"✅ BERJAYA! {len(new_all_rows)} petugas dummy untuk {len(semua_pusat)} pusat dah masuk Google Sheet penempatan_ppd!")
+                                st.balloons()
+                                st.dataframe(df_new_all.head(20), use_container_width=True)
+                                st.rerun()
+                        else:
+                            st.info("Semua pusat dah lengkap 10 orang! Tak perlu jana lagi")
+            with col_bulk2:
+                if st.button("🗑️ Kosongkan SEMUA Pusat Daerah Ini", use_container_width=True, key="reset_all"):
+                    # Hanya kosongkan pusat daerah ini
+                    penempatan_all = penempatan_all[~penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)]
+                    if write_sheet("penempatan_ppd", penempatan_all):
+                        st.success(f"✅ Semua {len(semua_pusat)} pusat daerah {info['ppd_nama']} dikosongkan!")
+                        st.rerun()
+            with col_bulk3:
+                # Show stats
+                if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
+                    total_ppd = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)])
+                    st.metric("Total Dilantik", f"{total_ppd}/{len(semua_pusat)*10}")
+                else:
+                    st.metric("Total Dilantik", f"0/{len(semua_pusat)*10}")
+            
+            st.markdown("---")
+            
             # Pilih pusat
             if not semua_pusat:
                 st.warning("Tiada pusat untuk daerah ini")
             else:
                 col1, col2 = st.columns([2,1])
                 with col1:
-                    pusat_pilih = st.selectbox("📌 Pilih NO PUSAT", semua_pusat, index=0)
+                    pusat_pilih = st.selectbox("📌 Pilih NO PUSAT (untuk tengok/edit satu-satu)", semua_pusat, index=0)
                 with col2:
                     kod_sek_pusat = pusat_to_sekolah.get(pusat_pilih, "")
                     nama_pusat = pusat_to_nama.get(pusat_pilih, df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat]["NAMA SEKOLAH"].values[0] if not df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat].empty else pusat_pilih)
