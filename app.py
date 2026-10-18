@@ -854,13 +854,17 @@ with col_kanan:
                             perlu = need_tot - existing_count
                             if perlu <= 0:
                                 status_text.text(f"⏭️ {pusat_code} dah lengkap ({existing_count}/{need_tot}) - skip")
+                                continue
                                 progress.progress((i_pusat+1)/len(semua_pusat))
                                 continue
                             
                             status_text.text(f"🔄 Jana {pusat_code} - {nama_pusat_bulk} - perlukan {perlu} lagi...")
                             
                             # Jawatan list KASHAH: 1 KP +1 TKP + pengawas (17 untuk BK001) =19 total, Penyelia exclude
-                            jawatan_all = ["Ketua Pengawas", "Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*need_peng
+                            # FIX KASHAH: 1 KP sahaja, bukan 2! 1 TKP sahaja!
+                            jawatan_all = ["Ketua Pengawas"] + ["Timbalan Ketua Pengawas"] + ["Pengawas Peperiksaan"]*need_peng
+                            # Pastikan total = need_total (19 = 1+1+17)
+                            jawatan_all = jawatan_all[:need_total]
                             # Existing jawatan
                             existing_jawatan = []
                             if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns and "JAWATAN FINAL" in penempatan_all.columns:
