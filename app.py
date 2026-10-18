@@ -685,26 +685,29 @@ with col_kanan:
                 
                 st.success(f"✅ {len(cadangan_ppd)} guru dicadang dari {info['ppd_nama']}")
                 if not cadangan_ppd.empty:
-                    # TAPIS IKUT PUSAT - guna NO PUSAT ASAL kalau ada, kalau tak guna KOD SEKOLAH
-                    if "NO PUSAT ASAL" in cadangan_ppd.columns and not cadangan_ppd["NO PUSAT ASAL"].astype(str).str.strip().eq("").all():
-                        pusat_options = sorted(cadangan_ppd["NO PUSAT ASAL"].dropna().astype(str).unique().tolist())
-                        # Build label dengan nama pusat
-                        def label_pusat(p):
-                            sek_kod = pusat_to_sekolah.get(p, "")
-                            nama = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==sek_kod]["NAMA SEKOLAH"].values[0] if not df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==sek_kod].empty else sek_kod
-                            return f"{p} - {nama}"
-                        pilih_pusat = st.selectbox("📌 Tapis ikut PUSAT", ["SEMUA PUSAT"] + pusat_options, format_func=lambda x: "SEMUA PUSAT" if x=="SEMUA PUSAT" else label_pusat(x))
-                        if pilih_pusat != "SEMUA PUSAT":
-                            cadangan_ppd = cadangan_ppd[cadangan_ppd["NO PUSAT ASAL"].astype(str)==str(pilih_pusat)]
-                    else:
-                        # Fallback tapis ikut sekolah tapi label ada nama pusat
+                    # DUA TAPIS: Sekolah dan Pusat
+                    col_f1, col_f2 = st.columns(2)
+                    with col_f1:
                         sekolah_opts = sorted(cadangan_ppd["KOD SEKOLAH ASAL"].astype(str).unique().tolist())
                         def label_sek(k):
                             nama = get_nama_pusat(k)
-                            return f"{k} - {nama}"
-                        pilih_sek = st.selectbox("📌 Tapis ikut PUSAT / Sekolah Asal", ["SEMUA"] + sekolah_opts, format_func=lambda x: "SEMUA" if x=="SEMUA" else label_sek(x))
-                        if pilih_sek != "SEMUA":
+                            bil = len(cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)==k])
+                            return f"{k} - {nama} ({bil} guru)"
+                        pilih_sek = st.selectbox("🏫 Tapis ikut Sekolah Asal", ["SEMUA SEKOLAH"] + sekolah_opts, format_func=lambda x: "SEMUA SEKOLAH" if x=="SEMUA SEKOLAH" else label_sek(x))
+                        if pilih_sek != "SEMUA SEKOLAH":
                             cadangan_ppd = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)==pilih_sek]
+                    with col_f2:
+                        if "NO PUSAT ASAL" in cadangan_ppd.columns and not cadangan_ppd["NO PUSAT ASAL"].astype(str).str.strip().eq("").all():
+                            pusat_options = sorted(cadangan_ppd["NO PUSAT ASAL"].dropna().astype(str).unique().tolist())
+                            def label_pusat(p):
+                                sek_kod = pusat_to_sekolah.get(p, "")
+                                nama = pusat_to_nama.get(p, sek_kod)
+                                return f"{p} - {nama}"
+                            pilih_pusat = st.selectbox("📌 Tapis ikut Pusat Asal (NO PUSAT)", ["SEMUA PUSAT"] + pusat_options, format_func=lambda x: "SEMUA PUSAT" if x=="SEMUA PUSAT" else label_pusat(x))
+                            if pilih_pusat != "SEMUA PUSAT":
+                                cadangan_ppd = cadangan_ppd[cadangan_ppd["NO PUSAT ASAL"].astype(str)==str(pilih_pusat)]
+                        else:
+                            st.selectbox("📌 Tapis ikut Pusat", ["Tiada data NO PUSAT ASAL - guna tapis sekolah"], disabled=True)
                     
                     # Show dengan NAMA PUSAT
                     cols_show = []
