@@ -344,21 +344,18 @@ with col_kanan:
                 try:
                     ws = sh.worksheet(name)
                 except:
+                    # Create worksheet kalau tak ada
                     ws = sh.add_worksheet(title=name, rows=1000, cols=30)
                 
+                # Clear dan tulis baru
                 ws.clear()
                 if not df.empty:
+                    # Tukar NaN ke ""
                     df_fill = df.fillna("")
-                    # Pastikan header ikut sheet asal kalau maklumat_sekolah - guna order asal
-                    if name == "maklumat_sekolah":
-                        # Order betul dari file asal
-                        preferred_order = ["KOD SEKOLAH","NAMA SEKOLAH","EMAIL SEKOLAH","NO TELEFON SEKOLAH","NAMA PENGETUA","NAMA SUP","NO POSKOD SEKOLAH","BIL NO PUSAT","SENARAI NO PUSAT","BIL KELAS DIGUNAKAN","TOTAL CALON","PPD","KOD KAWASAN","POSKOD SEKOLAH","TARIKH KEMASKINI","TELEFON SEKOLAH"]
-                        # Reorder columns yang ada
-                        cols_in_df = [c for c in preferred_order if c in df_fill.columns]
-                        extra_cols = [c for c in df_fill.columns if c not in cols_in_df]
-                        final_cols = cols_in_df + extra_cols
-                        df_fill = df_fill[final_cols]
                     ws.update([df_fill.columns.values.tolist()] + df_fill.values.tolist())
+                else:
+                    # Kalau kosong, tulis header sahaja kalau ada
+                    pass
                 return True
             except Exception as ex:
                 st.error(f"Gagal {name}: {ex}")
@@ -373,12 +370,11 @@ with col_kanan:
             st.header(f"🏫 {info['nama']} - {info['senarai_pusat']}")
             st.info(f"Kod {info['kod_sekolah']} | {info['bil_pusat']} pusat | Masuk ikut sekolah bukan pusat")
             maklumat = read_sheet("maklumat_sekolah")
-            # === AUTO-LOAD data sedia ada dari Google Sheet ===
+            # === AUTO-LOAD data sedia ada ===
             existing = pd.DataFrame()
             if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
                 existing = maklumat[maklumat["KOD SEKOLAH"].astype(str) == str(info['kod_sekolah'])]
             
-            # Default values dari mapping
             def_val_nama = info['nama']
             def_val_email = ""
             def_val_poskod = 46000
@@ -389,54 +385,59 @@ with col_kanan:
             def_val_tel = ""
             def_val_pengetua = ""
             
-            # Kalau ada data lama dalam Sheet, guna tu
             if not existing.empty:
-                row = existing.iloc[-1]  # ambil last kalau duplicate lama
+                row = existing.iloc[-1]
                 def_val_nama = str(row.get("NAMA SEKOLAH", def_val_nama))
-                # Cari column email - pelbagai nama
-                for col in ["EMAIL SEKOLAH", "EMAIL", "Email"]:
+                # Email
+                for col in ["EMAIL SEKOLAH", "EMAIL"]:
                     if col in existing.columns and pd.notna(row.get(col)):
                         def_val_email = str(row.get(col, ""))
                         break
-                for col in ["POSKOD SEKOLAH", "POSKOD", "SKOD SEH", "SKOD SEKOLAH"]:
+                # Telefon - ikut nama betul
+                for col in ["NO TELEFON SEKOLAH", "TELEFON SEKOLAH", "NO TELEFON"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        def_val_tel = str(row.get(col, ""))
+                        break
+                # Poskod - ikut nama betul
+                for col in ["NO POSKOD SEKOLAH", "POSKOD SEKOLAH", "POSKOD"]:
                     if col in existing.columns:
                         try:
-                            def_val_poskod = int(float(str(row.get(col, def_val_poskod)).strip() or def_val_poskod))
+                            v = str(row.get(col, "")).strip()
+                            if v and v != "nan":
+                                def_val_poskod = int(float(v))
+                                break
                         except:
                             pass
+                # Pengetua
+                for col in ["NAMA PENGETUA", "PENGETUA"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        def_val_pengetua = str(row.get(col, ""))
                         break
-                for col in ["BIL NO PUSAT", "BIL PUSAT", "NO PUSAT", "BIL"]:
+                for col in ["NAMA SUP"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        def_val_nama_sup = str(row.get(col, ""))
+                        break
+                for col in ["SENARAI NO PUSAT"]:
+                    if col in existing.columns and pd.notna(row.get(col)):
+                        def_val_senarai = str(row.get(col, ""))
+                        break
+                for col in ["BIL NO PUSAT"]:
                     if col in existing.columns:
                         try:
                             def_val_bil_pusat = int(float(str(row.get(col, def_val_bil_pusat)).strip() or def_val_bil_pusat))
                         except:
                             pass
                         break
-                for col in ["SENARAI NO PUSAT", "NO PUSAT", "SENARAI"]:
-                    if col in existing.columns and pd.notna(row.get(col)):
-                        def_val_senarai = str(row.get(col, def_val_senarai))
-                        break
-                for col in ["BIL KELAS DIGUNAKAN", "BIL KELAS", "JUM CALON", "CALON"]:
+                for col in ["BIL KELAS DIGUNAKAN"]:
                     if col in existing.columns:
                         try:
                             def_val_bil_kelas = int(float(str(row.get(col, def_val_bil_kelas)).strip() or def_val_bil_kelas))
                         except:
                             pass
                         break
-                for col in ["NAMA SUP", "NAMA PENYELIA", "NAMA"]:
-                    if col in existing.columns and pd.notna(row.get(col)):
-                        # elak ambil yang salah
-                        val = str(row.get(col, ""))
-                        if "SUP" in val or "SMK" not in val:
-                            def_val_nama_sup = val
-                        break
-                for col in ["NO TELEFON SEKOLAH", "TELEFON", "LEFON SEKOLAH", "TEL"]:
-                    if col in existing.columns and pd.notna(row.get(col)):
-                        def_val_tel = str(row.get(col, ""))
-                        break
             
             if not existing.empty:
-                st.success(f"✅ Data sedia ada dijumpai untuk {info['kod_sekolah']} - form auto-isi dari Google Sheet")
+                st.success(f"✅ Data {info['kod_sekolah']} dijumpai - auto isi")
             
             with st.form("sekolah"):
                 c1,c2 = st.columns(2)
@@ -452,9 +453,8 @@ with col_kanan:
                     nama_sup = st.text_input("NAMA SUP", value=def_val_nama_sup)
                     nama_pengetua = st.text_input("NAMA PENGETUA", value=def_val_pengetua)
                 if st.form_submit_button("💾 Simpan", use_container_width=True):
-                    # Data baru - IKUT NAMA COLUMN BETUL dalam Google Sheet
-                    # Sheet guna NO TELEFON SEKOLAH & NO POSKOD SEKOLAH, bukan TELEFON SEKOLAH
-                    new_row_dict = {
+                    # Data baru - semua field - ikut format sheet sedia ada
+                    new_row = {
                         "KOD SEKOLAH": info['kod_sekolah'], 
                         "NAMA SEKOLAH": nama_sek, 
                         "EMAIL SEKOLAH": email,
@@ -467,52 +467,6 @@ with col_kanan:
                         "BIL KELAS DIGUNAKAN": bil_kelas,
                         "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
-                    
-                    # Data baru - IKUT NAMA COLUMN BETUL dalam Google Sheet
-                    # Sheet guna NO TELEFON SEKOLAH & NO POSKOD SEKOLAH, bukan TELEFON SEKOLAH
-                    new_row_dict = {
-                        "KOD SEKOLAH": info['kod_sekolah'], 
-                        "NAMA SEKOLAH": nama_sek, 
-                        "EMAIL SEKOLAH": email,
-                        "NO TELEFON SEKOLAH": no_tel,
-                        "NAMA PENGETUA": nama_pengetua,
-                        "NAMA SUP": nama_sup,
-                        "NO POSKOD SEKOLAH": poskod_sek,
-                        "BIL NO PUSAT": bil_pusat, 
-                        "SENARAI NO PUSAT": senarai, 
-                        "BIL KELAS DIGUNAKAN": bil_kelas,
-                        "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    
-                    # Preserve columns lain kalau ada (PPD, KOD KAWASAN, TOTAL CALON dll)
-                    if not existing.empty:
-                        old_row = existing.iloc[-1].to_dict()
-                        for k,v in old_row.items():
-                            if k not in new_row_dict and pd.notna(v):
-                                new_row_dict[k] = v
-                    else:
-                        # Kalau baru, tambah PPD
-                        new_row_dict["PPD"] = info.get('ppd_nama','') if isinstance(info, dict) else "Petaling Utama"
-                    
-                    new_row = new_row_dict
-                    
-                    # Convert dict to DataFrame untuk gabung
-                    new_df = pd.DataFrame([new_row_dict])
-                    # Gabung dengan maklumat lama (buang yang sama KOD dulu)
-                    if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
-                        maklumat = maklumat[maklumat["KOD SEKOLAH"].astype(str) != str(info['kod_sekolah'])]
-                    # Align columns - guna semua columns dari maklumat + new
-                    all_cols = list(dict.fromkeys(list(maklumat.columns) + list(new_df.columns))) if not maklumat.empty else list(new_df.columns)
-                    maklumat = pd.concat([maklumat, new_df], ignore_index=True) if not maklumat.empty else new_df
-                    # Pastikan column order ikut asal kalau ada
-                    # Buang duplicate
-                    maklumat = maklumat.drop_duplicates(subset=["KOD SEKOLAH"], keep="last")
-                    
-                    if write_sheet("maklumat_sekolah", maklumat):
-                        st.success(f"✅ {nama_sek} berjaya! Telefon & Pengetua lekat dalam Sheet!")
-                        st.rerun()
-                    continue
-
                     # === LOGIK ANTI-DUPLICATE ===
                     if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
                         # Buang baris lama kalau KOD SEKOLAH sama
