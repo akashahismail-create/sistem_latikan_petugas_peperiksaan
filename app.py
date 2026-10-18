@@ -291,31 +291,79 @@ with col_kanan:
             return pd.DataFrame({"NO PUSAT":["BK009"],"NAMA PUSAT":["SMJK KATHOLIK"]})
     pusat_master = load_master()
     
+    # === FIXED: Guna gspread direct dengan Service Account (bukan GSheetsConnection) ===
+    USE_GSHEET = False
+    gspread_client = None
+    SPREADSHEET_ID_FIX = None
     try:
-        from streamlit_gsheets import GSheetsConnection
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        USE_GSHEET=True
-    except:
-        USE_GSHEET=False
+        import gspread
+        from google.oauth2.service_account import Credentials
+        # Ambil ID dari secrets
+        try:
+            SPREADSHEET_ID_FIX = st.secrets["SPREADSHEET_ID"]
+        except:
+            try:
+                SPREADSHEET_ID_FIX = st.secrets["connections"]["gsheets"]["spreadsheet"].split("/d/")[1].split("/")[0]
+            except:
+                SPREADSHEET_ID_FIX = "1dweem4yw6nKlo1wy5PA264prHEHpLoBPSu89jRFi484"
+        
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        # Fix private_key newlines
+        if "\\n" in creds_dict.get("private_key",""):
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        gspread_client = gspread.authorize(creds)
+        USE_GSHEET = True
+    except Exception as e:
+        st.warning(f"GSheet init warning (akan guna memory sahaja): {e}")
+        USE_GSHEET = False
     
     def read_sheet(name):
-        if USE_GSHEET:
+        if USE_GSHEET and gspread_client:
             try:
-                return conn.read(worksheet=name, ttl=0)
-            except:
+                sh = gspread_client.open_by_key(SPREADSHEET_ID_FIX)
+                try:
+                    ws = sh.worksheet(name)
+                except:
+                    # Worksheet tak wujud lagi, return kosong
+                    return pd.DataFrame()
+                records = ws.get_all_records()
+                return pd.DataFrame(records)
+            except Exception as e:
+                # st.error(f"Read {name} gagal: {e}")
                 return pd.DataFrame()
         else:
             return pd.DataFrame()
+    
     def write_sheet(name, df):
-        if USE_GSHEET:
+        if USE_GSHEET and gspread_client:
             try:
-                conn.update(worksheet=name, data=df)
+                sh = gspread_client.open_by_key(SPREADSHEET_ID_FIX)
+                try:
+                    ws = sh.worksheet(name)
+                except:
+                    # Create worksheet kalau tak ada
+                    ws = sh.add_worksheet(title=name, rows=1000, cols=30)
+                
+                # Clear dan tulis baru
+                ws.clear()
+                if not df.empty:
+                    # Tukar NaN ke ""
+                    df_fill = df.fillna("")
+                    ws.update([df_fill.columns.values.tolist()] + df_fill.values.tolist())
+                else:
+                    # Kalau kosong, tulis header sahaja kalau ada
+                    pass
                 return True
             except Exception as ex:
                 st.error(f"Gagal {name}: {ex}")
                 return False
         else:
-            return True
+            st.error("Gsheet tidak connect - check Secrets")
+            return False
+    
 
     if role=="SUP":
         if menu=="Maklumat Sekolah":
