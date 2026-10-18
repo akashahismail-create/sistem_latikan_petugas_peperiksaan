@@ -583,16 +583,50 @@ with col_kanan:
         except:
             pass
         
-        # 3. Dari penempatan_ppd sheet juga - kalau ada pusat yang dah dilantik tapi tak dalam list
+        # 3. Dari Google Sheet sah_jpn - ada NO PUSAT + NAMA PUSAT penuh!
+        try:
+            sah_tmp = read_sheet("sah_jpn")
+            if not sah_tmp.empty and "NO PUSAT" in sah_tmp.columns:
+                for _, rs in sah_tmp.iterrows():
+                    p = str(rs.get("NO PUSAT","")).strip()
+                    if p.startswith(info['kod']):
+                        if p not in semua_pusat:
+                            semua_pusat.append(p)
+                        # Nama penuh pusat
+                        nama_pusat = str(rs.get("NAMA PUSAT","")).strip()
+                        if nama_pusat and nama_pusat.lower()!="nan":
+                            pusat_to_nama[p] = nama_pusat
+        except:
+            pass
+        
+        # 4. Dari penempatan_ppd sheet juga
         try:
             pen_tmp = read_sheet("penempatan_ppd")
             if not pen_tmp.empty and "NO PUSAT TUGAS" in pen_tmp.columns:
-                for p in pen_tmp["NO PUSAT TUGAS"].dropna().astype(str).unique():
-                    p = p.strip()
-                    if p.startswith(info['kod']) and p not in semua_pusat:
-                        semua_pusat.append(p)
+                for _, rp in pen_tmp.iterrows():
+                    p = str(rp.get("NO PUSAT TUGAS","")).strip()
+                    if p.startswith(info['kod']):
+                        if p not in semua_pusat:
+                            semua_pusat.append(p)
+                        nama_p = str(rp.get("NAMA PUSAT TUGAS","")).strip()
+                        if nama_p and nama_p.lower()!="nan" and p not in pusat_to_nama:
+                            pusat_to_nama[p] = nama_p
         except:
             pass
+        
+        # 5. Pastikan semua pusat ada nama - kalau takde, guna sekolah tuan rumah
+        for p in semua_pusat:
+            if p not in pusat_to_nama or not pusat_to_nama[p]:
+                kod_sek = pusat_to_sekolah.get(p, "")
+                if kod_sek:
+                    # cari nama sekolah
+                    row = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek]
+                    if not row.empty:
+                        pusat_to_nama[p] = str(row.iloc[0]["NAMA SEKOLAH"])
+                    else:
+                        pusat_to_nama[p] = p
+                else:
+                    pusat_to_nama[p] = p
         
         semua_pusat = sorted(list(set(semua_pusat)))
         
