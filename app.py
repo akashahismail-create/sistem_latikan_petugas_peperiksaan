@@ -539,9 +539,12 @@ with col_kanan:
         df_ppd = mapping_df[mapping_df["KOD PPD"]==info['kod']]
         kod_sekolah_ppd = df_ppd["KOD SEKOLAH"].astype(str).tolist()
         
-        # Build list pusat under PPD
+        # Build list pusat under PPD - DARI MASTER + ID_SUP
         semua_pusat = []
-        pusat_to_sekolah = {}  # BK069 -> BEA8640
+        pusat_to_sekolah = {}
+        pusat_to_nama = {}  # BK069 -> SMK TROPICANA
+        
+        # 1. Dari ID_SUP file (df_ppd)
         for _, r in df_ppd.iterrows():
             senarai = str(r.get("SENARAI PUSAT","")).split(",")
             for p in senarai:
@@ -549,6 +552,48 @@ with col_kanan:
                 if p:
                     semua_pusat.append(p)
                     pusat_to_sekolah[p] = str(r["KOD SEKOLAH"])
+                    pusat_to_nama[p] = str(r["NAMA SEKOLAH"])
+        
+        # 2. Dari master 506 file - cari semua NO PUSAT ikut kod daerah (BA, BK etc)
+        try:
+            master_files = []
+            if os.path.exists("data"):
+                for f in os.listdir("data"):
+                    if "506" in f and "calon" in f.lower():
+                        master_files.append(os.path.join("data", f))
+            for mf in master_files:
+                try:
+                    df_m = pd.read_excel(mf)
+                    if "NO PUSAT" in df_m.columns and "KOD SEKOLAH" in df_m.columns:
+                        # Filter NO PUSAT yang start dengan kod PPD ni (BK, BA dll)
+                        mask = df_m["NO PUSAT"].astype(str).str.startswith(info['kod'])
+                        df_m_ppd = df_m[mask]
+                        for _, rm in df_m_ppd.iterrows():
+                            p = str(rm["NO PUSAT"]).strip()
+                            if p and p not in semua_pusat:
+                                semua_pusat.append(p)
+                            if p not in pusat_to_sekolah:
+                                pusat_to_sekolah[p] = str(rm["KOD SEKOLAH"])
+                            if p not in pusat_to_nama:
+                                # Cari nama pusat dari df_m kalau ada NAMA PUSAT
+                                nama_p = str(rm.get("NAMA PUSAT", rm.get("NAMA SEKOLAH", p)))
+                                pusat_to_nama[p] = nama_p
+                except:
+                    continue
+        except:
+            pass
+        
+        # 3. Dari penempatan_ppd sheet juga - kalau ada pusat yang dah dilantik tapi tak dalam list
+        try:
+            pen_tmp = read_sheet("penempatan_ppd")
+            if not pen_tmp.empty and "NO PUSAT TUGAS" in pen_tmp.columns:
+                for p in pen_tmp["NO PUSAT TUGAS"].dropna().astype(str).unique():
+                    p = p.strip()
+                    if p.startswith(info['kod']) and p not in semua_pusat:
+                        semua_pusat.append(p)
+        except:
+            pass
+        
         semua_pusat = sorted(list(set(semua_pusat)))
         
         if menu=="Senarai Pusat":
@@ -668,7 +713,7 @@ with col_kanan:
                     pusat_pilih = st.selectbox("📌 Pilih NO PUSAT", semua_pusat, index=0)
                 with col2:
                     kod_sek_pusat = pusat_to_sekolah.get(pusat_pilih, "")
-                    nama_pusat = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat]["NAMA SEKOLAH"].values[0] if not df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat].empty else pusat_pilih
+                    nama_pusat = pusat_to_nama.get(pusat_pilih, df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat]["NAMA SEKOLAH"].values[0] if not df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat].empty else pusat_pilih)
                     st.metric("Sekolah Tuan Rumah", f"{nama_pusat}")
                     st.caption(f"Kod: {kod_sek_pusat} | Pusat: {pusat_pilih}")
                 
