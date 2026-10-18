@@ -445,7 +445,7 @@ with col_kanan:
                     nama_sek = st.text_input("NAMA SEKOLAH", value=def_val_nama)
                     email = st.text_input("EMAIL SEKOLAH", value=def_val_email, placeholder="bea8640@moe.edu.my")
                     no_tel = st.text_input("NO TELEFON SEKOLAH", value=def_val_tel, placeholder="03-XXXXXXX")
-                    poskod_sek = st.number_input("POSKOD SEKOLAH",40000,49000,def_val_poskod)
+                    poskod_sek = st.number_input("NO POSKOD SEKOLAH",40000,49000,def_val_poskod)
                     bil_pusat = st.number_input("BIL PUSAT",1,10,def_val_bil_pusat)
                 with c2:
                     senarai = st.text_input("SENARAI NO PUSAT", value=def_val_senarai)
@@ -459,9 +459,11 @@ with col_kanan:
                         "NAMA SEKOLAH": nama_sek, 
                         "EMAIL SEKOLAH": email,
                         "NO TELEFON SEKOLAH": no_tel,
+                        "TELEFON SEKOLAH": no_tel,
                         "NAMA PENGETUA": nama_pengetua,
                         "NAMA SUP": nama_sup,
                         "NO POSKOD SEKOLAH": poskod_sek,
+                        "POSKOD SEKOLAH": poskod_sek,
                         "BIL NO PUSAT": bil_pusat, 
                         "SENARAI NO PUSAT": senarai, 
                         "BIL KELAS DIGUNAKAN": bil_kelas,
