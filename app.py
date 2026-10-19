@@ -307,19 +307,64 @@ def jawatan_kosong(need_peng, jawatan_sedia):
     return hasil
 
 
+def _kunci_nama(nama, kod):
+    n = re.sub(r"\s+", " ", str(nama)).strip().upper()
+    if not n or n == "NAN":
+        return ""
+    return f"{n}|{str(kod).strip().upper()}"
+
+
+def kunci_guru(ic, nama, kod_sekolah):
+    """Kunci pengenalan seorang guru: IC, DAN nama+kod sekolah. Padan salah satu = guru yang sama."""
+    ks = []
+    i = norm_ic(ic)
+    if i:
+        ks.append("IC:" + i)
+    nk = _kunci_nama(nama, kod_sekolah)
+    if nk:
+        ks.append("NS:" + nk)
+    return ks
+
+
+def peta_guru_pusat(df_pen):
+    """{kunci_guru: NO PUSAT} untuk semua guru yang sudah dilantik."""
+    peta = {}
+    if df_pen is None or df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns:
+        return peta
+    for _, r in df_pen.iterrows():
+        for k in kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL GURU", "")):
+            peta.setdefault(k, str(r["NO PUSAT TUGAS"]))
+    return peta
+
+
+def pusat_guru(peta, ic, nama, kod_sekolah):
+    """Pulang NO PUSAT kalau guru ini sudah dilantik di mana-mana pusat, selain itu None."""
+    for k in kunci_guru(ic, nama, kod_sekolah):
+        if k in peta:
+            return peta[k]
+    return None
+
+
 def jana_penempatan(pusat_list, penempatan_df, cadangan_df, pusat_to_sekolah, pusat_to_nama, df_calon, label_status):
     """Satu logik untuk jana 1 pusat ATAU semua pusat.
-    Peraturan: guru sekolah tuan rumah tak boleh jaga pusat sendiri; seorang guru HANYA satu pusat
-    (tiada guru diulang). Kalau calon tak cukup, jawatan dibiarkan kosong & dilaporkan.
+    Peraturan: setiap pusat orang BERBEZA (padan IC / nama+sekolah); guru sekolah tuan rumah tak jaga
+    pusat sendiri; calon tak cukup -> jawatan dibiar kosong & dilaporkan (tiada guru diulang).
     Pulang (baris_baru, senarai_kurang[(pusat, bil_kurang)])."""
     ada_pen = (not penempatan_df.empty) and ("NO PUSAT TUGAS" in penempatan_df.columns)
-    used_ic = set()
-    if (not penempatan_df.empty) and "IC" in penempatan_df.columns:
-        used_ic = {i for i in penempatan_df["IC"].map(norm_ic) if i}
+    peta = peta_guru_pusat(penempatan_df)
 
     cad = cadangan_df.copy()
     cad["_IC"] = cad["IC"].map(norm_ic)
-    cad = cad[cad["_IC"] != ""].drop_duplicates(subset="_IC")
+    cad = cad[cad["_IC"] != ""]
+    # buang calon berulang dalam senarai cadangan sendiri (IC sama / nama+sekolah sama)
+    lihat, baris_unik = set(), []
+    for idx, g in cad.iterrows():
+        ks = kunci_guru(g.get("IC", ""), g.get("NAMA GURU", ""), g.get("KOD SEKOLAH ASAL", ""))
+        if any(k in lihat for k in ks):
+            continue
+        lihat.update(ks)
+        baris_unik.append(idx)
+    cad = cad.loc[baris_unik]
 
     rows, kurang = [], []
     for p in pusat_list:
@@ -332,10 +377,18 @@ def jana_penempatan(pusat_list, penempatan_df, cadangan_df, pusat_to_sekolah, pu
         perlu = jawatan_kosong(need_peng, sedia)
         if not perlu:
             continue
-        calon = cad[(cad["KOD SEKOLAH ASAL"].astype(str) != kod_sek) & (~cad["_IC"].isin(used_ic))].head(len(perlu))
+        calon = []
+        for _, g in cad.iterrows():
+            if len(calon) >= len(perlu):
+                break
+            if str(g.get("KOD SEKOLAH ASAL", "")) == kod_sek:
+                continue
+            if pusat_guru(peta, g.get("IC", ""), g.get("NAMA GURU", ""), g.get("KOD SEKOLAH ASAL", "")) is not None:
+                continue
+            calon.append(g)
         if len(calon) < len(perlu):
             kurang.append((p, len(perlu) - len(calon)))
-        for jaw, (_, guru) in zip(perlu, calon.iterrows()):
+        for jaw, guru in zip(perlu, calon):
             rows.append({
                 "NO PUSAT TUGAS": p,
                 "NAMA PUSAT TUGAS": pusat_to_nama.get(p, p),
@@ -351,8 +404,36 @@ def jana_penempatan(pusat_list, penempatan_df, cadangan_df, pusat_to_sekolah, pu
                 "EMAIL GURU": guru.get("EMAIL GURU", ""),
                 "STATUS PENEMPATAN": label_status,
             })
-            used_ic.add(guru["_IC"])
+            for k in kunci_guru(guru.get("IC", ""), guru.get("NAMA GURU", ""), guru.get("KOD SEKOLAH ASAL", "")):
+                peta[k] = p
     return rows, kurang
+
+
+def bersihkan_duplikasi(df_pen, pusat_ppd):
+    """Cari guru yang dilantik di lebih daripada satu pusat (padan IC ATAU nama+sekolah).
+    Rekod PERTAMA (ikut susunan sheet, mis. BK001 dulu) dikekalkan; yang lain dibuang.
+    Pulang (df_baru, laporan[dict])."""
+    if df_pen is None or df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns:
+        return df_pen, []
+    pset = {str(p) for p in pusat_ppd}
+    luar = ~df_pen["NO PUSAT TUGAS"].astype(str).isin(pset)
+    peta, buang, laporan = {}, [], []
+    for _, r in df_pen[luar].iterrows():
+        for k in kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL GURU", "")):
+            peta.setdefault(k, str(r["NO PUSAT TUGAS"]))
+    for i, r in df_pen[~luar].iterrows():
+        ks = kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL GURU", ""))
+        asal = next((peta[k] for k in ks if k in peta), None)
+        if asal is not None:
+            buang.append(i)
+            laporan.append({"NAMA GURU": r.get("NAMA GURU", ""), "IC": r.get("IC", ""), "SEKOLAH ASAL": r.get("NAMA SEKOLAH ASAL", ""),
+                            "KEKAL DI": asal, "DUPLIKAT DI (akan dibuang)": str(r["NO PUSAT TUGAS"])})
+        else:
+            for k in ks:
+                peta[k] = str(r["NO PUSAT TUGAS"])
+    if not buang:
+        return df_pen, []
+    return df_pen.drop(index=buang).reset_index(drop=True), laporan
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
 
@@ -1019,6 +1100,38 @@ with col_kanan:
             tot_tot = tot_peng + len(semua_pusat) * 2
             curr = int(penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat).sum()) if ada_pen else 0
 
+            # ===== SEMAK DUPLIKASI (guru sama di lebih daripada satu pusat) =====
+            if ada_pen:
+                _, dup = bersihkan_duplikasi(penempatan_all, semua_pusat)
+            else:
+                dup = []
+            if dup:
+                st.error(f"⚠️ {len(dup)} penempatan DUPLIKAT: guru yang sama dilantik di lebih daripada satu pusat (padan IC / nama+sekolah). Ini biasanya hasil janaan versi lama. Setiap pusat mesti orang berbeza.")
+                with st.expander(f"Lihat {len(dup)} duplikasi"):
+                    st.dataframe(pd.DataFrame(dup), use_container_width=True, hide_index=True)
+                st.caption("Pembetulan: rekod pertama kekal (contoh BK001), rekod duplikat di pusat lain dibuang, kemudian jawatan kosong diisi semula dengan guru yang BERBEZA.")
+                sahkan_betul = st.checkbox("Ya, buang duplikasi dan isi semula", key="sahkan_betul_dup")
+                if st.button("🧹 Buang duplikasi & isi semula", use_container_width=True, type="primary", disabled=not sahkan_betul, key="betul_dup"):
+                    hasil_b = {}
+
+                    def _betul(df_pen):
+                        df2, lap = bersihkan_duplikasi(df_pen, semua_pusat)
+                        rows, kurang = [], []
+                        if not cadangan_ppd.empty and "IC" in cadangan_ppd.columns:
+                            rows, kurang = jana_penempatan(semua_pusat, df2, cadangan_ppd, pusat_to_sekolah, pusat_to_nama, df_calon_master, "Auto Jana Semua PPD (selepas bersih duplikasi)")
+                        hasil_b.update(buang=len(lap), rows=rows, kurang=kurang)
+                        if rows:
+                            return pd.concat([df2, pd.DataFrame(rows)], ignore_index=True) if not df2.empty else pd.DataFrame(rows)
+                        return df2
+
+                    with st.spinner("Membetulkan penempatan..."):
+                        ok_b = modify_sheet("penempatan_ppd", _betul)
+                    if ok_b:
+                        flash("success", f"✅ {hasil_b['buang']} duplikasi dibuang, {len(hasil_b['rows'])} petugas BARU (berbeza) ditempatkan.")
+                        if hasil_b["kurang"]:
+                            flash("warning", "⚠️ Calon tak cukup untuk: " + ", ".join(f"{p} (kurang {n})" for p, n in hasil_b["kurang"]) + ". Minta SUP tambah cadangan guru.")
+                        st.rerun()
+
             st.markdown("### 🚀 Jana Semua Pusat")
             st.info(f"{len(semua_pusat)} pusat = {tot_peng} Pengawas + {len(semua_pusat)*2} KP/TKP = {tot_tot} petugas | {len(cadangan_ppd)} guru dicadangkan")
             if len(cadangan_ppd) < tot_tot - curr:
@@ -1098,32 +1211,28 @@ with col_kanan:
                 if cadangan_ppd.empty or "IC" not in cadangan_ppd.columns:
                     st.info("Belum ada cadangan guru daripada sekolah-sekolah daerah ini.")
                 else:
-                    # IC -> pusat tempat guru itu sudah dilantik (mana-mana pusat)
-                    ic_di_pusat = {}
-                    if ada_pen and "IC" in penempatan_all.columns:
-                        for ic_, p_ in zip(penempatan_all["IC"].map(norm_ic), penempatan_all["NO PUSAT TUGAS"].astype(str)):
-                            if ic_:
-                                ic_di_pusat[ic_] = p_
+                    # Guru -> pusat tempat dia sudah dilantik (padan IC / nama+sekolah)
+                    peta_pen = peta_guru_pusat(penempatan_all) if ada_pen else {}
                     senarai = cadangan_ppd.copy()
                     senarai["_IC"] = senarai["IC"].map(norm_ic)
                     senarai = senarai[senarai["_IC"] != ""].drop_duplicates(subset="_IC")
                     tuan = senarai["KOD SEKOLAH ASAL"].astype(str) == str(kod_sek_pusat)
                     bil_tuan = int(tuan.sum())
                     senarai = senarai[~tuan].copy()
+                    senarai["_PUSAT"] = [pusat_guru(peta_pen, r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", "")) for _, r in senarai.iterrows()]
 
-                    def _status_calon(ic_):
-                        p_ = ic_di_pusat.get(ic_)
-                        if p_ is None:
+                    def _status_calon(p_):
+                        if p_ is None or (isinstance(p_, float) and pd.isna(p_)):
                             return "✅ Tersedia"
                         if p_ == str(pusat_pilih):
                             return "📍 Sudah di pusat ini"
                         return f"🔒 Dilantik di {p_}"
 
-                    senarai["STATUS"] = senarai["_IC"].map(_status_calon)
+                    senarai["STATUS"] = senarai["_PUSAT"].map(_status_calon)
                     senarai["_susun"] = senarai["STATUS"].map(lambda s: 0 if s.startswith("✅") else (1 if s.startswith("📍") else 2))
                     senarai = senarai.sort_values("_susun", kind="stable")
                     tersedia = senarai[senarai["STATUS"].str.startswith("✅")]
-                    calon_edit = tersedia.drop(columns=["_IC", "_susun", "STATUS"]).reset_index(drop=True)
+                    calon_edit = tersedia.drop(columns=["_IC", "_susun", "STATUS", "_PUSAT"]).reset_index(drop=True)
                     calon_options = [label_calon(r) for _, r in calon_edit.iterrows()]
 
                     bil_lain = int(senarai["STATUS"].str.startswith("🔒").sum())
@@ -1152,9 +1261,9 @@ with col_kanan:
 
                                 def _lantik(df_pen):
                                     ada = (not df_pen.empty) and ("IC" in df_pen.columns) and ("NO PUSAT TUGAS" in df_pen.columns)
-                                    di = {norm_ic(a): str(b) for a, b in zip(df_pen["IC"], df_pen["NO PUSAT TUGAS"])} if ada else {}
+                                    peta_x = peta_guru_pusat(df_pen)
                                     for g in guru_dipilih:
-                                        p_ = di.get(norm_ic(g.get("IC", "")))
+                                        p_ = pusat_guru(peta_x, g.get("IC", ""), g.get("NAMA GURU", ""), g.get("KOD SEKOLAH ASAL", ""))
                                         if p_ is not None:
                                             raise ValueError(f"{g.get('NAMA GURU','')} sudah dilantik di {p_} - seorang guru hanya boleh satu pusat.")
                                         if str(g.get("KOD SEKOLAH ASAL", "")) == str(kod_sek_pusat):
@@ -1218,8 +1327,9 @@ with col_kanan:
                                     def _tukar(df_pen):
                                         if df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns or "NAMA GURU" not in df_pen.columns:
                                             raise ValueError("Data penempatan tidak lengkap - muat semula halaman")
-                                        if "IC" in df_pen.columns and ic_baru and ic_baru in set(df_pen["IC"].map(norm_ic)):
-                                            raise ValueError(f"{guru_data.get('NAMA GURU','Guru ini')} sudah dilantik di pusat lain - pilih guru lain.")
+                                        p_lain = pusat_guru(peta_guru_pusat(df_pen), guru_data.get("IC", ""), guru_data.get("NAMA GURU", ""), guru_data.get("KOD SEKOLAH ASAL", ""))
+                                        if p_lain is not None:
+                                            raise ValueError(f"{guru_data.get('NAMA GURU','Guru ini')} sudah dilantik di {p_lain} - pilih guru lain.")
                                         mask = df_pen["NO PUSAT TUGAS"].astype(str) == str(pusat_pilih)
                                         if ic_lama and "IC" in df_pen.columns:
                                             mask = mask & (df_pen["IC"].map(norm_ic) == ic_lama)
