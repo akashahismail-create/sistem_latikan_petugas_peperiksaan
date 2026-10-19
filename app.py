@@ -784,14 +784,6 @@ with col_kanan:
                 st.info("Belum ada cadangan")
         
         elif menu=="Jana Penempatan":
-            # FIX KASHAH: Untuk semua 43 pusat - petugas berlainan! Tak boleh orang sama!
-            # Kira semua IC yang dah dilantik di mana-mana pusat
-            used_ic_global_all = set()
-            if not penempatan_all.empty and "IC" in penempatan_all.columns:
-                used_ic_global_all = set(penempatan_all["IC"].astype(str).str.strip().tolist())
-                # Remove empty
-                used_ic_global_all = {ic for ic in used_ic_global_all if ic and ic != "nan" and ic != "None"}
-
             st.header(f"🎯 Lantikan Ikut Pusat - {info['ppd_nama']}")
             st.markdown("PPD pilih pusat, terus nampak siapa Ketua, Timbalan, Pengawas yang sistem tempatkan. Boleh edit terus!")
             
@@ -921,7 +913,6 @@ with col_kanan:
             with col_bulk2:
                 if st.button("🗑️ Kosongkan SEMUA Pusat Daerah Ini", use_container_width=True, key="reset_all"):
                     # Hanya kosongkan pusat daerah ini
-                    # FIX KeyError
                     if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                         penempatan_all = penempatan_all[~penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)]
                     else:
@@ -980,20 +971,17 @@ with col_kanan:
                         if cadangan_ppd.empty:
                             st.error("Tiada cadangan guru untuk daerah ini! Isi Cadangan SUP dulu")
                         else:
-                            # FIX: BK001 vs BK002 vs BK003... semua pusat petugas berlainan - konsep sama untuk semua 43 pusat!
                             calon = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].copy()
-                            # Exclude guru yang dah dilantik di pusat lain (untuk semua pusat, bukan BK001/02 je)
+                            # FIX: Semua 43 pusat petugas berlainan - exclude yang dah dilantik di pusat lain
                             if not calon.empty and len(used_ic_global_all) > 0:
-                                # Keep only those NOT already assigned elsewhere, except those already in this pusat
-                                existing_ic_this_pusat = set()
+                                existing_ic_this = set()
                                 if not penempatan_pusat.empty and "IC" in penempatan_pusat.columns:
-                                    existing_ic_this_pusat = set(penempatan_pusat["IC"].astype(str).str.strip().tolist())
-                                # Used in other pusat = global - this pusat
-                                used_in_other_pusat = used_ic_global_all - existing_ic_this_pusat
+                                    existing_ic_this = set(penempatan_pusat["IC"].astype(str).str.strip().tolist())
+                                used_other = used_ic_global_all - existing_ic_this
                                 calon_before = len(calon)
-                                calon = calon[~calon["IC"].astype(str).str.strip().isin(used_in_other_pusat)].copy()
+                                calon = calon[~calon["IC"].astype(str).str.strip().isin(used_other)].copy()
                                 if calon_before != len(calon):
-                                    st.info(f"🔄 Konsep sama untuk semua 43 pusat: {len(used_in_other_pusat)} guru dah dilantik di pusat lain (BK001 etc) - di-exclude dari {pusat_pilih}, tinggal {len(calon)} calon berlainan")
+                                    st.info(f"🔄 {len(used_other)} guru dah dilantik di pusat lain - di-exclude dari {pusat_pilih}, tinggal {len(calon)} calon berlainan untuk semua 43 pusat")
                             # Exclude yang dah dilantik di pusat ni
                             if not penempatan_pusat.empty and "IC" in penempatan_pusat.columns:
                                 ic_sedia = penempatan_pusat["IC"].astype(str).tolist()
