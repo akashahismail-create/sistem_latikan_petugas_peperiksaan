@@ -1086,6 +1086,97 @@ with col_kanan:
                             flash("success", f"✅ {pusat_pilih} dikosongkan!")
                             st.rerun()
 
+                # ===== SENARAI CADANGAN UNTUK PUSAT INI =====
+                st.markdown("---")
+                st.markdown(f"### 📋 Senarai Cadangan untuk {pusat_pilih}")
+
+                def label_calon(row):
+                    return f"{row.get('NAMA GURU','')} | {row.get('KOD SEKOLAH ASAL','')} - {row.get('NAMA SEKOLAH ASAL','')} | IC:{row.get('IC','')} | Poskod:{row.get('POSKOD RUMAH','')}"
+
+                calon_edit = pd.DataFrame()
+                calon_options = []
+                if cadangan_ppd.empty or "IC" not in cadangan_ppd.columns:
+                    st.info("Belum ada cadangan guru daripada sekolah-sekolah daerah ini.")
+                else:
+                    # IC -> pusat tempat guru itu sudah dilantik (mana-mana pusat)
+                    ic_di_pusat = {}
+                    if ada_pen and "IC" in penempatan_all.columns:
+                        for ic_, p_ in zip(penempatan_all["IC"].map(norm_ic), penempatan_all["NO PUSAT TUGAS"].astype(str)):
+                            if ic_:
+                                ic_di_pusat[ic_] = p_
+                    senarai = cadangan_ppd.copy()
+                    senarai["_IC"] = senarai["IC"].map(norm_ic)
+                    senarai = senarai[senarai["_IC"] != ""].drop_duplicates(subset="_IC")
+                    tuan = senarai["KOD SEKOLAH ASAL"].astype(str) == str(kod_sek_pusat)
+                    bil_tuan = int(tuan.sum())
+                    senarai = senarai[~tuan].copy()
+
+                    def _status_calon(ic_):
+                        p_ = ic_di_pusat.get(ic_)
+                        if p_ is None:
+                            return "✅ Tersedia"
+                        if p_ == str(pusat_pilih):
+                            return "📍 Sudah di pusat ini"
+                        return f"🔒 Dilantik di {p_}"
+
+                    senarai["STATUS"] = senarai["_IC"].map(_status_calon)
+                    senarai["_susun"] = senarai["STATUS"].map(lambda s: 0 if s.startswith("✅") else (1 if s.startswith("📍") else 2))
+                    senarai = senarai.sort_values("_susun", kind="stable")
+                    tersedia = senarai[senarai["STATUS"].str.startswith("✅")]
+                    calon_edit = tersedia.drop(columns=["_IC", "_susun", "STATUS"]).reset_index(drop=True)
+                    calon_options = [label_calon(r) for _, r in calon_edit.iterrows()]
+
+                    bil_lain = int(senarai["STATUS"].str.startswith("🔒").sum())
+                    bil_sini = int(senarai["STATUS"].str.startswith("📍").sum())
+                    st.caption(f"✅ {len(calon_edit)} tersedia | 📍 {bil_sini} sudah di pusat ini | 🔒 {bil_lain} sudah dilantik di pusat lain (tak boleh dipilih) | {bil_tuan} guru sekolah tuan rumah ({kod_sek_pusat}) dikecualikan")
+                    lajur_calon = [c for c in ["NAMA GURU", "KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "IC", "JANTINA", "POSKOD RUMAH", "JAWATAN CADANG"] if c in senarai.columns]
+                    st.dataframe(senarai[lajur_calon + ["STATUS"]], use_container_width=True, hide_index=True)
+
+                    # Lantik manual dari senarai
+                    sedia_jaw = penempatan_pusat["JAWATAN FINAL"].tolist() if (not penempatan_pusat.empty and "JAWATAN FINAL" in penempatan_pusat.columns) else []
+                    jaw_kosong = jawatan_kosong(need_peng_single, sedia_jaw)
+                    if not jaw_kosong:
+                        st.success(f"✅ {pusat_pilih} sudah lengkap.")
+                    elif not calon_options:
+                        st.warning("Tiada calon tersedia untuk pusat ini - semua sudah dilantik / tuan rumah. Minta SUP tambah cadangan.")
+                    else:
+                        baki_jaw = {j: jaw_kosong.count(j) for j in dict.fromkeys(jaw_kosong)}
+                        st.markdown("**➕ Lantik sendiri dari senarai ✅ Tersedia**")
+                        pilih_jaw = st.selectbox("Jawatan", list(baki_jaw.keys()), format_func=lambda j: f"{j} (kosong {baki_jaw[j]})", key=f"manjaw_{pusat_pilih}")
+                        pilih_guru = st.multiselect("Pilih guru", calon_options, key=f"manguru_{pusat_pilih}")
+                        if st.button(f"✅ Lantik {len(pilih_guru)} guru ke {pusat_pilih}", use_container_width=True, type="primary", disabled=not pilih_guru, key=f"manlantik_{pusat_pilih}"):
+                            if len(pilih_guru) > baki_jaw[pilih_jaw]:
+                                st.error(f"Jawatan {pilih_jaw} hanya ada {baki_jaw[pilih_jaw]} kekosongan.")
+                            else:
+                                guru_dipilih = [calon_edit.iloc[calon_options.index(o)] for o in pilih_guru]
+
+                                def _lantik(df_pen):
+                                    ada = (not df_pen.empty) and ("IC" in df_pen.columns) and ("NO PUSAT TUGAS" in df_pen.columns)
+                                    di = {norm_ic(a): str(b) for a, b in zip(df_pen["IC"], df_pen["NO PUSAT TUGAS"])} if ada else {}
+                                    for g in guru_dipilih:
+                                        p_ = di.get(norm_ic(g.get("IC", "")))
+                                        if p_ is not None:
+                                            raise ValueError(f"{g.get('NAMA GURU','')} sudah dilantik di {p_} - seorang guru hanya boleh satu pusat.")
+                                        if str(g.get("KOD SEKOLAH ASAL", "")) == str(kod_sek_pusat):
+                                            raise ValueError(f"{g.get('NAMA GURU','')} dari sekolah tuan rumah - tak boleh jaga pusat sendiri.")
+                                    sedia = df_pen[df_pen["NO PUSAT TUGAS"].astype(str) == str(pusat_pilih)]["JAWATAN FINAL"].tolist() if (ada and "JAWATAN FINAL" in df_pen.columns) else []
+                                    if jawatan_kosong(need_peng_single, sedia).count(pilih_jaw) < len(guru_dipilih):
+                                        raise ValueError(f"Jawatan {pilih_jaw} tak cukup kosong (mungkin sudah diisi orang lain) - muat semula halaman.")
+                                    baru = pd.DataFrame([{
+                                        "NO PUSAT TUGAS": str(pusat_pilih), "NAMA PUSAT TUGAS": nama_pusat,
+                                        "KOD SEKOLAH ASAL GURU": g.get("KOD SEKOLAH ASAL", ""), "NAMA SEKOLAH ASAL": g.get("NAMA SEKOLAH ASAL", ""),
+                                        "NAMA GURU": g.get("NAMA GURU", ""), "IC": g.get("IC", ""), "JANTINA": g.get("JANTINA", ""),
+                                        "JAWATAN FINAL": pilih_jaw, "POSKOD RUMAH": g.get("POSKOD RUMAH", ""),
+                                        "ALAMAT RUMAH": g.get("ALAMAT RUMAH", ""), "NO TELEFON GURU": g.get("NO TELEFON GURU", ""), "EMAIL GURU": g.get("EMAIL GURU", ""),
+                                        "STATUS PENEMPATAN": f"Lantik manual oleh PPD {info['ppd_nama']} - {pd.Timestamp.now().strftime('%Y-%m-%d')}",
+                                    } for g in guru_dipilih])
+                                    return pd.concat([df_pen, baru], ignore_index=True) if not df_pen.empty else baru
+
+                                if modify_sheet("penempatan_ppd", _lantik):
+                                    flash("success", f"✅ {len(guru_dipilih)} guru dilantik sebagai {pilih_jaw} di {pusat_pilih}.")
+                                    st.rerun()
+                st.markdown("---")
+
                 if penempatan_pusat.empty:
                     st.info(f"Belum dilantik untuk {pusat_pilih} - tekan Jana Auto di atas")
                 else:
@@ -1102,20 +1193,6 @@ with col_kanan:
                     st.markdown(f"#### ✏️ Edit Lantikan {pusat_pilih} - Klik Nama Untuk Tukar")
                     st.caption(f"📍 Pusat: {pusat_pilih} - {nama_pusat} ({kod_sek_pusat}) | Guru dari {kod_sek_pusat} tidak boleh jaga pusat sendiri - auto exclude")
 
-                    # Calon ganti: bukan tuan rumah, dan belum dilantik di mana-mana pusat
-                    if not cadangan_ppd.empty and "IC" in cadangan_ppd.columns:
-                        calon_edit = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str) != str(kod_sek_pusat)].copy()
-                        if "IC" in penempatan_all.columns:
-                            ic_terpakai = {i for i in penempatan_all["IC"].map(norm_ic) if i}
-                            calon_edit = calon_edit[~calon_edit["IC"].map(norm_ic).isin(ic_terpakai)]
-                        calon_edit = calon_edit.reset_index(drop=True)
-
-                        def label_calon(row):
-                            return f"{row.get('NAMA GURU','')} | {row.get('KOD SEKOLAH ASAL','')} - {row.get('NAMA SEKOLAH ASAL','')} | IC:{row.get('IC','')} | Poskod:{row.get('POSKOD RUMAH','')}"
-                        calon_options = [label_calon(r) for _, r in calon_edit.iterrows()]
-                    else:
-                        calon_options = []
-                        calon_edit = pd.DataFrame()
 
                     st.info(f"📋 Ada {len(calon_options)} guru dari daerah {info['ppd_nama']} yang belum dilantik dan boleh dipilih (kecuali {kod_sek_pusat})")
 
