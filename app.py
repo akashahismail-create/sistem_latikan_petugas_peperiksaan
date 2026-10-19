@@ -972,20 +972,19 @@ with col_kanan:
                             st.error("Tiada cadangan guru untuk daerah ini! Isi Cadangan SUP dulu")
                         else:
                             calon = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].copy()
-                            # FIX: Semua 43 pusat petugas berlainan - exclude yang dah dilantik di pusat lain
-                            if not calon.empty and len(used_ic_global_all) > 0:
-                                existing_ic_this = set()
-                                if not penempatan_pusat.empty and "IC" in penempatan_pusat.columns:
-                                    existing_ic_this = set(penempatan_pusat["IC"].astype(str).str.strip().tolist())
-                                used_other = used_ic_global_all - existing_ic_this
-                                calon_before = len(calon)
-                                calon = calon[~calon["IC"].astype(str).str.strip().isin(used_other)].copy()
-                                if calon_before != len(calon):
-                                    st.info(f"🔄 {len(used_other)} guru dah dilantik di pusat lain - di-exclude dari {pusat_pilih}, tinggal {len(calon)} calon berlainan untuk semua 43 pusat")
-                            # Exclude yang dah dilantik di pusat ni
+                            # FIX KASHAH: Semua 43 pusat petugas berlainan - konsep sama untuk semua!
+                            # 1. Exclude yang dah dilantik di pusat ni (BK001 sendiri)
+                            existing_ic_this = []
                             if not penempatan_pusat.empty and "IC" in penempatan_pusat.columns:
-                                ic_sedia = penempatan_pusat["IC"].astype(str).tolist()
-                                calon = calon[~calon["IC"].astype(str).isin(ic_sedia)]
+                                existing_ic_this = penempatan_pusat["IC"].astype(str).str.strip().tolist()
+                                calon = calon[~calon["IC"].astype(str).str.strip().isin(existing_ic_this)].copy()
+                            # 2. FIX UTAMA: Exclude yang dah dilantik di pusat LAIN (BK001 vs BK002 vs BK003... semua 43 pusat!)
+                            if not penempatan_all.empty and "IC" in penempatan_all.columns:
+                                used_ic_other = set(penempatan_all["IC"].astype(str).str.strip().tolist()) - set(existing_ic_this)
+                                calon_before = len(calon)
+                                calon = calon[~calon["IC"].astype(str).str.strip().isin(used_ic_other)].copy()
+                                if calon_before != len(calon):
+                                    st.warning(f"⚠️ {len(used_ic_other)} guru dah dilantik di pusat lain (BK001, BK002 etc) - di-exclude! Tinggal {len(calon)} calon berlainan untuk {pusat_pilih}")
                             if calon.empty:
                                 st.warning("Semua guru daerah ni dah dilantik di pusat ni atau tiada calon lain!")
                             else:
