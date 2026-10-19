@@ -644,6 +644,11 @@ with col_kanan:
                     pusat_to_nama[p] = p
         
         semua_pusat = sorted(list(set(semua_pusat)))
+        # FILTER 43 bukan 71
+        if not df_calon_master.empty and "NO_PUSAT" in df_calon_master.columns:
+            calon_set = set(df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]["NO_PUSAT"].astype(str).tolist())
+            if calon_set:
+                semua_pusat = sorted(list((set(semua_pusat) & calon_set) | calon_set))
         # FIX 43 bukan 71 - filter ikut pusat_2026.csv
         if not df_calon_master.empty and "NO_PUSAT" in df_calon_master.columns:
             calon_set = set(df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]["NO_PUSAT"].astype(str).tolist())
@@ -913,7 +918,11 @@ with col_kanan:
             with col_bulk2:
                 if st.button("🗑️ Kosongkan SEMUA Pusat Daerah Ini", use_container_width=True, key="reset_all"):
                     # Hanya kosongkan pusat daerah ini
-                    penempatan_all = penempatan_all[~penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)]
+                    # FIX KeyError - check column exists
+                    if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
+                        penempatan_all = penempatan_all[~penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)]
+                    else:
+                        penempatan_all = pd.DataFrame()
                     if write_sheet("penempatan_ppd", penempatan_all):
                         st.success(f"✅ Semua {len(semua_pusat)} pusat daerah {info['ppd_nama']} dikosongkan!")
                         st.rerun()
