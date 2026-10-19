@@ -973,6 +973,14 @@ with col_kanan:
                             st.error("Tiada cadangan guru untuk daerah ini! Isi Cadangan SUP dulu")
                         else:
                             calon = cadangan_ppd[cadangan_ppd["KOD SEKOLAH ASAL"].astype(str)!=str(kod_sek_pusat)].copy()
+                            # FIX KASHAH: BK001 & BK002 sekolah sama tapi pusat berlainan - petugas berlainan!
+                            # Exclude guru yang dah dilantik di pusat lain
+                            if not calon.empty and not penempatan_all.empty and "IC" in penempatan_all.columns:
+                                used_ic_all = set(penempatan_all["IC"].astype(str).tolist())
+                                calon_before = len(calon)
+                                calon = calon[~calon["IC"].astype(str).isin(used_ic_all)].copy()
+                                if calon_before != len(calon):
+                                    st.caption(f"ℹ️ {len(used_ic_all)} guru dah dilantik di pusat lain (BK001) - di-exclude dari cadangan {pusat_pilih} supaya petugas berlainan - tinggal {len(calon)} calon")
                             # Exclude yang dah dilantik di pusat ni
                             if not penempatan_pusat.empty and "IC" in penempatan_pusat.columns:
                                 ic_sedia = penempatan_pusat["IC"].astype(str).tolist()
