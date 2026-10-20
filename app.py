@@ -1227,6 +1227,9 @@ with col_kanan:
             
             with col_up:
                 st.markdown("#### 📤 Upload Tapak Excel")
+                st.caption("Upload Excel akan terus masuk ke Google Sheet `senarai_guru` & `cadangan_sup` ikut daerah. Sistem baca dari Google Sheet, bukan dari file upload.")
+                upload_terus_ppd = st.checkbox("☑️ Terus hantar ke PPD sebagai cadangan (auto tick)", value=True, key="check_terus_ppd")
+                st.caption("Jika tick ini, semua guru dalam Excel akan terus masuk ke Google Sheet cadangan SUP PPD. Jika tak tick, masuk master sahaja, kena tick manual.")
                 uploaded = st.file_uploader("Upload Excel Guru", type=["xlsx","csv"], key="upload_guru")
                 if uploaded:
                     try:
@@ -1248,12 +1251,13 @@ with col_kanan:
                             st.error("Excel mesti ada column NAMA GURU dan IC")
                         else:
                             baris_baru = []
+                            baris_cadangan_baru = []
                             for _, r in df_up.iterrows():
                                 nama = str(r.get("NAMA GURU","")).strip()
                                 ic = str(r.get("IC","")).strip()
                                 if not nama or not ic or ic.lower()=="nan":
                                     continue
-                                baris_baru.append({
+                                row_master = {
                                     "KOD SEKOLAH ASAL": info['kod_sekolah'],
                                     "NAMA SEKOLAH ASAL": info['nama'],
                                     "NAMA GURU": nama.upper(),
@@ -1268,7 +1272,27 @@ with col_kanan:
                                     "NO PUSAT ASAL": str(r.get("NO PUSAT ASAL","")).strip(),
                                     "STATUS GURU": "AKTIF",
                                     "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-                                })
+                                }
+                                baris_baru.append(row_master)
+                                # Untuk cadangan SUP PPD - terus masuk Google Sheet cadangan_sup ikut daerah
+                                row_cad = {
+                                    "KOD SEKOLAH ASAL": info['kod_sekolah'],
+                                    "NAMA SEKOLAH ASAL": info['nama'],
+                                    "NAMA GURU": nama.upper(),
+                                    "IC": ic,
+                                    "JANTINA": row_master["JANTINA"],
+                                    "POSKOD RUMAH": row_master["POSKOD RUMAH"],
+                                    "ALAMAT RUMAH": row_master["ALAMAT RUMAH"],
+                                    "NO TELEFON GURU": row_master["NO TELEFON GURU"],
+                                    "EMAIL GURU": row_master["EMAIL GURU"],
+                                    "JAWATAN CADANGAN": row_master["JAWATAN CADANGAN"],
+                                    "PENGALAMAN SPM": row_master["PENGALAMAN SPM"],
+                                    "NO PUSAT ASAL": row_master["NO PUSAT ASAL"],
+                                    "STATUS": "Upload Excel - Terus ke PPD" if upload_terus_ppd else "Upload Excel - Master sahaja",
+                                    "TARIKH CADANG": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }
+                                baris_cadangan_baru.append(row_cad)
+                            
                             def _upload_guru(df_old):
                                 if df_old.empty:
                                     return pd.DataFrame(baris_baru)
@@ -1278,8 +1302,28 @@ with col_kanan:
                                 mask_ic_sama = df_old["IC"].map(norm_ic).isin(ic_baru)
                                 df_old = df_old[~(mask_same_school & mask_ic_sama)]
                                 return pd.concat([df_old, pd.DataFrame(baris_baru)], ignore_index=True)
-                            if modify_sheet(TAB_GURU, _upload_guru):
-                                flash("success", f"✅ {len(baris_baru)} guru diupload ke master!")
+                            
+                            def _upload_cadangan(df_old):
+                                if not upload_terus_ppd:
+                                    return df_old
+                                if df_old.empty:
+                                    return pd.DataFrame(baris_cadangan_baru)
+                                df_old = df_old.copy()
+                                ic_baru = [norm_ic(b["IC"]) for b in baris_cadangan_baru]
+                                mask_same = (df_old["KOD SEKOLAH ASAL"].astype(str)==str(info['kod_sekolah'])) & (df_old["IC"].map(norm_ic).isin(ic_baru))
+                                df_old = df_old[~mask_same]
+                                return pd.concat([df_old, pd.DataFrame(baris_cadangan_baru)], ignore_index=True)
+                            
+                            ok1 = modify_sheet(TAB_GURU, _upload_guru)
+                            ok2 = True
+                            if upload_terus_ppd:
+                                ok2 = modify_sheet(TAB_CADANGAN, _upload_cadangan)
+                            
+                            if ok1 and ok2:
+                                if upload_terus_ppd:
+                                    flash("success", f"✅ {len(baris_baru)} guru diupload - Masuk Google Sheet senarai_guru & cadangan_sup {info['kod_ppd']}_{st.session_state.get('tahun_pilih',2026)} - PPD boleh terus baca dari Google Sheet!")
+                                else:
+                                    flash("success", f"✅ {len(baris_baru)} guru diupload ke master Google Sheet senarai_guru sahaja - Sila tick untuk hantar ke PPD")
                                 st.rerun()
                     except Exception as e:
                         st.error(f"Gagal upload: {e}")
