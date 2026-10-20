@@ -1,9 +1,10 @@
 """
 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN SELANGOR 2026
-FULL QWEN + SUPABASE LIVE - 100% KOD ASAL QWEN, CUMA GANTI GSHEET KE SUPABASE
-Base: Qwen_python_20261020_hoal6tldz.py (cache 300/3600, refresh, kuota kosong)
-Supabase: https://gnmaijhugkkvxejvsotk.supabase.co
-FIX UI: Buang login-box putih yang jadi bug dark mode
+OPTIMIZED VERSION (app-laju.py)
+- cache_data ttl=300 untuk _cached_read
+- cache_data ttl=3600 untuk load_mapping
+- Butang Refresh untuk clear cache
+- keperluan_pengawas TIDAK auto-load kuota_ppd (biar kosong)
 """
 import streamlit as st
 import pandas as pd
@@ -15,7 +16,6 @@ import threading
 from io import BytesIO
 try:
     from supabase import create_client
-    # keep gspread import for compatibility but not used
     import gspread
     from google.oauth2.service_account import Credentials
 except Exception:
@@ -23,20 +23,110 @@ except Exception:
     gspread = None
     Credentials = None
 
-st.set_page_config(page_title="Sistem Pelantikan Selangor 2026 LIVE", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Sistem Pelantikan Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
-[data-testid="stSidebar"] {display: none !important;}
+[data-testid="stSidebar"] {display: none !important;} /* Supabase LIVE */
 [data-testid="collapsedControl"] {display: none !important;}
 .big-title {text-align:center; font-size:30px; font-weight:bold; color:#0B5394;}
 .sub-title {text-align:center; font-size:14px; color:#666; margin-bottom:15px;}
-/* FIX DARK MODE: Jangan paksa background putih */
-.login-box {padding:20px; border-radius:12px; border:1px solid #c2d8ff;}
+.login-box {background:#f0f7ff; padding:20px; border-radius:12px; border:1px solid #c2d8ff;}
 .left-panel {background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0;}
 </style>
 """, unsafe_allow_html=True)
 
-# ========== SUPABASE CONFIG ==========
+@st.cache_data(ttl=3600)
+def load_mapping():
+    data_folder = "data"
+    candidates = []
+    if os.path.exists(data_folder):
+        for f in os.listdir(data_folder):
+            low = f.lower()
+            if "id" in low and "daerah" in low and (low.endswith(".xlsx") or low.endswith(".csv")):
+                candidates.append(os.path.join(data_folder, f))
+    best_df = pd.DataFrame()
+    best_file = ""
+    for path in candidates:
+        try:
+            if path.endswith(".xlsx"):
+                df = pd.read_excel(path)
+            else:
+                df = pd.read_csv(path)
+            if "PPD" in df.columns and len(df) > len(best_df):
+                best_df = df
+                best_file = path
+        except Exception as e:
+            continue
+    if not best_df.empty and len(best_df) > 10:
+        return best_df, best_file
+    standard_paths = [
+        "data/SENARAI_ID_SUP_BY_DAERAH.xlsx",
+        "data/SENARAI_ID-SUP_BY_DAERAH.xlsx",
+        "data/SENARAI_ID_SUP_BY_DAERAH.csv",
+        "/mnt/data/SENARAI_ID_SUP_BY_DAERAH.xlsx",
+        "/mnt/data/SENARAI_ID_SUP_BY_DAERAH.csv",
+    ]
+    for path in standard_paths:
+        try:
+            if os.path.exists(path):
+                if path.endswith(".xlsx"):
+                    df = pd.read_excel(path)
+                else:
+                    df = pd.read_csv(path)
+                if "PPD" in df.columns and len(df) > 10:
+                    return df, path
+        except Exception:
+            continue
+    try:
+        master_path = None
+        if os.path.exists("data"):
+            for f in os.listdir("data"):
+                if "506" in f and "calon" in f.lower():
+                    master_path = os.path.join("data", f)
+                    break
+        if not master_path:
+            master_path = "data/senarai_506_PLUS_calon2026_FINAL.xlsx"
+        df_master = pd.read_excel(master_path)
+        PPD_MAP = {"BA":"Klang","BB":"Kuala Langat","BC":"Kuala Selangor","BD":"Hulu Langat","BE":"Hulu Selangor","BF":"Sabak Bernam","BG":"Gombak","BH":"Petaling Perdana","BJ":"Sepang","BK":"Petaling Utama"}
+        order = ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]
+        schools = df_master.groupby("KOD SEKOLAH").first().reset_index()
+        schools["KOD PPD"] = schools["NO PUSAT"].str[:2]
+        id_mapping = []
+        current_id = 1
+        for kod in order:
+            subset = schools[schools["KOD PPD"]==kod].sort_values("KOD SEKOLAH")
+            for _, row in subset.iterrows():
+                bil_pusat = len(df_master[df_master["KOD SEKOLAH"]==row["KOD SEKOLAH"]])
+                senarai = ",".join(df_master[df_master["KOD SEKOLAH"]==row["KOD SEKOLAH"]]["NO PUSAT"].tolist())
+                id_mapping.append({
+                    "ID": current_id, "PASSWORD": str(current_id), "KOD SEKOLAH": row["KOD SEKOLAH"],
+                    "NAMA SEKOLAH": row["NAMA PUSAT"], "PPD": PPD_MAP.get(kod, kod), "KOD PPD": kod,
+                    "BIL PUSAT": bil_pusat, "SENARAI PUSAT": senarai
+                })
+                current_id += 1
+        return pd.DataFrame(id_mapping), f"Generated from {master_path} ({len(id_mapping)} sekolah)"
+    except Exception as e:
+        return pd.DataFrame([{"ID":354,"PASSWORD":"354","KOD SEKOLAH":"BEB8653","NAMA SEKOLAH":"SMJK KATHOLIK","PPD":"Petaling Utama","KOD PPD":"BK","BIL PUSAT":3,"SENARAI PUSAT":"BK009,BK010,BK011"}]), f"Fallback dummy error: {e}"
+
+mapping_df, file_used = load_mapping()
+
+@st.cache_data(ttl=3600)
+def load_pusat_calon():
+    for p in ["pusat_2026.csv", "data/pusat_2026.csv", "Pusat-SELANGOR-2026-FULL-GITHUB.csv", "data/Pusat-SELANGOR-2026-FULL-GITHUB.csv", "/mnt/data/pusat_2026.csv"]:
+        if os.path.exists(p):
+            try:
+                df = pd.read_csv(p) if p.endswith(".csv") else pd.read_excel(p)
+                if "NO_PUSAT" in df.columns and len(df) > 20:
+                    return df
+            except Exception:
+                pass
+    return pd.DataFrame()
+
+df_calon_master = load_pusat_calon()
+
+# ====== HELPER GSHEET & PENEMPATAN (mula) ======
+
+# ====== CONFIG SUPABASE LIVE - GANTI GSHEET ======
 SUPABASE_URL = "https://gnmaijhugkkvxejvsotk.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamh1Z2trdnhlanZzb3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0ODc4OTcsImV4cCI6MjEwODA2Mzg5N30.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
 try:
@@ -56,7 +146,7 @@ except:
 @st.cache_resource(ttl=300, show_spinner=False)
 def get_supabase():
     if create_client is None:
-        return None, "Library supabase belum install"
+        return None, "Library supabase belum install - tambah supabase dalam requirements.txt"
     try:
         client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
         return client, None
@@ -64,7 +154,6 @@ def get_supabase():
         return None, str(e)
 
 def get_gsheet():
-    # Compatibility wrapper: app lama panggil get_gsheet, kita redirect ke supabase
     supa, err = get_supabase()
     if supa is None:
         return None, None, err
@@ -78,6 +167,15 @@ def get_lock(name="*"):
     with k["master"]:
         return k["peta"].setdefault(name, threading.Lock())
 
+def _retry(fn, tries=3):
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception:
+            if i == tries-1:
+                raise
+            time.sleep(0.5*(i+1))
+
 def _df_from_rows(rows):
     if not rows:
         return pd.DataFrame()
@@ -85,16 +183,13 @@ def _df_from_rows(rows):
     for r in rows:
         if isinstance(r, dict):
             if "data" in r and isinstance(r["data"], dict) and r["data"]:
-                d=r["data"].copy()
-                out.append(d)
+                out.append(r["data"].copy())
             else:
                 r2={k:v for k,v in r.items() if k not in ["id","created_at","data"]}
-                for col in ["KOD_PPD","KOD_PPD","KOD PPD","NO_PUSAT_TUGAS","KOD_SEKOLAH","PPD","STATUS"]:
+                for col in ["KOD_PPD","NO_PUSAT_TUGAS","KOD_SEKOLAH","PPD","STATUS","KOD PPD","KOD SEKOLAH","NO PUSAT TUGAS"]:
                     if col in r and r[col]:
                         r2[col]=r[col]
                 out.append(r2)
-        else:
-            out.append(r)
     return pd.DataFrame(out)
 
 def tab_tahun(base, tahun=None):
@@ -112,15 +207,6 @@ def tab_daerah(base, kod, tahun=None):
         except:
             tahun = 2026
     return f"{base}_{tahun}_{kod}" if kod else tab_tahun(base, tahun)
-
-def _retry(fn, tries=3):
-    for i in range(tries):
-        try:
-            return fn()
-        except Exception:
-            if i == tries-1:
-                raise
-            time.sleep(0.5*(i+1))
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _cached_read(name):
@@ -152,7 +238,7 @@ def _cached_read(name):
             q=q.eq("KOD_PPD", filter_ppd)
         res=q.execute()
         return _df_from_rows(res.data)
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 def read_sheet_strict(name):
@@ -173,7 +259,6 @@ def read_sheet(name):
                         return df_old
                 except:
                     pass
-        # fallback tanpa tahun
         if "_2026" in name or "_2025" in name:
             base_fallback=name.replace("_2026","").replace("_2025","")
             try:
@@ -183,7 +268,7 @@ def read_sheet(name):
             except:
                 pass
         return df
-    except Exception as e:
+    except Exception:
         try:
             if " " in name:
                 parts = name.rsplit(" ", 1)
@@ -257,7 +342,6 @@ def _tulis_supabase(name, df):
                 break
     if base_name not in allowed:
         base_name="penempatan_ppd"
-
     if base_name=="status_hantar":
         for _, row in df.iterrows():
             rd=row.to_dict()
@@ -311,7 +395,7 @@ def modify_sheet(name, modifier):
     read_semua_daerah.clear()
     return True
 
-# ===== START ORIGINAL QWEN LOGIC AFTER THIS (COPY PASTE FROM LINE 275 ONWARDS) =====
+
 def flash(level, msg):
     st.session_state.setdefault("_flash", []).append((level, msg))
 
@@ -1191,7 +1275,7 @@ def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
 # Debug info
-st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
+# # st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
 PPD_LIST = [
     ("1", "a", "Klang", "BA"), ("2", "b", "Kuala Langat", "BB"),
     ("3", "c", "Kuala Selangor", "BC"), ("4", "d", "Hulu Langat", "BD"),
@@ -1287,7 +1371,6 @@ if not st.session_state.logged_in:
                                     st.rerun()
                                 else:
                                     st.error(f"Password salah")
-
         with st.expander("ℹ️ Di mana update data?"):
             st.markdown(f"""
             **File yang sedang guna:** `{file_used}` - {len(mapping_df)} sekolah
