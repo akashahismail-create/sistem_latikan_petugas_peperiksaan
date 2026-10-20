@@ -1190,8 +1190,6 @@ def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama
 
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
-# Debug info
-st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
 PPD_LIST = [
     ("1", "a", "Klang", "BA"), ("2", "b", "Kuala Langat", "BB"),
     ("3", "c", "Kuala Selangor", "BC"), ("4", "d", "Hulu Langat", "BD"),
@@ -1207,13 +1205,7 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     st.markdown('<div class="big-title">📚 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN</div>', unsafe_allow_html=True)
     st.markdown('<div class="big-title" style="font-size:22px;">SELANGOR 2026</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sub-title">{len(mapping_df)} Sekolah Termasuk Persendirian • File: {os.path.basename(file_used)} <br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
-    with st.expander(f"🔍 Debug Data - File guna: {file_used} - {len(mapping_df)} sekolah", expanded=False):
-        st.write(f"File yang dibaca: {file_used}")
-        st.write(f"Jumlah sekolah: {len(mapping_df)}")
-        if not mapping_df.empty:
-            st.write("Daerah yang ada:", mapping_df["PPD"].value_counts().to_dict())
-            st.dataframe(mapping_df.head(10))
+    st.markdown(f'<div class="sub-title">SPM 2026 • Supabase LIVE • 10 PPD Selangor <br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
     left, center, right = st.columns([1,2,1])
     with center:
         with st.container(border=True):
