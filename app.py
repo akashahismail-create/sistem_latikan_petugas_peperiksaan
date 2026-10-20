@@ -1,9 +1,11 @@
 """
 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN SELANGOR 2026
-FIX FINAL - Baca apa saja nama file ID DAERAH, tak kisah - atau _ , besar kecil huruf
-Total 369 sekolah
+OPTIMIZED VERSION (app-laju.py)
+- cache_data ttl=300 untuk _cached_read
+- cache_data ttl=3600 untuk load_mapping
+- Butang Refresh untuk clear cache
+- keperluan_pengawas TIDAK auto-load kuota_ppd (biar kosong)
 """
-
 import streamlit as st
 import pandas as pd
 import os
@@ -12,30 +14,27 @@ import re
 import time
 import threading
 from io import BytesIO
-
 try:
     import gspread
     from google.oauth2.service_account import Credentials
-except Exception:  # library belum dipasang - app tetap boleh buka
+except Exception:
     gspread = None
     Credentials = None
 
 st.set_page_config(page_title="Sistem Pelantikan Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
-
 st.markdown("""
 <style>
-    [data-testid="stSidebar"] {display: none !important;}
-    [data-testid="collapsedControl"] {display: none !important;}
-    .big-title {text-align:center; font-size:30px; font-weight:bold; color:#0B5394;}
-    .sub-title {text-align:center; font-size:14px; color:#666; margin-bottom:15px;}
-    .login-box {background:#f0f7ff; padding:20px; border-radius:12px; border:1px solid #c2d8ff;}
-    .left-panel {background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0;}
+[data-testid="stSidebar"] {display: none !important;}
+[data-testid="collapsedControl"] {display: none !important;}
+.big-title {text-align:center; font-size:30px; font-weight:bold; color:#0B5394;}
+.sub-title {text-align:center; font-size:14px; color:#666; margin-bottom:15px;}
+.login-box {background:#f0f7ff; padding:20px; border-radius:12px; border:1px solid #c2d8ff;}
+.left-panel {background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0;}
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_mapping():
-    # Cara baru: scan semua file dalam data/ yang ada ID dan DAERAH, tak kisah nama
     data_folder = "data"
     candidates = []
     if os.path.exists(data_folder):
@@ -43,8 +42,6 @@ def load_mapping():
             low = f.lower()
             if "id" in low and "daerah" in low and (low.endswith(".xlsx") or low.endswith(".csv")):
                 candidates.append(os.path.join(data_folder, f))
-    
-    # Cuba baca semua candidate, ambil yang paling banyak row
     best_df = pd.DataFrame()
     best_file = ""
     for path in candidates:
@@ -53,17 +50,13 @@ def load_mapping():
                 df = pd.read_excel(path)
             else:
                 df = pd.read_csv(path)
-            # Check ada column PPD
             if "PPD" in df.columns and len(df) > len(best_df):
                 best_df = df
                 best_file = path
         except Exception as e:
             continue
-    
     if not best_df.empty and len(best_df) > 10:
         return best_df, best_file
-    
-    # Fallback: cuba nama standard
     standard_paths = [
         "data/SENARAI_ID_SUP_BY_DAERAH.xlsx",
         "data/SENARAI_ID-SUP_BY_DAERAH.xlsx",
@@ -82,20 +75,15 @@ def load_mapping():
                     return df, path
         except Exception:
             continue
-    
-    # Last fallback: generate dari master 506
     try:
         master_path = None
-        for p in ["data/senarai_506_PLUS_calon2026_FINAL.xlsx", "data/senarai_506_PLUS_calon2026_FINAL.xlsx".lower(), "/mnt/data/senarai_506_PLUS_calon2026_FINAL.xlsx"]:
-            # case insensitive search
-            if os.path.exists("data"):
-                for f in os.listdir("data"):
-                    if "506" in f and "calon" in f.lower():
-                        master_path = os.path.join("data", f)
-                        break
+        if os.path.exists("data"):
+            for f in os.listdir("data"):
+                if "506" in f and "calon" in f.lower():
+                    master_path = os.path.join("data", f)
+                    break
         if not master_path:
             master_path = "data/senarai_506_PLUS_calon2026_FINAL.xlsx"
-        
         df_master = pd.read_excel(master_path)
         PPD_MAP = {"BA":"Klang","BB":"Kuala Langat","BC":"Kuala Selangor","BD":"Hulu Langat","BE":"Hulu Selangor","BF":"Sabak Bernam","BG":"Gombak","BH":"Petaling Perdana","BJ":"Sepang","BK":"Petaling Utama"}
         order = ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]
@@ -120,13 +108,13 @@ def load_mapping():
 
 mapping_df, file_used = load_mapping()
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_pusat_calon():
     for p in ["pusat_2026.csv", "data/pusat_2026.csv", "Pusat-SELANGOR-2026-FULL-GITHUB.csv", "data/Pusat-SELANGOR-2026-FULL-GITHUB.csv", "/mnt/data/pusat_2026.csv"]:
         if os.path.exists(p):
             try:
                 df = pd.read_csv(p) if p.endswith(".csv") else pd.read_excel(p)
-                if "NO_PUSAT" in df.columns and len(df)>20:
+                if "NO_PUSAT" in df.columns and len(df) > 20:
                     return df
             except Exception:
                 pass
@@ -134,13 +122,11 @@ def load_pusat_calon():
 
 df_calon_master = load_pusat_calon()
 
-# ====== HELPER GSHEET & PENEMPATAN (mula) ======
+====== HELPER GSHEET & PENEMPATAN (mula) ======
 GS_SPREADSHEET_ID_DEFAULT = "1dweem4yw6nKlo1wy5PA264prHEHpLoBPSu89jRFi484"
-
 
 @st.cache_resource(ttl=300, show_spinner=False)
 def get_gsheet():
-    """Sambung ke Google Sheet sekali sahaja. Pulang (client, spreadsheet_id, ralat)."""
     if gspread is None:
         return None, None, "Library gspread/google-auth belum dipasang (pip install gspread google-auth)"
     try:
@@ -153,30 +139,24 @@ def get_gsheet():
                 sid = GS_SPREADSHEET_ID_DEFAULT
         creds_dict = dict(st.secrets["gcp_service_account"])
         pk = creds_dict.get("private_key", "")
-        if "\\n" in pk:
-            creds_dict["private_key"] = pk.replace("\\n", "\n")
+        if "\n" in pk:
+            creds_dict["private_key"] = pk.replace("\n", "\n")
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(creds), sid, None
     except Exception as e:
         return None, None, str(e)
 
-
 @st.cache_resource(show_spinner=False)
 def _peta_kunci():
     return {"master": threading.Lock(), "peta": {}}
 
-
 def get_lock(name="*"):
-    """Satu kunci SETIAP tab - elak 2 orang tulis tab yang sama serentak.
-    Daerah berbeza guna tab berbeza, jadi tak perlu tunggu satu sama lain."""
     k = _peta_kunci()
     with k["master"]:
         return k["peta"].setdefault(name, threading.Lock())
 
-
 def _retry(fn, tries=3):
-    """Cuba semula bila Google beri ralat sementara (kuota / rangkaian)."""
     for i in range(tries):
         try:
             return fn()
@@ -185,9 +165,7 @@ def _retry(fn, tries=3):
                 raise
             time.sleep(1.5 * (i + 1))
 
-
 def read_sheet_strict(name):
-    """Baca sheet. Kalau GAGAL -> timbul ralat (JANGAN pulang kosong). Sheet tak wujud -> DataFrame kosong."""
     client, sid, err = get_gsheet()
     if client is None:
         raise RuntimeError(f"Google Sheet tidak connect: {err}")
@@ -199,20 +177,17 @@ def read_sheet_strict(name):
     records = _retry(lambda: ws.get_all_records(numericise_ignore=["all"]))
     return pd.DataFrame(records)
 
-
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def _cached_read(name):
     return read_sheet_strict(name)
 
-
 def read_sheet(name):
-    """Baca sheet dengan fallback ke format lama tanpa tahun jika sheet tahun kosong."""
     try:
         df = read_sheet_strict(name)
         if not df.empty:
             return df
-        if "_" in name:
-            parts = name.rsplit("_", 1)
+        if " " in name:
+            parts = name.rsplit(" ", 1)
             if parts[1].isdigit() and len(parts[1])==4:
                 fallback_name = parts[0]
                 try:
@@ -224,8 +199,8 @@ def read_sheet(name):
         return df
     except Exception as e:
         try:
-            if "_" in name:
-                parts = name.rsplit("_", 1)
+            if " " in name:
+                parts = name.rsplit(" ", 1)
                 if parts[1].isdigit() and len(parts[1])==4:
                     fallback_name = parts[0]
                     return read_sheet_strict(fallback_name)
@@ -245,8 +220,6 @@ def read_sheet_tahun(base, kod_or_none=None, tahun=None):
         name = tab_tahun(base, tahun)
     return read_sheet(name)
 
-
-
 def _cell(v):
     if v is None:
         return ""
@@ -261,9 +234,7 @@ def _cell(v):
         return str(v)
     return v
 
-
 def _tulis_sheet(name, df):
-    """Tulis df ke sheet TANPA clear dulu: tulis data baru, baru buang baki baris lebihan."""
     if len(df.columns) == 0:
         return
     client, sid, err = get_gsheet()
@@ -285,12 +256,7 @@ def _tulis_sheet(name, df):
         akhir = gspread.utils.rowcol_to_a1(ws.row_count, ws.col_count)
         _retry(lambda: ws.batch_clear([f"A{n_rows + 1}:{akhir}"]))
 
-
 def modify_sheet(name, modifier):
-    """Cara SELAMAT ubah data: baca segar -> modifier(df) -> tulis, dalam satu kunci.
-    - Kalau bacaan gagal, TIADA apa ditulis (data lama selamat).
-    - modifier boleh `raise ValueError("mesej")` untuk batalkan; pulang None = tiada perubahan.
-    Pulang True kalau berjaya."""
     try:
         with get_lock(name):
             df = read_sheet_strict(name)
@@ -306,25 +272,18 @@ def modify_sheet(name, modifier):
     _cached_read.clear()
     return True
 
-
 def flash(level, msg):
-    """Simpan mesej supaya masih nampak selepas st.rerun()."""
     st.session_state.setdefault("_flash", []).append((level, msg))
-
 
 def show_flash():
     for level, msg in st.session_state.pop("_flash", []):
         getattr(st, level)(msg)
 
-
 def norm_ic(x):
-    """Samakan format IC (buang '-', tambah sifar depan) supaya perbandingan tepat."""
     d = re.sub(r"\D", "", str(x))
     return d.zfill(12) if d else ""
 
-
 def keperluan_asal(pusat, df_calon):
-    """Data asal ikut formula - tidak diubah. Pulang (petugas_needed, kelas, calon)."""
     petugas = 10
     kelas = 0
     calon = 0
@@ -349,21 +308,17 @@ def keperluan_asal(pusat, df_calon):
     return petugas, kelas, calon
 
 def keperluan_pengawas(pusat, df_calon, df_kuota=None):
-    """Bilangan Pengawas FINAL - check kuota_ppd dulu, kalau PPD edit guna yang edit, kalau tak guna asal."""
-    # Auto load kuota jika tidak diberi (supaya semua fungsi auto berubah bila PPD edit)
+    # OPTIMIZED: JANGAN auto-load kuota_ppd. Biar kosong.
+    # PPD yang nak edit kuota, kena pass df_kuota sendiri.
     if df_kuota is None:
-        try:
-            df_kuota = read_sheet("kuota_ppd")
-        except:
-            df_kuota = pd.DataFrame()
-    # 1. Check kuota override dari PPD
+        df_kuota = pd.DataFrame()
     if df_kuota is not None and not df_kuota.empty and "NO PUSAT" in df_kuota.columns:
         r = df_kuota[df_kuota["NO PUSAT"].astype(str) == str(pusat)]
         if not r.empty:
             last = r.iloc[-1]
             try:
                 for col in ["KEPERLUAN EDIT", "KEPERLUAN_PENGAWAS", "JUMLAH_PENGAWAS", "PETUGAS_EDIT", "KEPERLUAN AKHIR"]:
-                    if col in df_kuota.columns and str(last.get(col,"")).strip() != "" and str(last.get(col)).lower()!="nan":
+                    if col in df_kuota.columns and str(last.get(col, "")).strip() != "" and str(last.get(col)).lower() != "nan":
                         return int(float(str(last.get(col)).strip()))
             except:
                 pass
@@ -371,12 +326,9 @@ def keperluan_pengawas(pusat, df_calon, df_kuota=None):
     return asal
 
 def get_kuota_info(pusat, df_calon, df_kuota=None):
-    """Untuk paparan: asal vs edit vs formula"""
+    # OPTIMIZED: JANGAN auto-load kuota_ppd. Biar kosong.
     if df_kuota is None:
-        try:
-            df_kuota = read_sheet("kuota_ppd")
-        except:
-            df_kuota = pd.DataFrame()
+        df_kuota = pd.DataFrame()
     asal, kelas, calon = keperluan_asal(pusat, df_calon)
     formula = (kelas + 10) if kelas else asal
     edit = None
@@ -390,30 +342,27 @@ def get_kuota_info(pusat, df_calon, df_kuota=None):
             for col in ["KEPERLUAN EDIT", "KEPERLUAN_PENGAWAS", "JUMLAH_PENGAWAS", "PETUGAS_EDIT", "KEPERLUAN AKHIR"]:
                 if col in df_kuota.columns:
                     try:
-                        v = str(last.get(col,"")).strip()
-                        if v and v.lower()!="nan":
+                        v = str(last.get(col, "")).strip()
+                        if v and v.lower() != "nan":
                             edit = int(float(v))
                             break
                     except: pass
             for col in ["CATATAN", "ALASAN", "NOTA"]:
                 if col in df_kuota.columns:
-                    catatan = str(last.get(col,"") or "")
+                    catatan = str(last.get(col, "") or "")
                     break
             for col in ["TARIKH EDIT", "TARIKH"]:
                 if col in df_kuota.columns:
-                    tarikh_edit = str(last.get(col,"") or "")
+                    tarikh_edit = str(last.get(col, "") or "")
                     break
             for col in ["EDIT OLEH", "PPD"]:
                 if col in df_kuota.columns:
-                    edited_by = str(last.get(col,"") or "")
+                    edited_by = str(last.get(col, "") or "")
                     break
     final = edit if edit is not None else asal
     return {"asal": asal, "kelas": kelas, "calon": calon, "formula": formula, "edit": edit, "final": final, "catatan": catatan, "tarikh": tarikh_edit, "oleh": edited_by}
 
-
-
 def jawatan_kosong(need_peng, jawatan_sedia):
-    """Jawatan yang masih kosong: 1 Ketua + 1 Timbalan + need_peng Pengawas."""
     sasaran = {"Ketua Pengawas": 1, "Timbalan Ketua Pengawas": 1, "Pengawas Peperiksaan": need_peng}
     sedia = [str(j).strip() for j in jawatan_sedia]
     hasil = []
@@ -421,16 +370,13 @@ def jawatan_kosong(need_peng, jawatan_sedia):
         hasil += [jaw] * max(0, bil - sedia.count(jaw))
     return hasil
 
-
 def _kunci_nama(nama, kod):
     n = re.sub(r"\s+", " ", str(nama)).strip().upper()
     if not n or n == "NAN":
         return ""
     return f"{n}|{str(kod).strip().upper()}"
 
-
 def kunci_guru(ic, nama, kod_sekolah):
-    """Kunci pengenalan seorang guru: IC, DAN nama+kod sekolah. Padan salah satu = guru yang sama."""
     ks = []
     i = norm_ic(ic)
     if i:
@@ -440,10 +386,7 @@ def kunci_guru(ic, nama, kod_sekolah):
         ks.append("NS:" + nk)
     return ks
 
-
 def peta_guru_pusat(df_pen, df_simp=None):
-    """{kunci_guru: NO PUSAT} untuk guru yang sudah dilantik. Guru dalam senarai simpanan
-    ditanda 'SIMPANAN' (dianggap tak tersedia untuk jana auto / lantik biasa)."""
     peta = {}
     if df_pen is not None and not df_pen.empty and "NO PUSAT TUGAS" in df_pen.columns:
         for _, r in df_pen.iterrows():
@@ -455,31 +398,21 @@ def peta_guru_pusat(df_pen, df_simp=None):
                 peta.setdefault(k, "SIMPANAN")
     return peta
 
-
 def huraian_pusat(p_):
     return "senarai Petugas Simpanan" if p_ == "SIMPANAN" else f"pusat {p_}"
 
-
 def pusat_guru(peta, ic, nama, kod_sekolah):
-    """Pulang NO PUSAT kalau guru ini sudah dilantik di mana-mana pusat, selain itu None."""
     for k in kunci_guru(ic, nama, kod_sekolah):
         if k in peta:
             return peta[k]
     return None
 
-
 def jana_penempatan(pusat_list, penempatan_df, cadangan_df, pusat_to_sekolah, pusat_to_nama, df_calon, label_status, simpanan_df=None):
-    """Satu logik untuk jana 1 pusat ATAU semua pusat.
-    Peraturan: setiap pusat orang BERBEZA (padan IC / nama+sekolah); guru sekolah tuan rumah tak jaga
-    pusat sendiri; calon tak cukup -> jawatan dibiar kosong & dilaporkan (tiada guru diulang).
-    Pulang (baris_baru, senarai_kurang[(pusat, bil_kurang)])."""
     ada_pen = (not penempatan_df.empty) and ("NO PUSAT TUGAS" in penempatan_df.columns)
     peta = peta_guru_pusat(penempatan_df, simpanan_df)
-
     cad = cadangan_df.copy()
     cad["_IC"] = cad["IC"].map(norm_ic)
     cad = cad[cad["_IC"] != ""]
-    # buang calon berulang dalam senarai cadangan sendiri (IC sama / nama+sekolah sama)
     lihat, baris_unik = set(), []
     for idx, g in cad.iterrows():
         ks = kunci_guru(g.get("IC", ""), g.get("NAMA GURU", ""), g.get("KOD SEKOLAH ASAL", ""))
@@ -488,7 +421,6 @@ def jana_penempatan(pusat_list, penempatan_df, cadangan_df, pusat_to_sekolah, pu
         lihat.update(ks)
         baris_unik.append(idx)
     cad = cad.loc[baris_unik]
-
     rows, kurang = [], []
     for p in pusat_list:
         p = str(p)
@@ -531,11 +463,7 @@ def jana_penempatan(pusat_list, penempatan_df, cadangan_df, pusat_to_sekolah, pu
                 peta[k] = p
     return rows, kurang
 
-
 def bersihkan_duplikasi(df_pen, pusat_ppd):
-    """Cari guru yang dilantik di lebih daripada satu pusat (padan IC ATAU nama+sekolah).
-    Rekod PERTAMA (ikut susunan sheet, mis. BK001 dulu) dikekalkan; yang lain dibuang.
-    Pulang (df_baru, laporan[dict])."""
     if df_pen is None or df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns:
         return df_pen, []
     pset = {str(p) for p in pusat_ppd}
@@ -557,19 +485,15 @@ def bersihkan_duplikasi(df_pen, pusat_ppd):
     if not buang:
         return df_pen, []
     return df_pen.drop(index=buang).reset_index(drop=True), laporan
+
 def sah_telefon(t):
-    """No telefon: 9-12 digit (abaikan '-' dan jarak)."""
     return 9 <= len(re.sub(r"\D", "", str(t))) <= 12
 
-
 def sah_email(e):
-    """Email boleh kosong; kalau diisi mesti format betul."""
     e = str(e).strip()
     return e == "" or re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e) is not None
 
-
 def normalkan_cadangan(df):
-    """Samakan lajur lama 'JAWATAN CADANG' dengan header sheet 'JAWATAN CADANGAN'."""
     if "JAWATAN CADANG" not in df.columns:
         return df
     df = df.copy()
@@ -579,9 +503,7 @@ def normalkan_cadangan(df):
         return df.drop(columns=["JAWATAN CADANG"])
     return df.rename(columns={"JAWATAN CADANG": "JAWATAN CADANGAN"})
 
-
 def tab_daerah(base, kod_ppd, tahun=None):
-    """Nama tab ikut daerah + tahun, contoh tab_daerah('cadangan_sup','BK',2026) -> 'cadangan_sup_BK_2026'."""
     if tahun is None:
         try:
             tahun = st.session_state.get("tahun_pilih", 2026)
@@ -602,9 +524,7 @@ def tab_tahun(base, tahun=None):
             tahun = 2026
     return f"{base}_{tahun}"
 
-
 def read_semua_daerah(base, tahun=None):
-    """Gabung tab 10 daerah ikut tahun (untuk JPN sahaja)."""
     if tahun is None:
         try:
             tahun = st.session_state.get("tahun_pilih", 2026)
@@ -621,24 +541,15 @@ def read_semua_daerah(base, tahun=None):
             bahagian.append(d)
     return pd.concat(bahagian, ignore_index=True) if bahagian else pd.DataFrame()
 
-
 def pecah_data_lama(mapping_df, jeda=4):
-    """Salin data dalam tab lama (satu tab untuk semua daerah) ke tab setiap daerah.
-    - Tab lama TIDAK diubah / dipadam.
-    - Baris yang sudah ada dalam tab daerah dilangkau, jadi selamat dijalankan berulang kali.
-    - Baris yang kod sekolahnya tiada dalam senarai dilaporkan dan dibiar di tab lama."""
     peta_sek = dict(zip(mapping_df["KOD SEKOLAH"].astype(str), mapping_df["KOD PPD"].astype(str)))
-
     def k_mak(r):
         return str(r.get("KOD SEKOLAH", "")).strip()
-
     def k_cad(r):
         return (kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", "")) or [""])[0]
-
     def k_pen(r):
         k = (kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL GURU", "")) or [""])[0]
         return str(r.get("NO PUSAT TUGAS", "")).strip() + "|" + k
-
     senarai = [("maklumat_sekolah", "KOD SEKOLAH", k_mak),
                ("cadangan_sup", "KOD SEKOLAH ASAL", k_cad),
                ("penempatan_ppd", "KOD SEKOLAH ASAL GURU", k_pen)]
@@ -661,7 +572,6 @@ def pecah_data_lama(mapping_df, jeda=4):
         for kod, grp in lama.dropna(subset=["_PPD"]).groupby("_PPD"):
             baru = grp.drop(columns=["_PPD"]).reset_index(drop=True)
             kiraan = {"n": 0}
-
             def _gabung(df, baru=baru, kunci=kunci, kiraan=kiraan):
                 if df.empty:
                     kiraan["n"] = len(baru)
@@ -672,7 +582,6 @@ def pecah_data_lama(mapping_df, jeda=4):
                 if tambah.empty:
                     return None
                 return pd.concat([df, tambah], ignore_index=True)
-
             ok = modify_sheet(tab_daerah(base, kod), _gabung)
             if not ok:
                 status = "GAGAL - jalankan semula"
@@ -681,11 +590,10 @@ def pecah_data_lama(mapping_df, jeda=4):
             else:
                 status = "Disalin"
             laporan.append({"TAB LAMA": base, "DAERAH": kod, "BARIS": kiraan["n"], "STATUS": status})
-            time.sleep(jeda)   # elak had kuota Google (60 permintaan/min)
+            time.sleep(jeda)
     return laporan
 
-
-# ====== SENARAI GURU & MUAT NAIK / MUAT TURUN (mula) ======
+====== SENARAI GURU & MUAT NAIK / MUAT TURUN (mula) ======
 JAWATAN_CADANGAN_SAH = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Pengemas Bilik", "Penyelia Kawasan"]
 JAWATAN_LAZIM = "Pengawas Peperiksaan"
 LAJUR_GURU = ["KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "NAMA GURU", "IC", "JANTINA", "POSKOD RUMAH", "ALAMAT RUMAH",
@@ -706,9 +614,7 @@ _ALIAS_LAJUR = {
 }
 MAKS_BARIS_MUAT_NAIK = 1000
 
-
 def _teks(v):
-    """Nilai sel -> teks bersih (NaN -> '', 900101.0 -> '900101')."""
     if v is None:
         return ""
     try:
@@ -721,20 +627,15 @@ def _teks(v):
         s = s[:-2]
     return s
 
-
 def _bersih_teks(s):
-    """Rapikan jarak & buang aksara pembuka formula (=, +, -, @) supaya selamat bila dibuka dalam Excel."""
     s = re.sub(r"\s+", " ", _teks(s)).strip()
-    return s.lstrip("=+-@ ").strip() if s[:1] in ("=", "+", "-", "@") else s
-
+    return s.lstrip("=+-@").strip() if s[:1] in ("=", "+", "-", "@") else s
 
 def format_ic(x):
     d = re.sub(r"\D", "", str(x)).zfill(12)
     return f"{d[:6]}-{d[6:8]}-{d[8:]}"
 
-
 def norm_telefon(t):
-    """012-345 6789 / 1234567890 / +60123456789 -> 0123456789 (Excel selalu buang sifar depan)."""
     d = re.sub(r"\D", "", str(t))
     if not d:
         return ""
@@ -743,7 +644,6 @@ def norm_telefon(t):
     elif not d.startswith("0"):
         d = "0" + d
     return d
-
 
 def _ke_int(v, lalai=None):
     s = _teks(v)
@@ -754,9 +654,7 @@ def _ke_int(v, lalai=None):
     except ValueError:
         return None
 
-
 def validasi_guru(nama, ic, alamat, tel, email):
-    """Pulang mesej ralat (str) atau '' kalau semua sah. Sama dengan peraturan borang Cadangan Petugas."""
     d = re.sub(r"\D", "", str(ic))
     if not str(nama).strip() or not str(ic).strip():
         return "Nama Guru dan IC wajib isi!"
@@ -770,9 +668,7 @@ def validasi_guru(nama, ic, alamat, tel, email):
         return "Format Email Guru tidak betul (contoh: nama@moe.gov.my) atau biarkan kosong."
     return ""
 
-
 def kekurangan_guru(r):
-    """Senarai maklumat yang tak lengkap untuk seorang guru (untuk semak sebelum hantar)."""
     k = []
     if not _teks(r.get("NAMA GURU", "")):
         k.append("nama")
@@ -784,9 +680,7 @@ def kekurangan_guru(r):
         k.append("telefon")
     return k
 
-
 def baca_fail_guru(fail):
-    """Baca fail muat naik (.xlsx / .csv) sebagai DataFrame teks."""
     nama = str(getattr(fail, "name", "")).lower()
     if nama.endswith(".csv"):
         try:
@@ -800,10 +694,7 @@ def baca_fail_guru(fail):
         return xl.parse(helaian, dtype=str).fillna("")
     raise ValueError("Format fail tidak disokong. Guna .xlsx (templat) atau .csv")
 
-
 def proses_muat_naik(df_up, kod_sekolah, nama_sekolah, senarai_pusat):
-    """Semak fail muat naik baris demi baris. Pulang (df_sah[LAJUR_GURU], ralat[list dict]).
-    Baris bermasalah TIDAK dimasukkan; baris sah boleh terus diimport."""
     df = df_up.copy()
     df.columns = [re.sub(r"\s+", " ", str(c)).strip().upper() for c in df.columns]
     peta = {}
@@ -818,19 +709,18 @@ def proses_muat_naik(df_up, kod_sekolah, nama_sekolah, senarai_pusat):
         raise ValueError("Lajur wajib tiada dalam fail: " + ", ".join(hilang) + ". Sila guna templat Excel yang dimuat turun.")
     if len(df) > MAKS_BARIS_MUAT_NAIK:
         raise ValueError(f"Fail terlalu besar ({len(df)} baris). Maksimum {MAKS_BARIS_MUAT_NAIK} baris.")
-
     pusat_sah = [str(p).upper() for p in (senarai_pusat or [])]
     jaw_peta = {j.upper(): j for j in JAWATAN_CADANGAN_SAH}
     jaw_peta.update({"PENGAWAS": "Pengawas Peperiksaan", "KP": "Ketua Pengawas", "TKP": "Timbalan Ketua Pengawas"})
     baik, ralat, lihat = [], [], {}
     for i, (_, r) in enumerate(df.iterrows()):
-        no = i + 2   # baris 1 = tajuk
+        no = i + 2
         ambil = lambda k: _teks(r[peta[k]]) if k in peta else ""
         nama, ic_raw, jan_raw = _bersih_teks(ambil("NAMA GURU")), ambil("IC"), ambil("JANTINA")
         alamat, tel_raw, email = _bersih_teks(ambil("ALAMAT RUMAH")), ambil("NO TELEFON GURU"), ambil("EMAIL GURU").lower()
         pos_raw, peng_raw, pusat_raw, jaw_raw = ambil("POSKOD RUMAH"), ambil("PENGALAMAN SPM"), ambil("NO PUSAT ASAL"), ambil("JAWATAN CADANGAN")
         if not any([nama, ic_raw, alamat, tel_raw, email, pos_raw, jan_raw]):
-            continue   # baris kosong
+            continue
         m = []
         if not nama:
             m.append("nama kosong")
@@ -880,10 +770,7 @@ def proses_muat_naik(df_up, kod_sekolah, nama_sekolah, senarai_pusat):
                      "EMAIL GURU": email, "PENGALAMAN SPM": int(peng), "NO PUSAT ASAL": pusat, "JAWATAN CADANGAN": jaw})
     return pd.DataFrame(baik, columns=LAJUR_GURU), ralat
 
-
 def gabung_guru_sekolah(df_roster, df_baru, kod_sekolah, nama_sekolah):
-    """Masukkan / kemaskini guru dalam Senarai Guru (padan IC dalam sekolah SAMA sahaja).
-    Tidak pernah memadam sesiapa. Pulang (df, bil_baru, bil_kemaskini)."""
     kod = str(kod_sekolah)
     baru = df_baru.copy()
     for c in LAJUR_GURU:
@@ -914,9 +801,9 @@ def gabung_guru_sekolah(df_roster, df_baru, kod_sekolah, nama_sekolah):
             for c in LAJUR_GURU:
                 v = g[c]
                 if c == "JAWATAN CADANGAN" and not _teks(v):
-                    continue   # kekalkan jawatan sedia ada kalau fail tak tulis
+                    continue
                 df.at[ada[k], c] = v
-            n_kemaskini += 1
+                n_kemaskini += 1
         else:
             r = {c: g[c] for c in LAJUR_GURU}
             if not _teks(r["JAWATAN CADANGAN"]):
@@ -927,17 +814,12 @@ def gabung_guru_sekolah(df_roster, df_baru, kod_sekolah, nama_sekolah):
         df = pd.concat([df, pd.DataFrame(tambah)], ignore_index=True)
     return df, n_baru, n_kemaskini
 
-
 def senarai_guru_sekolah(df_roster, df_cad, kod_sekolah):
-    """Semua guru sekolah ini: Senarai Guru + (cadangan lama yang belum ada dalam senarai).
-    Lajur CADANGAN = True kalau guru itu sudah dihantar sebagai cadangan."""
     kod = str(kod_sekolah)
-
     def milik(df):
         if df is None or df.empty or "IC" not in df.columns or "KOD SEKOLAH ASAL" not in df.columns:
             return pd.DataFrame()
         return df[df["KOD SEKOLAH ASAL"].astype(str) == kod]
-
     r = milik(df_roster)
     c = milik(normalkan_cadangan(df_cad) if (df_cad is not None and not df_cad.empty) else df_cad)
     cad = {}
@@ -970,9 +852,7 @@ def senarai_guru_sekolah(df_roster, df_cad, kod_sekolah):
     df["JAWATAN CADANGAN"] = df["JAWATAN CADANGAN"].map(lambda v: _teks(v) if _teks(v) in JAWATAN_CADANGAN_SAH else JAWATAN_LAZIM)
     return df.sort_values("NAMA GURU", kind="stable").reset_index(drop=True)
 
-
 def buang_guru_roster(df_roster, kod_sekolah, ic_dipilih, ic_cadangan):
-    """Buang guru daripada Senarai Guru. Guru yang sedang jadi cadangan tak boleh dibuang (tarik balik dulu)."""
     if df_roster.empty or "IC" not in df_roster.columns or "KOD SEKOLAH ASAL" not in df_roster.columns:
         raise ValueError("Senarai Guru tidak dijumpai - muat semula halaman")
     pilih = {norm_ic(i) for i in ic_dipilih}
@@ -983,13 +863,7 @@ def buang_guru_roster(df_roster, kod_sekolah, ic_dipilih, ic_cadangan):
         raise ValueError("Guru yang dipilih tak dijumpai (mungkin sudah dibuang) - muat semula halaman")
     return df_roster[~sasar].reset_index(drop=True), int(sasar.sum())
 
-
 def hantar_cadangan(df_cad, kod_sekolah, nama_sekolah, ticked_df, df_pen, df_simp):
-    """HANTAR: senarai cadangan sekolah ini jadi TEPAT guru yang di-tick (ia yang dilihat PPD).
-    - Guru baru di-tick -> ditambah; yang sedia ada -> dikemaskini (status dikekalkan).
-    - Guru yang dinyah-tick -> ditarik balik, KECUALI sudah dilantik / disimpan PPD (ditolak).
-    - IC yang sudah dicadang sekolah lain -> ditolak.
-    Pulang (df_baru, statistik)."""
     kod = str(kod_sekolah)
     ic_hantar = {norm_ic(x) for x in ticked_df["IC"] if norm_ic(x)}
     if not ic_hantar:
@@ -999,59 +873,57 @@ def hantar_cadangan(df_cad, kod_sekolah, nama_sekolah, ticked_df, df_pen, df_sim
         if "IC" not in df_cad.columns or "KOD SEKOLAH ASAL" not in df_cad.columns:
             raise ValueError("Format sheet cadangan_sup tidak dijangka - hubungi admin")
         df = normalkan_cadangan(df_cad).astype(object)
-    own, lain = pd.DataFrame(), pd.DataFrame()
-    if not df.empty:
-        m = df["KOD SEKOLAH ASAL"].astype(str) == kod
-        own, lain = df[m], df[~m]
-    if not lain.empty:
-        bt = lain[lain["IC"].map(norm_ic).isin(ic_hantar)]
-        if not bt.empty:
-            r = bt.iloc[0]
-            raise ValueError(f"{r.get('NAMA GURU', '')} sudah dicadangkan oleh {r.get('NAMA SEKOLAH ASAL', r['KOD SEKOLAH ASAL'])} - hubungi PPD jika guru ini baru bertukar.")
-    own_map = {}
-    for _, r in own.iterrows():
-        k = norm_ic(r.get("IC", ""))
-        if k:
-            own_map.setdefault(k, r)
-    tarik = [k for k in own_map if k not in ic_hantar]
-    if tarik:
-        peta = peta_guru_pusat(df_pen, df_simp)
-        terkunci = []
-        for k in tarik:
-            r = own_map[k]
-            p_ = pusat_guru(peta, r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", ""))
-            if p_ is not None:
-                terkunci.append(f"{r.get('NAMA GURU', '')} ({'Simpanan' if p_ == 'SIMPANAN' else p_})")
-        if terkunci:
-            raise ValueError("Tak boleh ditarik balik kerana sudah dilantik / disimpan PPD: " + ", ".join(terkunci) + ". Tick semula guru itu, atau minta PPD kosongkan lantikan dahulu.")
-    baris, lihat, n_baru, n_kemaskini = [], set(), 0, 0
-    for _, g in ticked_df.iterrows():
-        k = norm_ic(g.get("IC", ""))
-        if not k or k in lihat:
-            continue
-        lihat.add(k)
-        status = "Dicadang"
-        if k in own_map:
-            s = _teks(own_map[k].get("STATUS", ""))
-            if s and s.lower() not in ("nan", "none"):
-                status = s
-            n_kemaskini += 1
-        else:
-            n_baru += 1
-        pos, peng = _ke_int(g.get("POSKOD RUMAH", "")), _ke_int(g.get("PENGALAMAN SPM", ""), 0)
-        baris.append({
-            "KOD SEKOLAH ASAL": kod, "NAMA SEKOLAH ASAL": nama_sekolah, "NAMA GURU": g.get("NAMA GURU", ""), "IC": g.get("IC", ""),
-            "JANTINA": g.get("JANTINA", ""), "POSKOD RUMAH": pos if pos is not None else g.get("POSKOD RUMAH", ""),
-            "ALAMAT RUMAH": g.get("ALAMAT RUMAH", ""), "NO TELEFON GURU": g.get("NO TELEFON GURU", ""), "EMAIL GURU": g.get("EMAIL GURU", ""),
-            "JAWATAN CADANGAN": _teks(g.get("JAWATAN CADANGAN", "")) or JAWATAN_LAZIM,
-            "PENGALAMAN SPM": peng if peng is not None else 0, "NO PUSAT ASAL": g.get("NO PUSAT ASAL", ""), "STATUS": status,
-        })
-    hasil = pd.concat([lain, pd.DataFrame(baris)], ignore_index=True) if not lain.empty else pd.DataFrame(baris)
-    return hasil, {"baru": n_baru, "kemaskini": n_kemaskini, "tarik": len(tarik), "jumlah": len(baris)}
-
+        own, lain = pd.DataFrame(), pd.DataFrame()
+        if not df.empty:
+            m = df["KOD SEKOLAH ASAL"].astype(str) == kod
+            own, lain = df[m], df[~m]
+        if not lain.empty:
+            bt = lain[lain["IC"].map(norm_ic).isin(ic_hantar)]
+            if not bt.empty:
+                r = bt.iloc[0]
+                raise ValueError(f"{r.get('NAMA GURU', '')} sudah dicadangkan oleh {r.get('NAMA SEKOLAH ASAL', r['KOD SEKOLAH ASAL'])} - hubungi PPD jika guru ini baru bertukar.")
+        own_map = {}
+        for _, r in own.iterrows():
+            k = norm_ic(r.get("IC", ""))
+            if k:
+                own_map.setdefault(k, r)
+        tarik = [k for k in own_map if k not in ic_hantar]
+        if tarik:
+            peta = peta_guru_pusat(df_pen, df_simp)
+            terkunci = []
+            for k in tarik:
+                r = own_map[k]
+                p_ = pusat_guru(peta, r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", ""))
+                if p_ is not None:
+                    terkunci.append(f"{r.get('NAMA GURU', '')} ({'Simpanan' if p_ == 'SIMPANAN' else p_})")
+            if terkunci:
+                raise ValueError("Tak boleh ditarik balik kerana sudah dilantik / disimpan PPD: " + ", ".join(terkunci) + ". Tick semula guru itu, atau minta PPD kosongkan lantikan dahulu.")
+        baris, lihat, n_baru, n_kemaskini = [], set(), 0, 0
+        for _, g in ticked_df.iterrows():
+            k = norm_ic(g.get("IC", ""))
+            if not k or k in lihat:
+                continue
+            lihat.add(k)
+            status = "Dicadang"
+            if k in own_map:
+                s = _teks(own_map[k].get("STATUS", ""))
+                if s and s.lower() not in ("nan", "none"):
+                    status = s
+                n_kemaskini += 1
+            else:
+                n_baru += 1
+            pos, peng = _ke_int(g.get("POSKOD RUMAH", "")), _ke_int(g.get("PENGALAMAN SPM", ""), 0)
+            baris.append({
+                "KOD SEKOLAH ASAL": kod, "NAMA SEKOLAH ASAL": nama_sekolah, "NAMA GURU": g.get("NAMA GURU", ""), "IC": g.get("IC", ""),
+                "JANTINA": g.get("JANTINA", ""), "POSKOD RUMAH": pos if pos is not None else g.get("POSKOD RUMAH", ""),
+                "ALAMAT RUMAH": g.get("ALAMAT RUMAH", ""), "NO TELEFON GURU": g.get("NO TELEFON GURU", ""), "EMAIL GURU": g.get("EMAIL GURU", ""),
+                "JAWATAN CADANGAN": _teks(g.get("JAWATAN CADANGAN", "")) or JAWATAN_LAZIM,
+                "PENGALAMAN SPM": peng if peng is not None else 0, "NO PUSAT ASAL": g.get("NO PUSAT ASAL", ""), "STATUS": status,
+            })
+        hasil = pd.concat([lain, pd.DataFrame(baris)], ignore_index=True) if not lain.empty else pd.DataFrame(baris)
+        return hasil, {"baru": n_baru, "kemaskini": n_kemaskini, "tarik": len(tarik), "jumlah": len(baris)}
 
 def excel_bytes(df, nama_sheet="Data"):
-    """DataFrame -> fail .xlsx (bytes). Teks tak akan jadi formula."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -1076,9 +948,7 @@ def excel_bytes(df, nama_sheet="Data"):
     wb.save(buf)
     return buf.getvalue()
 
-
 def templat_excel_bytes(senarai_pusat=None):
-    """Templat muat naik Senarai Guru (dengan pilihan drop-down + helaian Panduan)."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
@@ -1098,22 +968,21 @@ def templat_excel_bytes(senarai_pusat=None):
         ws.column_dimensions[h].width = lebar.get(nama, 18)
         if nama in ("IC", "NO TELEFON GURU", "POSKOD RUMAH", "NO PUSAT ASAL"):
             for r in range(2, 502):
-                ws[f"{h}{r}"].number_format = "@"   # teks - sifar depan tak hilang
+                ws[f"{h}{r}"].number_format = "@"
     col = {n: get_column_letter(i) for i, n in enumerate(LAJUR_TEMPLAT, start=1)}
     dv_j = DataValidation(type="list", formula1='"L,P"', allow_blank=True)
-    dv_w = DataValidation(type="list", formula1='"' + ",".join(JAWATAN_CADANGAN_SAH) + '"', allow_blank=True)
+    dv_w = DataValidation(type="list", formula1='"' + ", ".join(JAWATAN_CADANGAN_SAH) + '"', allow_blank=True)
     ws.add_data_validation(dv_j)
     ws.add_data_validation(dv_w)
     dv_j.add(f"{col['JANTINA']}2:{col['JANTINA']}501")
     dv_w.add(f"{col['JAWATAN CADANGAN']}2:{col['JAWATAN CADANGAN']}501")
     if senarai_pusat:
-        teks = ",".join(str(p) for p in senarai_pusat)
+        teks = ", ".join(str(p) for p in senarai_pusat)
         if len(teks) < 250:
             dv_p = DataValidation(type="list", formula1=f'"{teks}"', allow_blank=True)
             ws.add_data_validation(dv_p)
             dv_p.add(f"{col['NO PUSAT ASAL']}2:{col['NO PUSAT ASAL']}501")
     ws.freeze_panes = "A2"
-
     pg = wb.create_sheet("Panduan")
     baris = [
         ["PANDUAN ISI TEMPLAT SENARAI GURU"], [""],
@@ -1148,12 +1017,9 @@ def templat_excel_bytes(senarai_pusat=None):
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
-# ====== SENARAI GURU & MUAT NAIK / MUAT TURUN (tamat) ======
 
-
+====== SENARAI GURU & MUAT NAIK / MUAT TURUN (tamat) ======
 def padam_cadangan_sekolah(df_cad, kod_sekolah, ic_dipilih, df_pen, df_simp=None):
-    """Buang cadangan guru (ikut IC) HANYA milik sekolah ini. Pulang (df_baru, bil_dipadam).
-    Tolak (ValueError) kalau guru sudah dilantik PPD di mana-mana pusat."""
     if df_cad.empty or "IC" not in df_cad.columns or "KOD SEKOLAH ASAL" not in df_cad.columns:
         raise ValueError("Data cadangan tidak dijumpai - muat semula halaman")
     milik = df_cad["KOD SEKOLAH ASAL"].astype(str) == str(kod_sekolah)
@@ -1170,9 +1036,7 @@ def padam_cadangan_sekolah(df_cad, kod_sekolah, ic_dipilih, df_pen, df_simp=None
         raise ValueError("Tak boleh dipadam kerana sudah dilantik / disimpan PPD: " + ", ".join(terkunci) + ". Minta PPD kosongkan lantikan itu dahulu.")
     return df_cad[~sasar].reset_index(drop=True), int(sasar.sum())
 
-
 def buang_guru_ic(df, ic, pusat=None, label="senarai"):
-    """Buang baris guru ikut IC (dan NO PUSAT kalau diberi). ValueError kalau tak jumpa."""
     if df.empty or "IC" not in df.columns:
         raise ValueError(f"Guru tidak dijumpai dalam {label} - muat semula halaman")
     mask = df["IC"].map(norm_ic) == norm_ic(ic)
@@ -1184,9 +1048,7 @@ def buang_guru_ic(df, ic, pusat=None, label="senarai"):
         raise ValueError(f"Guru tidak dijumpai dalam {label} (mungkin sudah diubah oleh orang lain) - muat semula halaman")
     return df[~mask].reset_index(drop=True)
 
-
 def baris_simpanan(baris_pen, sebab, ppd_nama):
-    """Baris untuk tab petugas_simpanan, daripada satu baris penempatan yang dibatalkan."""
     return {
         "KOD SEKOLAH ASAL GURU": baris_pen.get("KOD SEKOLAH ASAL GURU", ""), "NAMA SEKOLAH ASAL": baris_pen.get("NAMA SEKOLAH ASAL", ""),
         "NAMA GURU": baris_pen.get("NAMA GURU", ""), "IC": baris_pen.get("IC", ""), "JANTINA": baris_pen.get("JANTINA", ""),
@@ -1196,19 +1058,14 @@ def baris_simpanan(baris_pen, sebab, ppd_nama):
         "SEBAB": sebab, "TARIKH BATAL": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"), "DIBATAL OLEH": f"PPD {ppd_nama}",
     }
 
-
 def tambah_simpanan(df, baris):
-    """Tambah ke simpanan; kalau guru sama sudah ada, gantikan."""
     if df.empty:
         return pd.DataFrame([baris])
     if "IC" in df.columns:
         df = df[df["IC"].map(norm_ic) != norm_ic(baris.get("IC", ""))]
     return pd.concat([df, pd.DataFrame([baris])], ignore_index=True) if not df.empty else pd.DataFrame([baris])
 
-
 def transaksi_dua_tab(tab1, fn1, tab2, fn2, undur_fn1):
-    """Jalankan fn1 pada tab1 kemudian fn2 pada tab2. Kalau fn2 gagal, cuba UNDUR fn1
-    supaya guru tak hilang / tak berganda. Pulang True kalau kedua-dua berjaya."""
     if not modify_sheet(tab1, fn1):
         return False
     if modify_sheet(tab2, fn2):
@@ -1219,12 +1076,8 @@ def transaksi_dua_tab(tab1, fn1, tab2, fn2, undur_fn1):
         st.error(f"⚠️ Operasi separuh siap dan tak dapat diundur automatik. Muat semula halaman dan semak tab '{tab1}' dan '{tab2}'.")
     return False
 
-
 def senarai_semua_petugas(cad_df, pen_df, simp_df):
-    """Satu senarai SEMUA petugas daerah (cadangan + penempatan + simpanan, tanpa berulang)
-    dengan STATUS: Belum ditempatkan / Ditempatkan (PUSAT, JAWATAN SEMASA) / Simpanan."""
     baris = {}
-
     def tambah(df, kod_col):
         if df is None or df.empty:
             return
@@ -1237,7 +1090,6 @@ def senarai_semua_petugas(cad_df, pen_df, simp_df):
                           "IC": r.get("IC", ""), "JANTINA": r.get("JANTINA", ""), "POSKOD RUMAH": r.get("POSKOD RUMAH", ""),
                           "ALAMAT RUMAH": r.get("ALAMAT RUMAH", ""), "NO TELEFON GURU": r.get("NO TELEFON GURU", ""),
                           "EMAIL GURU": r.get("EMAIL GURU", ""), "PENGALAMAN SPM": r.get("PENGALAMAN SPM", "")}
-
     tambah(cad_df, "KOD SEKOLAH ASAL")
     tambah(pen_df, "KOD SEKOLAH ASAL GURU")
     tambah(simp_df, "KOD SEKOLAH ASAL GURU")
@@ -1263,11 +1115,7 @@ def senarai_semua_petugas(cad_df, pen_df, simp_df):
     df["_s"] = df["STATUS"].map(susun)
     return df.sort_values(["_s", "NAMA GURU"], kind="stable").drop(columns="_s").reset_index(drop=True)
 
-
 def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama_pusat, label_status, pindah=False):
-    """Tempatkan seorang petugas ke pusat + jawatan pilihan PPD. Pulang df penempatan baru.
-    pindah=True: petugas sedang ditempatkan -> kedudukan lama dibuang, kedudukan baru ditambah (satu tab, atomik).
-    Disemak: ada IC; bukan guru sekolah tuan rumah; belum dilantik tempat lain; jawatan MASIH kosong."""
     ic = norm_ic(guru.get("IC", ""))
     if not ic:
         raise ValueError("Petugas ini tiada IC - tak boleh ditempatkan melalui sistem. Lengkapkan IC dalam cadangan SUP dahulu.")
@@ -1301,13 +1149,10 @@ def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama
     }])
     return pd.concat([df, baru], ignore_index=True) if not df.empty else baru
 
-
-# ====== HELPER GSHEET & PENEMPATAN (tamat) ======
-
+====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
 # Debug info
-# st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
-
+st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
 PPD_LIST = [
     ("1", "a", "Klang", "BA"), ("2", "b", "Kuala Langat", "BB"),
     ("3", "c", "Kuala Selangor", "BC"), ("4", "d", "Hulu Langat", "BD"),
@@ -1323,23 +1168,18 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     st.markdown('<div class="big-title">📚 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN</div>', unsafe_allow_html=True)
     st.markdown('<div class="big-title" style="font-size:22px;">SELANGOR 2026</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sub-title">{len(mapping_df)} Sekolah Termasuk Persendirian • File: {os.path.basename(file_used)}<br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
-
-    # Debug visible
+    st.markdown(f'<div class="sub-title">{len(mapping_df)} Sekolah Termasuk Persendirian • File: {os.path.basename(file_used)} <br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
     with st.expander(f"🔍 Debug Data - File guna: {file_used} - {len(mapping_df)} sekolah", expanded=False):
         st.write(f"File yang dibaca: {file_used}")
         st.write(f"Jumlah sekolah: {len(mapping_df)}")
         if not mapping_df.empty:
             st.write("Daerah yang ada:", mapping_df["PPD"].value_counts().to_dict())
             st.dataframe(mapping_df.head(10))
-
     left, center, right = st.columns([1,2,1])
     with center:
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
         st.markdown("### 🔐 Log Masuk")
-        
         peranan = st.selectbox("1️⃣ Pilih Peranan", ["-- Pilih --", "JPN Selangor", "PPD", "SUP Sekolah"])
-        
         if peranan == "JPN Selangor":
             st.info("JPN: ID 1 Password a")
             jpn_pwd = st.text_input("Kata Laluan JPN", type="password", placeholder="a")
@@ -1351,7 +1191,6 @@ if not st.session_state.logged_in:
                     st.rerun()
                 else:
                     st.error("Password salah")
-        
         elif peranan == "PPD":
             st.markdown("#### 2️⃣ Pilih Daerah (PPD)")
             ppd_daerah = st.selectbox("Daerah", ["-- Pilih Daerah --"] + [nama for _,_,nama,_ in PPD_LIST])
@@ -1368,19 +1207,15 @@ if not st.session_state.logged_in:
                         st.rerun()
                     else:
                         st.error("Password salah")
-        
         elif peranan == "SUP Sekolah":
             st.markdown("#### 2️⃣ Pilih Daerah")
             order_daerah = ["Klang","Kuala Langat","Kuala Selangor","Hulu Langat","Hulu Selangor","Sabak Bernam","Gombak","Petaling Perdana","Sepang","Petaling Utama"]
-            # Guna yang ada dalam file, tapi ikut order
             if not mapping_df.empty:
                 daerah_ada = mapping_df["PPD"].unique().tolist()
                 daerah_list = [d for d in order_daerah if d in daerah_ada]
             else:
                 daerah_list = order_daerah
-            
             sup_daerah = st.selectbox("Daerah Sekolah Anda", ["-- Pilih Daerah --"] + daerah_list)
-            
             if sup_daerah != "-- Pilih Daerah --":
                 df_daerah = mapping_df[mapping_df["PPD"]==sup_daerah].sort_values("NAMA SEKOLAH") if not mapping_df.empty else pd.DataFrame()
                 st.markdown(f"#### 3️⃣ Pilih Sekolah di {sup_daerah} ({len(df_daerah)} sekolah)")
@@ -1389,7 +1224,6 @@ if not st.session_state.logged_in:
                 else:
                     sekolah_options = [f"{row['NAMA SEKOLAH']} ({row['KOD SEKOLAH']}) - {row['BIL PUSAT']} pusat [{row['SENARAI PUSAT']}]" for _, row in df_daerah.iterrows()]
                     sekolah_pilih = st.selectbox("Nama Sekolah (Masuk ikut sekolah, bukan pusat)", ["-- Pilih Sekolah --"] + sekolah_options)
-                    
                     if sekolah_pilih != "-- Pilih Sekolah --":
                         idx = sekolah_options.index(sekolah_pilih)
                         row_sekolah = df_daerah.iloc[idx]
@@ -1414,24 +1248,18 @@ if not st.session_state.logged_in:
                                 st.rerun()
                             else:
                                 st.error(f"Password salah")
-        
         st.markdown('</div>', unsafe_allow_html=True)
-        
         with st.expander("ℹ️ Di mana update data?"):
             st.markdown(f"""
             **File yang sedang guna:** `{file_used}` - {len(mapping_df)} sekolah
-            
             **Senarai Sekolah 369:**
             - App akan cari apa saja file dalam `data/` yang ada perkataan ID dan DAERAH (tak kisah - atau _ , besar kecil)
             - Contoh nama valid: `SENARAI_ID_SUP_BY_DAERAH.xlsx`, `SENARAI_ID-SUP_BY_DAERAH.xlsx`, `senarai_id_sup_by_daerah.xlsx` semua boleh!
             - File yang Kashah upload: `SENARAI_ID-SUP_BY_DAERAH.xlsx` - sekarang app dah boleh baca walaupun ada hyphen!
             - Kalau tak ada, app auto generate dari `senarai_506_PLUS_calon2026_FINAL.xlsx`
-            
             **Tambah sekolah baru:** Edit file Excel tu tambah row ID 370, push GitHub
-            
             **Senarai PPD:** Edit `PPD_LIST` dalam `app.py`
             """)
-    
     st.markdown("---")
     st.caption(f"Data: {len(mapping_df)} sekolah dari {os.path.basename(file_used)} | Tanpa Sidebar")
     st.stop()
@@ -1442,26 +1270,35 @@ info = st.session_state.user_info
 
 st.markdown(f"""
 <div style="background:#0B5394; color:white; padding:10px 15px; border-radius:8px;">
-    <b>📚 SPM 2026</b> | {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | {info.get('bil_pusat','')} pusat | File: {os.path.basename(file_used)}
+<b>📚 SPM 2026</b> | {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | {info.get('bil_pusat','')} pusat | File: {os.path.basename(file_used)}
 </div>
 """, unsafe_allow_html=True)
 
-col_kiri, col_kanan = st.columns([1, 3])
+# ====== BUTANG REFRESH (OPTIMIZED) ======
+col_refresh, col_spacer = st.columns([1, 5])
+with col_refresh:
+    if st.button("🔄 Refresh Data (Clear Cache)", use_container_width=True, key="btn_refresh_top"):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        flash("success", "✅ Cache telah dibersihkan. Halaman akan dimuat semula dengan data segar.")
+        st.rerun()
+# ====== END BUTANG REFRESH ======
 
+col_kiri, col_kanan = st.columns([1, 3])
 with col_kiri:
     st.markdown('<div class="left-panel">', unsafe_allow_html=True)
     st.markdown(f"### 👤 {info['nama']}")
-    if role=="SUP":
-        st.markdown(f"**Kod:** {info['kod_sekolah']}")
-        st.markdown(f"**PPD:** {info['ppd']} ({info['kod_ppd']})")
-        st.markdown(f"**Pusat:** {info['bil_pusat']} pusat")
+    if role == "SUP":
+        st.markdown(f"Kod: {info['kod_sekolah']}")
+        st.markdown(f"PPD: {info['ppd']} ({info['kod_ppd']})")
+        st.markdown(f"Pusat: {info['bil_pusat']} pusat")
         st.code(info['senarai_pusat'])
-    elif role=="PPD":
-        st.markdown(f"**PPD:** {info['ppd_nama']} ({info['kod']}) - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
+    elif role == "PPD":
+        st.markdown(f"PPD: {info['ppd_nama']} ({info['kod']}) - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
     st.markdown("---")
-    if role=="SUP":
+    if role == "SUP":
         menu = st.radio("Menu", ["Maklumat Sekolah", "Senarai Guru", "Muat Naik / Muat Turun", "Cadangan Petugas", "Status"], label_visibility="collapsed")
-    elif role=="PPD":
+    elif role == "PPD":
         menu = st.radio("Menu", ["Senarai Pusat", "Kuota Pusat", "Cadangan SUP", "Jana Penempatan", "Penempatan Manual", "Batal Penempatan", "Petugas Simpanan", "Hantar JPN"], label_visibility="collapsed")
     else:
         menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat", "Pindah Data Daerah"], label_visibility="collapsed")
@@ -1481,26 +1318,23 @@ with col_kiri:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_kanan:
-    @st.cache_data
+    @st.cache_data(ttl=3600)
     def load_master():
         try:
-            # cari file 506
             if os.path.exists("data"):
                 for f in os.listdir("data"):
                     if "506" in f:
                         return pd.read_excel(os.path.join("data", f))
             return pd.read_excel("data/senarai_506_PLUS_calon2026_FINAL.xlsx")
         except Exception:
-            return pd.DataFrame({"NO PUSAT":["BK009"],"NAMA PUSAT":["SMJK KATHOLIK"]})
+            return pd.DataFrame({"NO PUSAT":["BK009"], "NAMA PUSAT":["SMJK KATHOLIK"]})
+
     pusat_master = load_master()
-    
     gspread_client, SPREADSHEET_ID_FIX, GS_ERR = get_gsheet()
     USE_GSHEET = gspread_client is not None
     if not USE_GSHEET:
         st.warning(f"GSheet tidak connect - data TIDAK boleh disimpan: {GS_ERR}")
     show_flash()
-
-    # Setiap daerah ada tab sendiri (contoh cadangan_sup_BK) - data daerah tak bercampur
     _kod_daerah = str(info.get("kod_ppd") or info.get("kod") or "").strip().upper()
     if role in ("SUP", "PPD") and _kod_daerah not in {t[3] for t in PPD_LIST}:
         st.error("Kod daerah tidak sah - sila log keluar dan log masuk semula.")
@@ -1511,16 +1345,14 @@ with col_kanan:
     TAB_SIMPANAN = tab_daerah("petugas_simpanan", _kod_daerah)
     TAB_GURU = tab_daerah("guru_sekolah", _kod_daerah)
 
-    if role=="SUP":
-        if menu=="Maklumat Sekolah":
+    if role == "SUP":
+        if menu == "Maklumat Sekolah":
             st.header(f"🏫 {info['nama']} - {info['senarai_pusat']}")
             st.info(f"Kod {info['kod_sekolah']} | {info['bil_pusat']} pusat | Masuk ikut sekolah bukan pusat")
             maklumat = read_sheet(TAB_MAKLUMAT)
-            # === AUTO-LOAD data sedia ada ===
             existing = pd.DataFrame()
             if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
                 existing = maklumat[maklumat["KOD SEKOLAH"].astype(str) == str(info['kod_sekolah'])]
-            
             def_val_nama = info['nama']
             def_val_email = ""
             def_val_poskod = 46000
@@ -1530,21 +1362,17 @@ with col_kanan:
             def_val_nama_sup = f"SUP {info['nama']}"
             def_val_tel = ""
             def_val_pengetua = ""
-            
             if not existing.empty:
                 row = existing.iloc[-1]
                 def_val_nama = str(row.get("NAMA SEKOLAH", def_val_nama))
-                # Email
                 for col in ["EMAIL SEKOLAH", "EMAIL"]:
                     if col in existing.columns and pd.notna(row.get(col)):
                         def_val_email = str(row.get(col, ""))
                         break
-                # Telefon - ikut nama betul
                 for col in ["NO TELEFON SEKOLAH", "TELEFON SEKOLAH", "NO TELEFON"]:
                     if col in existing.columns and pd.notna(row.get(col)):
                         def_val_tel = str(row.get(col, ""))
                         break
-                # Poskod - ikut nama betul
                 for col in ["NO POSKOD SEKOLAH", "POSKOD SEKOLAH", "POSKOD"]:
                     if col in existing.columns:
                         try:
@@ -1554,7 +1382,6 @@ with col_kanan:
                                 break
                         except Exception:
                             pass
-                # Pengetua
                 for col in ["NAMA PENGETUA", "PENGETUA"]:
                     if col in existing.columns and pd.notna(row.get(col)):
                         def_val_pengetua = str(row.get(col, ""))
@@ -1581,15 +1408,11 @@ with col_kanan:
                         except Exception:
                             pass
                         break
-            
             if not existing.empty:
                 st.success(f"✅ Data {info['kod_sekolah']} dijumpai - auto isi")
-            
-            # Elak app crash kalau nilai lama dalam sheet di luar had
             def_val_poskod = max(40000, min(49000, def_val_poskod))
             def_val_bil_pusat = max(1, min(10, def_val_bil_pusat))
             def_val_bil_kelas = max(1, min(30, def_val_bil_kelas))
-
             with st.form("sekolah"):
                 c1,c2 = st.columns(2)
                 with c1:
@@ -1604,10 +1427,9 @@ with col_kanan:
                     nama_sup = st.text_input("NAMA SUP", value=def_val_nama_sup)
                     nama_pengetua = st.text_input("NAMA PENGETUA", value=def_val_pengetua)
                 if st.form_submit_button("💾 Simpan", use_container_width=True):
-                    # Data baru - semua field - ikut format sheet sedia ada
                     new_row = {
-                        "KOD SEKOLAH": info['kod_sekolah'], 
-                        "NAMA SEKOLAH": nama_sek, 
+                        "KOD SEKOLAH": info['kod_sekolah'],
+                        "NAMA SEKOLAH": nama_sek,
                         "EMAIL SEKOLAH": email,
                         "NO TELEFON SEKOLAH": no_tel,
                         "TELEFON SEKOLAH": no_tel,
@@ -1615,8 +1437,8 @@ with col_kanan:
                         "NAMA SUP": nama_sup,
                         "NO POSKOD SEKOLAH": poskod_sek,
                         "POSKOD SEKOLAH": poskod_sek,
-                        "BIL NO PUSAT": bil_pusat, 
-                        "SENARAI NO PUSAT": senarai, 
+                        "BIL NO PUSAT": bil_pusat,
+                        "SENARAI NO PUSAT": senarai,
                         "BIL KELAS DIGUNAKAN": bil_kelas,
                         "TARIKH KEMASKINI": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
@@ -1624,14 +1446,11 @@ with col_kanan:
                         if not df.empty and "KOD SEKOLAH" not in df.columns:
                             raise ValueError("Format sheet maklumat_sekolah tidak dijangka - hubungi admin")
                         if not df.empty:
-                            # Satu rekod sahaja setiap sekolah (buang rekod lama sekolah ini)
                             df = df[df["KOD SEKOLAH"].astype(str) != str(info['kod_sekolah'])]
                         return pd.concat([df, pd.DataFrame([new_row])], ignore_index=True) if not df.empty else pd.DataFrame([new_row])
-
                     if modify_sheet(TAB_MAKLUMAT, _simpan_maklumat):
                         flash("success", f"✅ {nama_sek} berjaya dikemaskini! (Satu rekod sahaja untuk {info['kod_sekolah']})")
                         st.rerun()
-            # === FIX: Hanya papar sekolah sendiri sahaja ===
             if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
                 maklumat_sendiri = maklumat[maklumat["KOD SEKOLAH"].astype(str) == str(info['kod_sekolah'])]
                 if not maklumat_sendiri.empty:
@@ -1639,8 +1458,7 @@ with col_kanan:
                     st.dataframe(maklumat_sendiri, use_container_width=True)
                 else:
                     st.info("Belum ada rekod untuk sekolah ini dalam Google Sheet")
-            
-        elif menu=="Senarai Guru":
+        elif menu == "Senarai Guru":
             st.header(f"🧑‍🏫 Senarai Guru - {info['nama']}")
             st.caption("Semua guru sekolah anda. TICK guru yang akan bertugas, pilih jawatan, kemudian tekan Hantar. Senarai yang dihantar terus masuk ke portal PPD (menu Cadangan SUP).")
             kod_s = str(info['kod_sekolah'])
@@ -1652,7 +1470,6 @@ with col_kanan:
             guru_roster = read_sheet(TAB_GURU)
             cadangan_g = read_sheet(TAB_CADANGAN)
             senarai_g = senarai_guru_sekolah(guru_roster, cadangan_g, kod_s)
-
             if senarai_g.empty:
                 st.info("Belum ada guru. Muat naik fail Excel di menu **Muat Naik / Muat Turun**, atau tambah seorang guru di bawah.")
             else:
@@ -1669,7 +1486,6 @@ with col_kanan:
                     st.metric("Sudah Dicadang (dihantar)", int(senarai_g["CADANGAN"].sum()))
                 with m3:
                     st.metric("Dilantik PPD", int((senarai_g["STATUS PPD"] != "").sum()))
-
                 lajur_edit = ["CADANGAN", "NAMA GURU", "IC", "JANTINA", "JAWATAN CADANGAN", "NO TELEFON GURU", "ALAMAT RUMAH", "PENGALAMAN SPM", "NO PUSAT ASAL", "STATUS PPD"]
                 paparan = senarai_g[lajur_edit].copy()
                 paparan["CADANGAN"] = paparan["CADANGAN"].astype(bool)
@@ -1691,7 +1507,6 @@ with col_kanan:
                 st.info(f"Dipilih: **{n_tick}** guru | Baharu: {n_baru_t} | Ditarik balik: {n_tarik_t}")
                 if n_tarik_t:
                     st.warning(f"⚠️ {n_tarik_t} guru yang sebelum ini dicadangkan akan DITARIK BALIK daripada senarai PPD (kecuali yang sudah dilantik PPD - itu akan ditolak).")
-
                 if st.button(f"📤 HANTAR {n_tick} CADANGAN KE PPD", use_container_width=True, type="primary", disabled=n_tick == 0, key=f"guru_hantar_{n_g}"):
                     sedia_cad = {norm_ic(x) for x in cadangan_g["IC"]} if (not cadangan_g.empty and "IC" in cadangan_g.columns) else set()
                     tak_lengkap = []
@@ -1704,20 +1519,16 @@ with col_kanan:
                         st.error("Maklumat belum lengkap, kemaskini dahulu: " + "; ".join(tak_lengkap))
                     else:
                         hasil_h = {}
-                        # 1) pastikan semua guru yang dihantar ada dalam Senarai Guru (tak memadam apa-apa)
                         ok_r = modify_sheet(TAB_GURU, lambda dfr: gabung_guru_sekolah(dfr, ticked_df, kod_s, info['nama'])[0])
                         if ok_r:
                             def _sync_cad(df_cad):
                                 baru_c, stat = hantar_cadangan(df_cad, kod_s, info['nama'], ticked_df, read_sheet_strict(TAB_PENEMPATAN), read_sheet_strict(TAB_SIMPANAN))
                                 hasil_h.update(stat)
                                 return baru_c
-                            # 2) senarai cadangan sekolah ini jadi tepat guru yang di-tick
                             if modify_sheet(TAB_CADANGAN, _sync_cad):
                                 flash("success", f"✅ {hasil_h['jumlah']} cadangan dihantar ke PPD (baharu {hasil_h['baru']}, dikemaskini {hasil_h['kemaskini']}, ditarik balik {hasil_h['tarik']}).")
                                 st.session_state["guru_n"] = n_g + 1
                                 st.rerun()
-
-            # ----- Tambah seorang guru -----
             with st.expander("➕ Tambah / kemaskini seorang guru"):
                 with st.form(f"form_guru_roster_{n_g}"):
                     c1, c2, c3 = st.columns(3)
@@ -1749,7 +1560,6 @@ with col_kanan:
                                 "PENGALAMAN SPM": int(peng_f), "NO PUSAT ASAL": "" if pusat_f == "-- Tiada --" else pusat_f, "JAWATAN CADANGAN": jaw_f,
                             }])
                             hasil_f = {}
-
                             def _simpan_f(dfr):
                                 df_n, nb, nk = gabung_guru_sekolah(dfr, baris_f, kod_s, info['nama'])
                                 hasil_f.update(baru=nb, kemaskini=nk)
@@ -1758,8 +1568,6 @@ with col_kanan:
                                 flash("success", f"✅ {_bersih_teks(nama_f)} {'ditambah' if hasil_f['baru'] else 'dikemaskini'} dalam Senarai Guru. Tick di jadual untuk jadikan cadangan.")
                                 st.session_state["guru_n"] = n_g + 1
                                 st.rerun()
-
-            # ----- Buang guru -----
             if not senarai_g.empty:
                 with st.expander("🗑️ Buang guru daripada Senarai Guru"):
                     boleh_buang = senarai_g[~senarai_g["CADANGAN"].astype(bool)]
@@ -1773,7 +1581,6 @@ with col_kanan:
                         if st.button(f"🗑️ Buang {len(pilih_b)} guru", use_container_width=True, disabled=not (pilih_b and sah_b), key=f"guru_buang_btn_{n_g}"):
                             ic_cad_b = {norm_ic(x) for x in cadangan_g["IC"]} if (not cadangan_g.empty and "IC" in cadangan_g.columns) else set()
                             hasil_b = {}
-
                             def _buang_r(dfr):
                                 baru_r, bil = buang_guru_roster(dfr, kod_s, pilih_b, ic_cad_b)
                                 hasil_b["bil"] = bil
@@ -1782,7 +1589,7 @@ with col_kanan:
                                 flash("success", f"✅ {hasil_b['bil']} guru dibuang daripada Senarai Guru.")
                                 st.session_state["guru_n"] = n_g + 1
                                 st.rerun()
-        elif menu=="Muat Naik / Muat Turun":
+        elif menu == "Muat Naik / Muat Turun":
             st.header(f"📁 Muat Naik / Muat Turun - {info['nama']}")
             st.caption("1) Muat turun templat Excel  →  2) isi senarai guru sekolah  →  3) muat naik di sini  →  4) tick cadangan di menu **Senarai Guru** dan Hantar.")
             kod_s = str(info['kod_sekolah'])
@@ -1791,11 +1598,9 @@ with col_kanan:
             for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
                 if _p.upper() not in _pusat_u:
                     _pusat_u.append(_p.upper())
-
             st.markdown("### ⬇️ 1. Muat turun templat")
             st.download_button("⬇️ Muat turun Templat Excel (kosong)", data=templat_excel_bytes(_pusat_u), file_name=f"templat_senarai_guru_{kod_s}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_templat")
-
             st.markdown("---")
             st.markdown("### ⬆️ 2. Muat naik senarai guru (terus ke Google Sheet)")
             fail_up = st.file_uploader("Pilih fail Excel (.xlsx) atau CSV", type=["xlsx", "csv"], key=f"up_guru_{up_n}")
@@ -1825,7 +1630,6 @@ with col_kanan:
                         st.dataframe(df_sah[["NAMA GURU", "IC", "JANTINA", "NO TELEFON GURU", "ALAMAT RUMAH", "POSKOD RUMAH", "NO PUSAT ASAL", "JAWATAN CADANGAN"]], use_container_width=True, hide_index=True)
                         if st.button(f"📤 Import {len(df_sah)} guru ke Google Sheet", use_container_width=True, type="primary", key=f"up_btn_{up_n}"):
                             hasil_u = {}
-
                             def _import(dfr):
                                 df_n, nb, nk = gabung_guru_sekolah(dfr, df_sah, kod_s, info['nama'])
                                 hasil_u.update(baru=nb, kemaskini=nk)
@@ -1836,7 +1640,6 @@ with col_kanan:
                                 st.rerun()
                     else:
                         st.warning("Tiada baris sah untuk diimport.")
-
             st.markdown("---")
             st.markdown("### ⬇️ 3. Muat turun data")
             guru_dl = senarai_guru_sekolah(read_sheet(TAB_GURU), read_sheet(TAB_CADANGAN), kod_s)
@@ -1856,10 +1659,9 @@ with col_kanan:
                 else:
                     st.download_button(f"⬇️ Senarai Cadangan dihantar ({len(cad_dl)} guru)", data=excel_bytes(cad_dl.drop(columns=["CADANGAN"]), "Cadangan"), file_name=f"cadangan_{kod_s}_{st.session_state.get('tahun_pilih', 2026)}.xlsx",
                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_cadangan")
-        elif menu=="Cadangan Petugas":
+        elif menu == "Cadangan Petugas":
             st.header(f"👥 Cadangan - {info['nama']}")
             cadangan = read_sheet(TAB_CADANGAN)
-            # Pusat milik sekolah ini (untuk NO PUSAT ASAL)
             _senarai_p = []
             for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
                 if _p.upper() not in _senarai_p:
@@ -1907,7 +1709,6 @@ with col_kanan:
                             "NO PUSAT ASAL": "" if pusat_asal == TIADA_PUSAT else pusat_asal,
                             "STATUS": "Dicadang",
                         }
-
                         def _tambah_guru(df):
                             if not df.empty and ("IC" not in df.columns or "KOD SEKOLAH ASAL" not in df.columns):
                                 raise ValueError("Format sheet cadangan_sup tidak dijangka - hubungi admin")
@@ -1923,24 +1724,18 @@ with col_kanan:
                             if sama.any() and "STATUS" in df.columns:
                                 s_lama = str(df[sama].iloc[0].get("STATUS", "")).strip()
                                 if s_lama and s_lama.lower() not in ("nan", "none"):
-                                    baris["STATUS"] = s_lama   # kekalkan status sedia ada
-                            # IC sama dalam sekolah SENDIRI sahaja yang diganti (kemaskini)
+                                    baris["STATUS"] = s_lama
                             df = df[~sama]
                             return pd.concat([df, pd.DataFrame([baris])], ignore_index=True) if not df.empty else pd.DataFrame([baris])
-
                         if modify_sheet(TAB_CADANGAN, _tambah_guru):
-                            # pastikan guru ini juga ada dalam Senarai Guru sekolah
                             modify_sheet(TAB_GURU, lambda dfr: gabung_guru_sekolah(dfr, pd.DataFrame([new_g_row]), str(info['kod_sekolah']), info['nama'])[0])
                             flash("success", f"✅ {nama_g} ditambah / dikemaskini! - Hanya untuk {info['kod_sekolah']}")
                             st.rerun()
-            # === FIX: Hanya papar cadangan sekolah sendiri ===
             if not cadangan.empty and "KOD SEKOLAH ASAL" in cadangan.columns:
                 cadangan_sendiri = cadangan[cadangan["KOD SEKOLAH ASAL"].astype(str) == str(info['kod_sekolah'])]
                 if not cadangan_sendiri.empty:
                     st.markdown(f"#### 👥 Senarai Cadangan Anda - {info['kod_sekolah']} ({len(cadangan_sendiri)} orang)")
                     st.dataframe(cadangan_sendiri, use_container_width=True)
-
-                    # ===== PADAM CADANGAN =====
                     st.markdown("#### 🗑️ Padam Cadangan")
                     label_padam = {}
                     if "IC" in cadangan_sendiri.columns:
@@ -1955,17 +1750,14 @@ with col_kanan:
                         sahkan_padam = st.checkbox("Ya, padam terus daripada Google Sheet (tidak boleh dipulihkan)", key=f"padam_sahkan_{st.session_state.get('padam_n', 0)}")
                         if st.button(f"🗑️ Padam {len(pilih_padam)} guru", use_container_width=True, disabled=not (pilih_padam and sahkan_padam), key="padam_btn"):
                             hasil_padam = {}
-
                             def _padam(df):
-                                # Semak lantikan dengan bacaan segar; kalau gagal baca -> batal (selamat)
                                 df_pen = read_sheet_strict(TAB_PENEMPATAN)
                                 baru, bil = padam_cadangan_sekolah(df, info['kod_sekolah'], pilih_padam, df_pen, read_sheet_strict(TAB_SIMPANAN))
                                 hasil_padam["bil"] = bil
                                 return baru
-
                             if modify_sheet(TAB_CADANGAN, _padam):
                                 flash("success", f"✅ {hasil_padam['bil']} cadangan dipadam terus daripada Google Sheet.")
-                                st.session_state["padam_n"] = st.session_state.get("padam_n", 0) + 1   # kosongkan pilihan
+                                st.session_state["padam_n"] = st.session_state.get("padam_n", 0) + 1
                                 st.rerun()
                 else:
                     st.info(f"Belum ada cadangan untuk {info['kod_sekolah']}")
@@ -1993,17 +1785,13 @@ with col_kanan:
                 st.warning("❌ Cadangan Petugas: belum ada")
             else:
                 st.success(f"✅ Cadangan Petugas: {len(own_c)} orang")
-    elif role=="PPD":
-        # Senarai kod sekolah bawah PPD ini
+
+    elif role == "PPD":
         df_ppd = mapping_df[mapping_df["KOD PPD"]==info['kod']]
         kod_sekolah_ppd = df_ppd["KOD SEKOLAH"].astype(str).tolist()
-        
-        # Build list pusat under PPD - DARI MASTER + ID_SUP
         semua_pusat = []
         pusat_to_sekolah = {}
-        pusat_to_nama = {}  # BK069 -> SMK TROPICANA
-        
-        # 1. Dari ID_SUP file (df_ppd)
+        pusat_to_nama = {}
         for _, r in df_ppd.iterrows():
             senarai = str(r.get("SENARAI PUSAT","")).split(",")
             for p in senarai:
@@ -2012,8 +1800,6 @@ with col_kanan:
                     semua_pusat.append(p)
                     pusat_to_sekolah[p] = str(r["KOD SEKOLAH"])
                     pusat_to_nama[p] = str(r["NAMA SEKOLAH"])
-        
-        # 2. Dari master 506 file - cari semua NO PUSAT ikut kod daerah (BA, BK etc)
         try:
             master_files = []
             if os.path.exists("data"):
@@ -2024,7 +1810,6 @@ with col_kanan:
                 try:
                     df_m = pd.read_excel(mf)
                     if "NO PUSAT" in df_m.columns and "KOD SEKOLAH" in df_m.columns:
-                        # Filter NO PUSAT yang start dengan kod PPD ni (BK, BA dll)
                         mask = df_m["NO PUSAT"].astype(str).str.startswith(info['kod'])
                         df_m_ppd = df_m[mask]
                         for _, rm in df_m_ppd.iterrows():
@@ -2034,15 +1819,12 @@ with col_kanan:
                             if p not in pusat_to_sekolah:
                                 pusat_to_sekolah[p] = str(rm["KOD SEKOLAH"])
                             if p not in pusat_to_nama:
-                                # Cari nama pusat dari df_m kalau ada NAMA PUSAT
                                 nama_p = str(rm.get("NAMA PUSAT", rm.get("NAMA SEKOLAH", p)))
                                 pusat_to_nama[p] = nama_p
                 except Exception:
                     continue
         except Exception:
             pass
-        
-        # 3. Dari Google Sheet sah_jpn - ada NO PUSAT + NAMA PUSAT penuh!
         try:
             sah_tmp = read_sheet("sah_jpn")
             if not sah_tmp.empty and "NO PUSAT" in sah_tmp.columns:
@@ -2051,14 +1833,11 @@ with col_kanan:
                     if p.startswith(info['kod']):
                         if p not in semua_pusat:
                             semua_pusat.append(p)
-                        # Nama penuh pusat
                         nama_pusat = str(rs.get("NAMA PUSAT","")).strip()
                         if nama_pusat and nama_pusat.lower()!="nan":
                             pusat_to_nama[p] = nama_pusat
         except Exception:
             pass
-        
-        # 4. Dari penempatan_ppd sheet juga
         try:
             pen_tmp = read_sheet(TAB_PENEMPATAN)
             if not pen_tmp.empty and "NO PUSAT TUGAS" in pen_tmp.columns:
@@ -2072,13 +1851,10 @@ with col_kanan:
                             pusat_to_nama[p] = nama_p
         except Exception:
             pass
-        
-        # 5. Pastikan semua pusat ada nama - kalau takde, guna sekolah tuan rumah
         for p in semua_pusat:
             if p not in pusat_to_nama or not pusat_to_nama[p]:
                 kod_sek = pusat_to_sekolah.get(p, "")
                 if kod_sek:
-                    # cari nama sekolah
                     row = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek]
                     if not row.empty:
                         pusat_to_nama[p] = str(row.iloc[0]["NAMA SEKOLAH"])
@@ -2086,9 +1862,7 @@ with col_kanan:
                         pusat_to_nama[p] = p
                 else:
                     pusat_to_nama[p] = p
-        
         semua_pusat = sorted(list(set(semua_pusat)))
-        # FIX 43 bukan 71 - filter ikut pusat_2026.csv
         if not df_calon_master.empty and "NO_PUSAT" in df_calon_master.columns:
             calon_set = set(df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]["NO_PUSAT"].astype(str).tolist())
             if calon_set:
@@ -2098,46 +1872,42 @@ with col_kanan:
                     pusat_to_nama[p] = str(rc.get("NAMA_PUSAT", pusat_to_nama.get(p, p)))
                     if p not in pusat_to_sekolah:
                         pusat_to_sekolah[p] = str(rc.get("KOD_SEKOLAH", ""))
-        
-        if menu=="Senarai Pusat":
+
+        # ====== LOAD KUOTA SEKALI UNTUK PPD (OPTIMIZED) ======
+        # Load sekali sahaja di atas, pass ke semua fungsi. Tak auto-load berulang kali.
+        df_kuota_ppd = read_sheet("kuota_ppd") if "kuota_ppd" not in st.session_state else st.session_state["kuota_ppd"]
+        # ====== END LOAD KUOTA ======
+
+        if menu == "Senarai Pusat":
             if not df_calon_master.empty:
                 dppd = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]
                 tc = int(dppd["JUMLAH_CALON"].sum()) if not dppd.empty else 0
                 tk = int(dppd["JUMLAH_KELAS"].sum()) if not dppd.empty else 0
-                # tp guna final kuota (kalau PPD edit)
                 tp = 0
                 if not dppd.empty:
                     for _, r in dppd.iterrows():
                         p = str(r.get("NO_PUSAT",""))
-                        tp += keperluan_pengawas(p, df_calon_master)
+                        tp += keperluan_pengawas(p, df_calon_master, df_kuota_ppd)
                 tt = tp + len(dppd)*2
                 st.header(f"🏢 PPD {info['ppd_nama']} - {len(df_ppd)} sekolah, {len(semua_pusat)} pusat")
                 st.info(f"Daerah {info['kod']} = {info['ppd_nama']} | {len(semua_pusat)} pusat ada calon (bukan 71 spare) | 📊 {tc} calon, {tk} kelas, {tp} pengawas + {len(dppd)*2} KP/TKP = {tt} petugas di pusat | Penyelia Kawasan exclude (Bilik Kebal)")
             else:
                 st.header(f"🏢 PPD {info['ppd_nama']} - {len(df_ppd)} sekolah, {len(semua_pusat)} pusat")
-    
-            
-            # Load penempatan untuk kira status
             penempatan_all = read_sheet(TAB_PENEMPATAN)
-            
-            # Buat status table - KASHAH: 11 kelas = 17 pengawas +1 KP +1 TKP =19 total, Penyelia exclude
             status_data = []
             for pusat in semua_pusat:
                 kod_sek_pusat = pusat_to_sekolah.get(pusat, "")
                 nr = df_ppd[df_ppd["KOD SEKOLAH"].astype(str)==kod_sek_pusat]
                 nama_sek_pusat = nr["NAMA SEKOLAH"].values[0] if not nr.empty else pusat_to_nama.get(pusat, pusat)
-                
                 calon_c = 0
                 kelas_c = 0
                 pengawas_c = 10
                 total_c = 12
-                # Guna kuota final (PPD edit jika ada) - auto ubah semua fungsi
-                info_k = get_kuota_info(pusat, df_calon_master)
+                info_k = get_kuota_info(pusat, df_calon_master, df_kuota_ppd)
                 calon_c = info_k["calon"]
                 kelas_c = info_k["kelas"]
-                pengawas_c = info_k["final"]  # <-- FINAL yang diguna sistem (asal atau edit PPD)
+                pengawas_c = info_k["final"]
                 total_c = pengawas_c + 2
-                # Fallback kalau info_k kosong, guna asal df
                 if not df_calon_master.empty and calon_c==0 and kelas_c==0:
                     rc = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat]
                     if not rc.empty:
@@ -2149,7 +1919,6 @@ with col_kanan:
                                 total_c = pengawas_c + 2
                             except:
                                 pass
-                
                 if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                     bil = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==pusat])
                     if bil >= total_c:
@@ -2161,16 +1930,11 @@ with col_kanan:
                 else:
                     bil = 0
                     status = f"❌ Belum (0/{total_c})"
-                
                 status_data.append({"NO PUSAT": pusat, "SEKOLAH TUAN RUMAH": nama_sek_pusat, "KOD SEKOLAH": kod_sek_pusat, "JUMLAH CALON": calon_c, "KELAS": kelas_c, "PENGAWAS": pengawas_c, "TOTAL DI PUSAT": total_c, "BIL DILANTIK": bil, "STATUS": status})
             status_df = pd.DataFrame(status_data)
             st.dataframe(status_df, use_container_width=True)
-            
-            # Summary
             lengkap = len([s for s in status_data if "Lengkap" in s["STATUS"]])
             st.metric("Pusat Lengkap Dilantik", f"{lengkap}/{len(semua_pusat)}")
-            
-            # Detail maklumat sekolah
             maklumat_all = read_sheet(TAB_MAKLUMAT)
             if not maklumat_all.empty and "KOD SEKOLAH" in maklumat_all.columns:
                 maklumat_ppd = maklumat_all[maklumat_all["KOD SEKOLAH"].astype(str).isin(kod_sekolah_ppd)]
@@ -2179,20 +1943,15 @@ with col_kanan:
                 if not belum.empty:
                     st.warning(f"⚠️ {len(belum)} sekolah belum isi")
                     st.dataframe(belum[["KOD SEKOLAH","NAMA SEKOLAH"]], use_container_width=True)
-        
 
-        elif menu=="Kuota Pusat":
+        elif menu == "Kuota Pusat":
             st.header(f"⚙️ Kuota Pusat - PPD {info['ppd_nama']} ({info['kod']})")
             st.info("Data asal dikekalkan ikut formula KELAS + 10 / PETUGAS_NEEDED. PPD boleh edit KEPERLUAN EDIT ikut kesesuaian. Bila edit, semua fungsi (Senarai Pusat, Jana Penempatan, Hantar JPN) akan auto guna kuota baru.")
-            
-            # Load kuota sheet
-            df_kuota_all = read_sheet("kuota_ppd")
+            df_kuota_all = df_kuota_ppd
             if df_kuota_all.empty:
                 st.warning("Belum ada edit kuota - semua guna data asal.")
             else:
                 st.caption(f"Ada {len(df_kuota_all)} rekod kuota dalam sheet")
-            
-            # Build table kuota
             kuota_data = []
             for pusat in semua_pusat:
                 info_k = get_kuota_info(pusat, df_calon_master, df_kuota_all)
@@ -2211,17 +1970,13 @@ with col_kanan:
                     "TOTAL + KP/TKP": info_k["final"] + 2,
                     "CATATAN": info_k["catatan"]
                 })
-            
             df_tunjuk = pd.DataFrame(kuota_data)
             st.dataframe(df_tunjuk, use_container_width=True, height=400)
-            
             st.markdown("---")
             st.subheader("✏️ Edit Kuota Pusat")
-            
             col1, col2 = st.columns([2,3])
             with col1:
                 pusat_pilih = st.selectbox("Pilih Pusat untuk Edit", ["-- Pilih --"] + semua_pusat, format_func=lambda x: f"{x} - {pusat_to_nama.get(x,'')}" if x!="-- Pilih --" else x)
-                
                 if pusat_pilih != "-- Pilih --":
                     k_info = get_kuota_info(pusat_pilih, df_calon_master, df_kuota_all)
                     st.markdown(f"#### {pusat_pilih}")
@@ -2237,10 +1992,8 @@ with col_kanan:
                             st.success(f"Edited: {k_info['edit']}")
                         else:
                             st.info("Guna Asal")
-                    
                     if k_info["catatan"]:
                         st.caption(f"Catatan lama: {k_info['catatan']}")
-            
             with col2:
                 if pusat_pilih != "-- Pilih --":
                     k_info = get_kuota_info(pusat_pilih, df_calon_master, df_kuota_all)
@@ -2249,13 +2002,11 @@ with col_kanan:
                         def_val = k_info["edit"] if k_info["edit"] is not None else k_info["asal"]
                         new_keperluan = st.number_input("KEPERLUAN EDIT (Bil Pengawas Sahaja, tidak termasuk KP/TKP)", 1, 50, int(def_val))
                         catatan = st.text_input("CATATAN / ALASAN EDIT", value=k_info["catatan"], placeholder="Contoh: Tambah 2 sebab dewan besar, kelas tumpang...")
-                        
                         col_s1, col_s2 = st.columns(2)
                         with col_s1:
                             btn_simpan = st.form_submit_button("💾 Simpan Kuota", use_container_width=True, type="primary")
                         with col_s2:
                             btn_reset = st.form_submit_button("🔄 Reset ke Asal", use_container_width=True)
-                        
                         if btn_simpan:
                             baris = {
                                 "NO PUSAT": pusat_pilih,
@@ -2275,28 +2026,25 @@ with col_kanan:
                                 "EDIT OLEH": f"PPD {info['ppd_nama']} ({info['kod']})",
                                 "TOTAL DENGAN KP/TKP": int(new_keperluan)+2
                             }
-                            
                             def _simpan_kuota(df):
                                 if df.empty:
                                     return pd.DataFrame([baris])
-                                # Buang rekod lama pusat sama
                                 df = df[df["NO PUSAT"].astype(str) != str(pusat_pilih)]
                                 return pd.concat([df, pd.DataFrame([baris])], ignore_index=True)
-                            
                             if modify_sheet("kuota_ppd", _simpan_kuota):
+                                # Update session state supaya fungsi lain nampak perubahan
+                                st.session_state["kuota_ppd"] = read_sheet("kuota_ppd")
                                 flash("success", f"✅ Kuota {pusat_pilih} diubah: Asal {k_info['asal']} -> Edit {new_keperluan}. Sistem akan auto guna kuota baru di semua fungsi!")
                                 st.rerun()
-                        
                         if btn_reset:
                             def _reset_kuota(df):
                                 if df.empty:
                                     return df
                                 return df[df["NO PUSAT"].astype(str) != str(pusat_pilih)]
-                            
                             if modify_sheet("kuota_ppd", _reset_kuota):
+                                st.session_state["kuota_ppd"] = read_sheet("kuota_ppd")
                                 flash("success", f"🔄 Kuota {pusat_pilih} direset ke asal ({k_info['asal']}) - Formula Kelas+10")
                                 st.rerun()
-            
             st.markdown("---")
             st.markdown("### 📥 Export / Import Kuota")
             col_e1, col_e2 = st.columns(2)
@@ -2311,7 +2059,6 @@ with col_kanan:
                             df_up = pd.read_excel(uploaded)
                         else:
                             df_up = pd.read_csv(uploaded)
-                        # Validate
                         if "NO PUSAT" not in df_up.columns or "KEPERLUAN EDIT" not in df_up.columns:
                             st.error("CSV mesti ada column NO PUSAT dan KEPERLUAN EDIT")
                         else:
@@ -2347,12 +2094,13 @@ with col_kanan:
                                     return pd.concat([df, pd.DataFrame([b])], ignore_index=True)
                                 modify_sheet("kuota_ppd", _imp)
                                 count+=1
+                            st.session_state["kuota_ppd"] = read_sheet("kuota_ppd")
                             st.success(f"✅ {count} kuota diimport!")
                             st.rerun()
                     except Exception as e:
                         st.error(f"Gagal import: {e}")
 
-        elif menu=="Cadangan SUP":
+        elif menu == "Cadangan SUP":
             st.header(f"📋 Cadangan SUP - {info['ppd_nama']} ({len(kod_sekolah_ppd)} sekolah)")
             st.caption("SUP boleh senaraikan lebih petugas. PPD PILIH JAWATAN DAHULU, kemudian TICK siapa akan bertugas. Yang di-tick sahaja akan masuk untuk Jana Penempatan. Selagi PPD tak tick, Simpanan kosong.")
             cadangan_all = read_sheet(TAB_CADANGAN)
@@ -2360,7 +2108,6 @@ with col_kanan:
             simpanan_all = read_sheet(TAB_SIMPANAN)
             TAB_PILIHAN = tab_daerah("pilihan_ppd", info['kod'])
             pilihan_all = read_sheet(TAB_PILIHAN)
-            
             if not cadangan_all.empty and "KOD SEKOLAH ASAL" in cadangan_all.columns:
                 cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)].copy()
                 def get_nama_pusat(kod):
@@ -2368,22 +2115,18 @@ with col_kanan:
                     if not row.empty:
                         return str(row.iloc[0]["NAMA SEKOLAH"])
                     return str(kod)
-                
                 if "NAMA PUSAT SEKOLAH" not in cadangan_ppd.columns:
                     cadangan_ppd["NAMA PUSAT SEKOLAH"] = cadangan_ppd["KOD SEKOLAH ASAL"].apply(get_nama_pusat)
-                
                 pilihan_map = {}
                 if not pilihan_all.empty and "IC" in pilihan_all.columns:
                     for _, r in pilihan_all.iterrows():
                         ic_n = norm_ic(r.get("IC",""))
                         if ic_n:
                             pilihan_map[ic_n] = str(r.get("STATUS PILIHAN","")).upper()
-                
                 peta_pen = peta_guru_pusat(penempatan_all, simpanan_all)
                 cadangan_ppd["_IC_NORM"] = cadangan_ppd["IC"].map(norm_ic)
                 cadangan_ppd["_PUSAT_SEMASA"] = [pusat_guru(peta_pen, r.get("IC",""), r.get("NAMA GURU",""), r.get("KOD SEKOLAH ASAL","")) for _, r in cadangan_ppd.iterrows()]
                 cadangan_ppd["_DIPILIH"] = cadangan_ppd["_IC_NORM"].apply(lambda x: pilihan_map.get(x, "BELUM PILIH"))
-                
                 def _status_label(p_):
                     if p_ is None:
                         return "✅ Belum Lantik"
@@ -2391,7 +2134,6 @@ with col_kanan:
                         return "🅿️ Simpanan"
                     return f"🔒 Di {p_}"
                 cadangan_ppd["_STATUS_LANTIK"] = cadangan_ppd["_PUSAT_SEMASA"].map(_status_label)
-                
                 total_cad = len(cadangan_ppd)
                 sudah_pilih = len([v for v in pilihan_map.values() if "DIPILIH" in v and "TIDAK" not in v])
                 belum_pilih = total_cad - len(pilihan_map)
@@ -2405,8 +2147,6 @@ with col_kanan:
                 with col_m4:
                     dilantik = len([x for x in cadangan_ppd["_PUSAT_SEMASA"] if x is not None and x!="SIMPANAN"])
                     st.metric("Sudah Dilantik", dilantik)
-                
-                # Salin 2026 -> 2027
                 tahun_semasa = st.session_state.get("tahun_pilih", 2026)
                 if tahun_semasa >= 2027:
                     st.markdown("---")
@@ -2447,8 +2187,6 @@ with col_kanan:
                             else:
                                 st.error(f"Tiada data di tahun {tahun_sumber}")
                     st.markdown("---")
-                
-                # Filter - PILIH JAWATAN DAHULU
                 st.markdown("### 👔 Pilih Jawatan Dahulu - PPD Akan Pilih Ikut Jawatan")
                 col_f1, col_f2, col_f3, col_f4 = st.columns(4)
                 with col_f1:
@@ -2475,7 +2213,6 @@ with col_kanan:
                         if col_j in cadangan_ppd.columns:
                             cadangan_ppd["_JAW_ORDER"] = cadangan_ppd[col_j].map(lambda x: jaw_order.get(str(x), 99))
                             cadangan_ppd = cadangan_ppd.sort_values("_JAW_ORDER")
-                
                 with col_f2:
                     sekolah_opts = sorted(cadangan_ppd["KOD SEKOLAH ASAL"].astype(str).unique().tolist())
                     def label_sek(k):
@@ -2498,26 +2235,21 @@ with col_kanan:
                     if search_nama.strip():
                         s = search_nama.strip().upper()
                         cadangan_ppd = cadangan_ppd[cadangan_ppd["NAMA GURU"].astype(str).str.contains(s, na=False) | cadangan_ppd["IC"].astype(str).str.contains(s, na=False)]
-                
                 st.markdown(f"#### ☑️ Tick Siapa Akan Bertugas - Jawatan: **{pilih_jawatan}**")
                 st.caption("Tick = DIPILIH untuk Jana. Tak tick = kekal cadangan sahaja. Selagi PPD tak tick, Simpanan kosong.")
-                
                 df_editor = cadangan_ppd.copy()
                 def is_dipilih(ic_n):
                     v = pilihan_map.get(ic_n,"")
                     return True if "DIPILIH" in v and "TIDAK" not in v else False
                 df_editor["_TICK"] = df_editor["_IC_NORM"].apply(is_dipilih)
-                
                 cols_display = ["_TICK","NAMA GURU","IC","JAWATAN CADANGAN","JAWATAN CADANG","KOD SEKOLAH ASAL","NAMA SEKOLAH ASAL","JANTINA","NO TELEFON GURU","_DIPILIH","_STATUS_LANTIK"]
                 cols_display = [c for c in cols_display if c in df_editor.columns]
-                
-                edited = st.data_editor(df_editor[cols_display], use_container_width=True, hide_index=True, 
+                edited = st.data_editor(df_editor[cols_display], use_container_width=True, hide_index=True,
                     column_config={
                         "_TICK": st.column_config.CheckboxColumn("✅ PILIH?"),
                         "_DIPILIH": st.column_config.TextColumn("Keputusan PPD"),
                         "_STATUS_LANTIK": st.column_config.TextColumn("Status Lantik")
                     }, key="editor_cadangan_ppd")
-                
                 col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
                 with col_btn1:
                     if st.button("✅ Simpan Pilihan", use_container_width=True, type="primary"):
@@ -2588,7 +2320,6 @@ with col_kanan:
                             st.rerun()
                 with col_btn4:
                     st.caption(f"Jawatan: {pilih_jawatan}")
-                
                 st.markdown("---")
                 st.markdown(f"#### 🎯 Ringkasan untuk Jana - Jawatan: {pilih_jawatan}")
                 dipilh_df = cadangan_ppd[cadangan_ppd["_IC_NORM"].isin([k for k,v in pilihan_map.items() if "DIPILIH" in v and "TIDAK" not in v])]
@@ -2609,14 +2340,9 @@ with col_kanan:
                     st.dataframe(dipilh_show[show_cols], use_container_width=True)
             else:
                 st.info("Belum ada cadangan SUP untuk daerah ini")
-
-
-
-
                 st.markdown("---")
                 st.markdown("### ❌ Batal Cadangan SUP (PPD Sahaja) - Cepat")
                 st.caption("Buang nama dari Cadangan SUP PPD sahaja. Nama masih kekal di Senarai Guru SUP.")
-                
                 if not cadangan_ppd.empty:
                     opsi_batal = [f"{r.get('NAMA GURU','')} - {r.get('IC','')} - {r.get('KOD SEKOLAH ASAL','')}" for _, r in cadangan_ppd.iterrows()]
                     pilih_batal = st.multiselect("Pilih guru untuk Batal", opsi_batal, key="batal_cadangan_fast")
@@ -2645,17 +2371,14 @@ with col_kanan:
                 else:
                     st.info("Tiada cadangan")
 
-
-        elif menu=="Jana Penempatan":
+        elif menu == "Jana Penempatan":
             st.header(f"🎯 Lantikan Ikut Pusat - {info['ppd_nama']}")
             st.markdown("PPD pilih pusat, terus nampak siapa Ketua, Timbalan, Pengawas yang sistem tempatkan. Boleh edit terus!")
             st.caption("Susunan: 1 Ketua Pengawas + 1 Timbalan + Pengawas ikut keperluan pusat. Penyelia Kawasan exclude (Bilik Kebal). Seorang guru hanya dilantik di SATU pusat; guru sekolah tuan rumah tak jaga pusat sendiri.")
-
             cadangan_all = read_sheet(TAB_CADANGAN)
             penempatan_all = read_sheet(TAB_PENEMPATAN)
             simpanan_all = read_sheet(TAB_SIMPANAN)
             ada_pen = (not penempatan_all.empty) and ("NO PUSAT TUGAS" in penempatan_all.columns)
-
             if not cadangan_all.empty and "KOD SEKOLAH ASAL" in cadangan_all.columns:
                 cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)]
                 TAB_PILIHAN_JANA = tab_daerah("pilihan_ppd", info['kod'])
@@ -2667,14 +2390,11 @@ with col_kanan:
                         st.info(f"🔍 Filter Pilihan PPD aktif: {len(ic_dipilih)} DIPILIH - hanya mereka akan dijana.")
             else:
                 cadangan_ppd = pd.DataFrame()
-
             def jalankan_jana(senarai_pusat, label_status):
-                """Jana untuk 1 atau banyak pusat - satu logik, simpan selamat."""
                 if cadangan_ppd.empty or "IC" not in cadangan_ppd.columns:
                     st.error("Tiada cadangan guru! Isi Cadangan SUP dulu (setiap guru mesti ada IC).")
                     return
                 hasil = {}
-
                 def _ubah(df_pen):
                     rows, kurang = jana_penempatan(senarai_pusat, df_pen, cadangan_ppd, pusat_to_sekolah, pusat_to_nama, df_calon_master, label_status, read_sheet_strict(TAB_SIMPANAN))
                     hasil["rows"], hasil["kurang"] = rows, kurang
@@ -2682,7 +2402,6 @@ with col_kanan:
                         return None
                     baru = pd.DataFrame(rows)
                     return pd.concat([df_pen, baru], ignore_index=True) if not df_pen.empty else baru
-
                 with st.spinner("Menjana penempatan..."):
                     ok = modify_sheet(TAB_PENEMPATAN, _ubah)
                 if not ok:
@@ -2695,12 +2414,9 @@ with col_kanan:
                 if hasil["kurang"]:
                     flash("warning", "⚠️ Calon tak cukup (jawatan dibiar kosong): " + ", ".join(f"{p} (kurang {n})" for p, n in hasil["kurang"]) + ". Minta SUP tambah cadangan guru.")
                 st.rerun()
-
-            tot_peng = sum(keperluan_pengawas(p, df_calon_master) for p in semua_pusat)
+            tot_peng = sum(keperluan_pengawas(p, df_calon_master, df_kuota_ppd) for p in semua_pusat)
             tot_tot = tot_peng + len(semua_pusat) * 2
             curr = int(penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat).sum()) if ada_pen else 0
-
-            # ===== SEMAK DUPLIKASI (guru sama di lebih daripada satu pusat) =====
             if ada_pen:
                 _, dup = bersihkan_duplikasi(penempatan_all, semua_pusat)
             else:
@@ -2713,7 +2429,6 @@ with col_kanan:
                 sahkan_betul = st.checkbox("Ya, buang duplikasi dan isi semula", key="sahkan_betul_dup")
                 if st.button("🧹 Buang duplikasi & isi semula", use_container_width=True, type="primary", disabled=not sahkan_betul, key="betul_dup"):
                     hasil_b = {}
-
                     def _betul(df_pen):
                         df2, lap = bersihkan_duplikasi(df_pen, semua_pusat)
                         rows, kurang = [], []
@@ -2723,7 +2438,6 @@ with col_kanan:
                         if rows:
                             return pd.concat([df2, pd.DataFrame(rows)], ignore_index=True) if not df2.empty else pd.DataFrame(rows)
                         return df2
-
                     with st.spinner("Membetulkan penempatan..."):
                         ok_b = modify_sheet(TAB_PENEMPATAN, _betul)
                     if ok_b:
@@ -2731,13 +2445,11 @@ with col_kanan:
                         if hasil_b["kurang"]:
                             flash("warning", "⚠️ Calon tak cukup untuk: " + ", ".join(f"{p} (kurang {n})" for p, n in hasil_b["kurang"]) + ". Minta SUP tambah cadangan guru.")
                         st.rerun()
-
             st.markdown("### 🚀 Jana Semua Pusat")
             st.info(f"{len(semua_pusat)} pusat = {tot_peng} Pengawas + {len(semua_pusat)*2} KP/TKP = {tot_tot} petugas | {len(cadangan_ppd)} guru dicadangkan")
             if len(cadangan_ppd) < tot_tot - curr:
                 st.warning(f"⚠️ Cadangan guru ({len(cadangan_ppd)}) kurang daripada jawatan kosong ({tot_tot - curr}). Sebahagian pusat akan kekal tak lengkap.")
             st.metric("Total Dilantik Sekarang", f"{curr}/{tot_tot}")
-
             col_bulk1, col_bulk2, col_bulk3 = st.columns(3)
             with col_bulk1:
                 if st.button(f"🚀 JANA SEMUA {len(semua_pusat)} PUSAT SEKARANG", use_container_width=True, type="primary", key="jana_all"):
@@ -2755,10 +2467,7 @@ with col_kanan:
             with col_bulk3:
                 pusat_ada = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)]["NO PUSAT TUGAS"].nunique() if ada_pen else 0
                 st.metric("Pusat Ada Lantikan", f"{pusat_ada}/{len(semua_pusat)}")
-
             st.markdown("---")
-
-            # Pilih pusat
             if not semua_pusat:
                 st.warning("Tiada pusat untuk daerah ini")
             else:
@@ -2770,20 +2479,17 @@ with col_kanan:
                     nama_pusat = pusat_to_nama.get(pusat_pilih, pusat_pilih)
                     st.metric("Sekolah Tuan Rumah", f"{nama_pusat}")
                     st.caption(f"Kod: {kod_sek_pusat} | Pusat: {pusat_pilih}")
-
                 if ada_pen:
                     penempatan_pusat = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str) == str(pusat_pilih)]
                 else:
                     penempatan_pusat = pd.DataFrame()
-
                 bil_sedia = len(penempatan_pusat)
-                need_peng_single = keperluan_pengawas(pusat_pilih, df_calon_master)
+                need_peng_single = keperluan_pengawas(pusat_pilih, df_calon_master, df_kuota_ppd)
                 need_tot_single = need_peng_single + 2
                 if bil_sedia == 0:
                     st.warning(f"❌ {pusat_pilih} belum ada lantikan. Tekan Jana Auto di bawah.")
                 else:
                     st.info(f"ℹ️ {pusat_pilih} ada {bil_sedia}/{need_tot_single} petugas sekarang")
-
                 col_j1, col_j2 = st.columns(2)
                 with col_j1:
                     label_btn = f"🤖 Jana Auto untuk {pusat_pilih} ({need_tot_single} orang: 1 KP+1 TKP+{need_peng_single} Pengawas)" if bil_sedia == 0 else f"➕ Lengkapkan {pusat_pilih} jadi {need_tot_single} orang (1 KP+1 TKP+{need_peng_single} Pengawas)"
@@ -2798,20 +2504,15 @@ with col_kanan:
                         if modify_sheet(TAB_PENEMPATAN, _kosong_satu):
                             flash("success", f"✅ {pusat_pilih} dikosongkan!")
                             st.rerun()
-
-                # ===== SENARAI CADANGAN UNTUK PUSAT INI =====
                 st.markdown("---")
                 st.markdown(f"### 📋 Senarai Cadangan untuk {pusat_pilih}")
-
                 def label_calon(row):
                     return f"{row.get('NAMA GURU','')} | {row.get('KOD SEKOLAH ASAL','')} - {row.get('NAMA SEKOLAH ASAL','')} | IC:{row.get('IC','')} | Poskod:{row.get('POSKOD RUMAH','')}"
-
                 calon_edit = pd.DataFrame()
                 calon_options = []
                 if cadangan_ppd.empty or "IC" not in cadangan_ppd.columns:
                     st.info("Belum ada cadangan guru daripada sekolah-sekolah daerah ini.")
                 else:
-                    # Guru -> pusat tempat dia sudah dilantik (padan IC / nama+sekolah)
                     peta_pen = peta_guru_pusat(penempatan_all if ada_pen else None, simpanan_all)
                     senarai = cadangan_ppd.copy()
                     senarai["_IC"] = senarai["IC"].map(norm_ic)
@@ -2820,7 +2521,6 @@ with col_kanan:
                     bil_tuan = int(tuan.sum())
                     senarai = senarai[~tuan].copy()
                     senarai["_PUSAT"] = [pusat_guru(peta_pen, r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", "")) for _, r in senarai.iterrows()]
-
                     def _status_calon(p_):
                         if p_ is None or (isinstance(p_, float) and pd.isna(p_)):
                             return "✅ Tersedia"
@@ -2829,21 +2529,17 @@ with col_kanan:
                         if p_ == str(pusat_pilih):
                             return "📍 Sudah di pusat ini"
                         return f"🔒 Dilantik di {p_}"
-
                     senarai["STATUS"] = senarai["_PUSAT"].map(_status_calon)
                     senarai["_susun"] = senarai["STATUS"].map(lambda s: 0 if s.startswith("✅") else (1 if s.startswith("📍") else 2))
                     senarai = senarai.sort_values("_susun", kind="stable")
                     tersedia = senarai[senarai["STATUS"].str.startswith("✅")]
                     calon_edit = tersedia.drop(columns=["_IC", "_susun", "STATUS", "_PUSAT"]).reset_index(drop=True)
                     calon_options = [label_calon(r) for _, r in calon_edit.iterrows()]
-
                     bil_lain = int(senarai["STATUS"].str.startswith("🔒").sum())
                     bil_sini = int(senarai["STATUS"].str.startswith("📍").sum())
                     st.caption(f"✅ {len(calon_edit)} tersedia | 📍 {bil_sini} sudah di pusat ini | 🔒 {bil_lain} sudah dilantik di pusat lain (tak boleh dipilih) | {bil_tuan} guru sekolah tuan rumah ({kod_sek_pusat}) dikecualikan")
                     lajur_calon = [c for c in ["NAMA GURU", "KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "IC", "JANTINA", "POSKOD RUMAH", "NO TELEFON GURU", "PENGALAMAN SPM", "JAWATAN CADANGAN", "JAWATAN CADANG"] if c in senarai.columns]
                     st.dataframe(senarai[lajur_calon + ["STATUS"]], use_container_width=True, hide_index=True)
-
-                    # Lantik manual dari senarai
                     sedia_jaw = penempatan_pusat["JAWATAN FINAL"].tolist() if (not penempatan_pusat.empty and "JAWATAN FINAL" in penempatan_pusat.columns) else []
                     jaw_kosong = jawatan_kosong(need_peng_single, sedia_jaw)
                     if not jaw_kosong:
@@ -2860,7 +2556,6 @@ with col_kanan:
                                 st.error(f"Jawatan {pilih_jaw} hanya ada {baki_jaw[pilih_jaw]} kekosongan.")
                             else:
                                 guru_dipilih = [calon_edit.iloc[calon_options.index(o)] for o in pilih_guru]
-
                                 def _lantik(df_pen):
                                     ada = (not df_pen.empty) and ("IC" in df_pen.columns) and ("NO PUSAT TUGAS" in df_pen.columns)
                                     peta_x = peta_guru_pusat(df_pen, read_sheet_strict(TAB_SIMPANAN))
@@ -2882,35 +2577,27 @@ with col_kanan:
                                         "STATUS PENEMPATAN": f"Lantik manual oleh PPD {info['ppd_nama']} - {pd.Timestamp.now().strftime('%Y-%m-%d')}",
                                     } for g in guru_dipilih])
                                     return pd.concat([df_pen, baru], ignore_index=True) if not df_pen.empty else baru
-
                                 if modify_sheet(TAB_PENEMPATAN, _lantik):
                                     flash("success", f"✅ {len(guru_dipilih)} guru dilantik sebagai {pilih_jaw} di {pusat_pilih}.")
                                     st.rerun()
                 st.markdown("---")
-
                 if penempatan_pusat.empty:
                     st.info(f"Belum dilantik untuk {pusat_pilih} - tekan Jana Auto di atas")
                 else:
                     st.success(f"✅ {pusat_pilih} - {len(penempatan_pusat)} petugas dilantik")
-
                     lajur_papar = ["NAMA GURU", "KOD SEKOLAH ASAL GURU", "NAMA SEKOLAH ASAL", "IC", "JAWATAN FINAL"]
                     for jaw in ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Pengemas Bilik", "Penyelia Kawasan"]:
                         subset = penempatan_pusat[penempatan_pusat["JAWATAN FINAL"].astype(str) == jaw] if "JAWATAN FINAL" in penempatan_pusat.columns else pd.DataFrame()
                         if not subset.empty:
                             st.markdown(f"**{jaw} ({len(subset)} orang)**")
                             st.dataframe(subset[[c for c in lajur_papar if c in subset.columns]], use_container_width=True)
-
                     st.markdown("---")
                     st.markdown(f"#### ✏️ Edit Lantikan {pusat_pilih} - Klik Nama Untuk Tukar")
                     st.caption(f"📍 Pusat: {pusat_pilih} - {nama_pusat} ({kod_sek_pusat}) | Guru dari {kod_sek_pusat} tidak boleh jaga pusat sendiri - auto exclude")
-
-
                     st.info(f"📋 Ada {len(calon_options)} guru dari daerah {info['ppd_nama']} yang belum dilantik dan boleh dipilih (kecuali {kod_sek_pusat})")
-
                     petugas_labels = []
                     for _, r in penempatan_pusat.iterrows():
                         petugas_labels.append(f"{r.get('NAMA GURU','')} - {r.get('JAWATAN FINAL','')} ({r.get('KOD SEKOLAH ASAL GURU','')})")
-
                     col_a, col_b = st.columns([1, 2])
                     with col_a:
                         idx_pilih = st.selectbox("1️⃣ Klik nama pengawas nak tukar", ["-- Pilih nama --"] + petugas_labels, key=f"pilih_{pusat_pilih}")
@@ -2925,7 +2612,6 @@ with col_kanan:
                                 if st.button(f"🔄 Tukar {petugas_pilih} → {guru_baru.split('|')[0].strip()}", use_container_width=True, type="primary", key=f"tukar_{pusat_pilih}"):
                                     guru_data = calon_edit.iloc[calon_options.index(guru_baru)]
                                     ic_baru = norm_ic(guru_data.get("IC", ""))
-
                                     def _tukar(df_pen):
                                         if df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns or "NAMA GURU" not in df_pen.columns:
                                             raise ValueError("Data penempatan tidak lengkap - muat semula halaman")
@@ -2951,11 +2637,9 @@ with col_kanan:
                                         df_pen.loc[mask, "EMAIL GURU"] = guru_data.get("EMAIL GURU", "")
                                         df_pen.loc[mask, "STATUS PENEMPATAN"] = f"Tukar manual oleh PPD {info['ppd_nama']} - {pd.Timestamp.now().strftime('%Y-%m-%d')}"
                                         return df_pen
-
                                     if modify_sheet(TAB_PENEMPATAN, _tukar):
                                         flash("success", f"✅ {petugas_pilih} ditukar kepada {guru_data.get('NAMA GURU','')} dari {guru_data.get('KOD SEKOLAH ASAL','')}")
                                         st.rerun()
-
                     st.markdown("---")
                     st.markdown(f"#### ❌ Batalkan Penempatan {pusat_pilih} → Petugas Simpanan")
                     st.caption("Petugas yang dibatalkan dibuang daripada pusat ini dan masuk ke senarai Petugas Simpanan. Jana Auto tak akan pilih mereka semula; boleh ditempatkan semula melalui menu Petugas Simpanan.")
@@ -2982,15 +2666,14 @@ with col_kanan:
                                     lambda df: buang_guru_ic(df, ic_b, None, "senarai simpanan"),
                                 )
                                 if ok_batal:
-                                    st.session_state["ppd_n"] = st.session_state.get("ppd_n", 0) + 1   # segarkan pilihan
+                                    st.session_state["ppd_n"] = st.session_state.get("ppd_n", 0) + 1
                                     flash("success", f"✅ {nama_b} dibatalkan daripada {pusat_pilih} dan dimasukkan ke Petugas Simpanan. Jawatan {baris_b.get('JAWATAN FINAL','')} kini kosong.")
                                     st.rerun()
                     st.markdown("---")
-
                     st.markdown("#### 📋 Semua Petugas di Pusat Ini")
                     st.dataframe(penempatan_pusat, use_container_width=True)
 
-        elif menu=="Penempatan Manual":
+        elif menu == "Penempatan Manual":
             st.header(f"✍️ Penempatan Manual - {info['ppd_nama']}")
             st.caption("Pilih petugas → pilih pusat → pilih jawatan → tempatkan. Boleh untuk petugas yang belum ditempatkan, yang sudah ditempatkan (dipindahkan) dan yang dalam simpanan.")
             cadangan_all = read_sheet(TAB_CADANGAN)
@@ -3008,7 +2691,6 @@ with col_kanan:
             else:
                 cadangan_ppd = pd.DataFrame()
             master = senarai_semua_petugas(cadangan_ppd, penempatan_all, simpanan_all)
-
             if master.empty:
                 st.info("Belum ada petugas. Minta SUP isi Cadangan Petugas dahulu.")
             elif not semua_pusat:
@@ -3024,7 +2706,6 @@ with col_kanan:
                     st.metric("Ditempatkan", int((master["STATUS"] == "Ditempatkan").sum()))
                 with m4:
                     st.metric("Simpanan", int((master["STATUS"] == "Simpanan").sum()))
-
                 f1, f2, f3 = st.columns(3)
                 with f1:
                     tapis_status = st.selectbox("Status", ["Semua", "Belum ditempatkan", "Ditempatkan", "Simpanan"], key=f"man_status_{n_}")
@@ -3034,7 +2715,6 @@ with col_kanan:
                     tapis_sek = st.selectbox("Sekolah asal", ["Semua"] + sek_opsyen, format_func=lambda k: "Semua" if k == "Semua" else f"{k} - {nama_sek.get(k, '')}", key=f"man_sek_{n_}")
                 with f3:
                     cari = st.text_input("Cari nama / IC", key=f"man_cari_{n_}")
-
                 lihat = master.copy()
                 if tapis_status != "Semua":
                     lihat = lihat[lihat["STATUS"] == tapis_status]
@@ -3043,10 +2723,8 @@ with col_kanan:
                 if cari.strip():
                     c_ = cari.strip().upper()
                     lihat = lihat[lihat["NAMA GURU"].astype(str).str.upper().str.contains(c_, regex=False) | lihat["IC"].astype(str).str.contains(c_, regex=False)]
-
                 lajur_m = [c for c in ["NAMA GURU", "NAMA SEKOLAH ASAL", "KOD SEKOLAH ASAL", "IC", "JANTINA", "POSKOD RUMAH", "NO TELEFON GURU", "PENGALAMAN SPM", "STATUS", "PUSAT", "JAWATAN SEMASA"] if c in lihat.columns]
                 st.dataframe(lihat[lajur_m], use_container_width=True, hide_index=True)
-
                 st.markdown("---")
                 st.markdown("### ✍️ Tempatkan Petugas")
                 label_m = {}
@@ -3062,22 +2740,17 @@ with col_kanan:
                     guru_m = master[master["IC"].map(norm_ic) == pilih_m].iloc[0]
                     status_m = guru_m["STATUS"]
                     pusat_kini = str(guru_m["PUSAT"])
-
                     kiraan_p = penempatan_all["NO PUSAT TUGAS"].astype(str).value_counts() if (not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns) else pd.Series(dtype=int)
-
                     def label_pusat_m(p):
-                        return f"{p} - {pusat_to_nama.get(p, p)} ({int(kiraan_p.get(p, 0))}/{keperluan_pengawas(p, df_calon_master) + 2})"
-
+                        return f"{p} - {pusat_to_nama.get(p, p)} ({int(kiraan_p.get(p, 0))}/{keperluan_pengawas(p, df_calon_master, df_kuota_ppd) + 2})"
                     idx_pusat = semua_pusat.index(pusat_kini) if pusat_kini in semua_pusat else 0
                     pusat_m = st.selectbox("2️⃣ Pilih pusat", semua_pusat, index=idx_pusat, format_func=label_pusat_m, key=f"man_pusat_{pilih_m}_{n_}")
-
                     sedia_m = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str) == str(pusat_m)]["JAWATAN FINAL"].astype(str).tolist() if (not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns and "JAWATAN FINAL" in penempatan_all.columns) else []
                     if status_m == "Ditempatkan" and pusat_m == pusat_kini and guru_m["JAWATAN SEMASA"] in sedia_m:
-                        sedia_m.remove(guru_m["JAWATAN SEMASA"])   # kedudukan sendiri dikira kosong
-                    need_m = keperluan_pengawas(pusat_m, df_calon_master)
+                        sedia_m.remove(guru_m["JAWATAN SEMASA"])
+                    need_m = keperluan_pengawas(pusat_m, df_calon_master, df_kuota_ppd)
                     kosong_m = jawatan_kosong(need_m, sedia_m)
                     kod_tuan_m = str(pusat_to_sekolah.get(pusat_m, ""))
-
                     if str(guru_m["KOD SEKOLAH ASAL"]) == kod_tuan_m:
                         st.error(f"❌ {guru_m['NAMA GURU']} dari sekolah tuan rumah {pusat_m} ({kod_tuan_m}) - tak boleh jaga pusat sendiri. Pilih pusat lain.")
                     elif not kosong_m:
@@ -3091,10 +2764,8 @@ with col_kanan:
                         if st.button(f"✅ {verb} {guru_m['NAMA GURU']} → {pusat_m} sebagai {jaw_m}", use_container_width=True, type="primary", disabled=sama_je, key=f"man_btn_{pilih_m}_{n_}"):
                             label_status = f"Manual oleh PPD {info['ppd_nama']} - {pd.Timestamp.now().strftime('%Y-%m-%d')}"
                             nama_p = pusat_to_nama.get(pusat_m, pusat_m)
-
                             def _fn_pen(df_pen, pindah=(status_m == "Ditempatkan")):
                                 return tempatkan_manual(df_pen, guru_m, pusat_m, jaw_m, kod_tuan_m, need_m, nama_p, label_status, pindah=pindah)
-
                             if status_m == "Simpanan":
                                 ok_m = transaksi_dua_tab(
                                     TAB_PENEMPATAN, _fn_pen,
@@ -3108,23 +2779,18 @@ with col_kanan:
                                 st.session_state["ppd_n"] = st.session_state.get("ppd_n", 0) + 1
                                 st.rerun()
 
-        elif menu=="Batal Penempatan":
+        elif menu == "Batal Penempatan":
             st.header(f"❌ Batal Penempatan - PPD {info['ppd_nama']}")
             st.caption("Batal penempatan ikut pusat atau keseluruhan daerah. Semua yang dibatalkan akan auto masuk ke Senarai Simpanan. SUP isi lebih petugas pun akan masuk simpanan. Sheet ikut tahun: {} - {}".format(tab_daerah("penempatan_ppd", info['kod']), st.session_state.get("tahun_pilih",2026)))
-            
             penempatan_all = read_sheet(TAB_PENEMPATAN)
             simpanan_all = read_sheet(TAB_SIMPANAN)
             cadangan_all = read_sheet(TAB_CADANGAN)
-            
             if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                 pen_ppd = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)].copy()
             else:
                 pen_ppd = pd.DataFrame()
-            
             st.markdown(f"#### 📊 Status Semasa - {len(semua_pusat)} pusat | {len(pen_ppd)} petugas dilantik | Tahun {st.session_state.get('tahun_pilih',2026)}")
-            
             tab1, tab2, tab3 = st.tabs(["🏫 Batal Ikut Pusat", "🗺️ Batal Keseluruhan Daerah", "📦 Lebihan SUP ke Simpanan"])
-            
             with tab1:
                 st.subheader("Batal Ikut Pusat")
                 if not semua_pusat:
@@ -3140,18 +2806,14 @@ with col_kanan:
                                 st.info(f"Tiada petugas di {pusat_batal}")
                             else:
                                 st.dataframe(df_pusat, use_container_width=True)
-                                
                                 df_pusat["_pilih"] = False
                                 edited = st.data_editor(df_pusat[["_pilih","NAMA GURU","IC","JAWATAN FINAL","NAMA SEKOLAH ASAL"]], use_container_width=True, hide_index=True, column_config={"_pilih": st.column_config.CheckboxColumn("Batal?")}, key=f"edit_batal_{pusat_batal}")
-                                
                                 pilih_batal = edited[edited["_pilih"]==True]
-                                
                                 col_a, col_b = st.columns(2)
                                 with col_a:
                                     sebab_batal = st.text_input("Sebab Batal", placeholder="Contoh: Pertukaran guru, cuti bersalin...", key=f"sebab_{pusat_batal}")
                                 with col_b:
                                     st.write(f"Terpilih: {len(pilih_batal)} orang")
-                                
                                 c1,c2 = st.columns(2)
                                 with c1:
                                     if st.button(f"❌ Batal {len(pilih_batal)} Terpilih di {pusat_batal}", use_container_width=True, type="primary", disabled=len(pilih_batal)==0, key="btn_batal_pilih"):
@@ -3175,24 +2837,20 @@ with col_kanan:
                                                 "SEBAB BATAL": sebab_batal,
                                                 "STATUS SIMPANAN": "Dalam Simpanan"
                                             })
-                                        
                                         def _batal_pusat(df_pen):
                                             mask = (df_pen["NO PUSAT TUGAS"].astype(str)==str(pusat_batal)) & (df_pen["IC"].isin(pilih_batal["IC"]))
                                             return df_pen[~mask].copy() if not df_pen.empty else df_pen
-                                        
                                         def _masuk_simpanan(df_simp):
                                             if df_simp.empty:
                                                 return pd.DataFrame(baris_simpanan_list)
                                             ic_baru = [b["IC"] for b in baris_simpanan_list]
                                             df_simp = df_simp[~df_simp["IC"].map(norm_ic).isin([norm_ic(x) for x in ic_baru])]
                                             return pd.concat([df_simp, pd.DataFrame(baris_simpanan_list)], ignore_index=True)
-                                        
                                         ok1 = modify_sheet(TAB_PENEMPATAN, _batal_pusat)
                                         ok2 = modify_sheet(TAB_SIMPANAN, _masuk_simpanan)
                                         if ok1 and ok2:
                                             flash("success", f"✅ {len(pilih_batal)} petugas dari {pusat_batal} dibatalkan & masuk Simpanan!")
                                             st.rerun()
-                                
                                 with c2:
                                     if st.button(f"❌ Batal SEMUA di {pusat_batal} ({len(df_pusat)} orang)", use_container_width=True, key="btn_batal_semua_pusat"):
                                         baris_simpanan_list = []
@@ -3230,7 +2888,6 @@ with col_kanan:
                                         if ok1 and ok2:
                                             flash("success", f"✅ Semua {len(df_pusat)} petugas dari {pusat_batal} dibatalkan!")
                                             st.rerun()
-            
             with tab2:
                 st.subheader("Batal Keseluruhan Daerah")
                 st.error(f"⚠️ Tindakan ini akan batal SEMUA {len(pen_ppd)} petugas di {len(semua_pusat)} pusat dalam PPD {info['ppd_nama']}!")
@@ -3238,11 +2895,9 @@ with col_kanan:
                     st.dataframe(pen_ppd, use_container_width=True)
                 else:
                     st.info("Tiada penempatan")
-                
                 if not pen_ppd.empty:
                     sebab_all = st.text_input("Sebab Batal Keseluruhan", placeholder="Contoh: Penstrukturan semula, arahan JPN...", key="sebab_all")
                     confirm_text = st.text_input(f'Taip "BATAL {info["kod"]}" untuk sahkan', key="confirm_all")
-                    
                     if st.button("💥 BATAL KESELURUHAN DAERAH", use_container_width=True, type="primary", disabled=confirm_text!=f"BATAL {info['kod']}"):
                         baris_simpanan_list = []
                         for _, r in pen_ppd.iterrows():
@@ -3264,29 +2919,24 @@ with col_kanan:
                                 "SEBAB BATAL": sebab_all or "Batal keseluruhan daerah",
                                 "STATUS SIMPANAN": "Dalam Simpanan - Batal Keseluruhan"
                             })
-                        
                         def _batal_keseluruhan(df_pen):
                             if df_pen.empty:
                                 return df_pen
                             return df_pen[~df_pen["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)].copy()
-                        
                         def _masuk_simpanan_keseluruhan(df_simp):
                             if df_simp.empty:
                                 return pd.DataFrame(baris_simpanan_list)
                             ic_baru = [b["IC"] for b in baris_simpanan_list]
                             df_simp = df_simp[~df_simp["IC"].map(norm_ic).isin([norm_ic(x) for x in ic_baru])]
                             return pd.concat([df_simp, pd.DataFrame(baris_simpanan_list)], ignore_index=True)
-                        
                         ok1 = modify_sheet(TAB_PENEMPATAN, _batal_keseluruhan)
                         ok2 = modify_sheet(TAB_SIMPANAN, _masuk_simpanan_keseluruhan)
                         if ok1 and ok2:
                             flash("success", f"💥 Keseluruhan {len(pen_ppd)} petugas dibatalkan & masuk Simpanan!")
                             st.rerun()
-            
             with tab3:
                 st.subheader("Lebihan Cadangan SUP → Simpanan")
                 st.caption("Jika SUP isi lebih petugas daripada keperluan, yang lebihan auto masuk simpanan.")
-                
                 if cadangan_all.empty:
                     st.info("Tiada cadangan SUP")
                 else:
@@ -3295,18 +2945,15 @@ with col_kanan:
                     for _, r in cadangan_all.iterrows():
                         if pusat_guru(peta, r.get("IC",""), r.get("NAMA GURU",""), r.get("KOD SEKOLAH ASAL","")) is None:
                             belum_lantik.append(r)
-                    
                     if not belum_lantik:
                         st.success("✅ Semua cadangan sudah dilantik - tiada lebihan")
                     else:
                         df_belum = pd.DataFrame(belum_lantik)
                         st.metric("Cadangan Belum Dilantik (Lebihan)", f"{len(df_belum)} orang")
                         st.dataframe(df_belum, use_container_width=True)
-                        
                         df_belum["_pilih"] = False
                         edited_belum = st.data_editor(df_belum[["_pilih","NAMA GURU","IC","JAWATAN CADANGAN","NAMA SEKOLAH ASAL"]], use_container_width=True, hide_index=True, column_config={"_pilih": st.column_config.CheckboxColumn("Masuk Simpanan?")}, key="edit_lebihan")
                         pilih_lebihan = edited_belum[edited_belum["_pilih"]==True]
-                        
                         if st.button(f"📦 Pindahkan {len(pilih_lebihan)} Lebihan ke Simpanan", use_container_width=True, disabled=len(pilih_lebihan)==0):
                             baris_simpanan_list = []
                             for _, r in df_belum[df_belum["IC"].isin(pilih_lebihan["IC"])].iterrows():
@@ -3333,13 +2980,11 @@ with col_kanan:
                                 ic_baru = [b["IC"] for b in baris_simpanan_list]
                                 df_simp = df_simp[~df_simp["IC"].map(norm_ic).isin([norm_ic(x) for x in ic_baru])]
                                 return pd.concat([df_simp, pd.DataFrame(baris_simpanan_list)], ignore_index=True)
-                            
                             if modify_sheet(TAB_SIMPANAN, _masuk_lebihan):
                                 flash("success", f"📦 {len(pilih_lebihan)} lebihan cadangan dipindah ke Simpanan!")
                                 st.rerun()
 
-        elif menu=="Petugas Simpanan":
-
+        elif menu == "Petugas Simpanan":
             st.header(f"🅿️ Petugas Simpanan - {info['ppd_nama']}")
             st.caption("Selagi PPD tak tick cadangan SUP, senarai ini kosong. Lepas PPD tick, yang di-tick akan masuk untuk Jana. Jika belum dijana / belum ditempatkan manual, mereka ada di sini sebagai backup.")
             simpanan_all = read_sheet(TAB_SIMPANAN)
@@ -3347,7 +2992,6 @@ with col_kanan:
             cadangan_all_s = read_sheet(TAB_CADANGAN)
             TAB_PILIHAN_S = tab_daerah("pilihan_ppd", info['kod'])
             pilihan_all_s = read_sheet(TAB_PILIHAN_S)
-            
             tambahan_sedia = []
             if not pilihan_all_s.empty and not cadangan_all_s.empty:
                 peta_s = peta_guru_pusat(penempatan_all, simpanan_all)
@@ -3384,7 +3028,6 @@ with col_kanan:
                     df_tambahan = df_tambahan[~df_tambahan["IC"].map(norm_ic).isin(ic_exist)]
                     simpanan_all = pd.concat([simpanan_all, df_tambahan], ignore_index=True) if not df_tambahan.empty else simpanan_all
                 st.info(f"ℹ️ Ada {len(tambahan_sedia)} yang DIPILIH PPD tapi belum dijana - dipaparkan sebagai Sedia Dijana")
-            
             if simpanan_all.empty or "IC" not in simpanan_all.columns:
                 st.info("📭 Simpanan kosong - selagi PPD tak tick cadangan SUP, tiada nama di sini. Sila tick di menu Cadangan SUP dahulu.")
             else:
@@ -3402,7 +3045,6 @@ with col_kanan:
                 st.dataframe(paparan, use_container_width=True, hide_index=True)
                 if any(s.startswith("⚠️") for s in status_semasa):
                     st.warning("Ada rekod bertanda ⚠️: guru itu sebenarnya sudah dilantik di pusat lain. Pilih 'Keluarkan daripada simpanan' untuk bersihkan rekod itu.")
-
                 st.markdown("---")
                 st.markdown("### ➕ Tempatkan Semula ke Pusat")
                 if not label_s:
@@ -3413,7 +3055,7 @@ with col_kanan:
                     pilih_s = st.selectbox("Pilih petugas simpanan", list(label_s.keys()), format_func=lambda k: label_s[k], key=f"simp_pilih_{st.session_state.get('ppd_n', 0)}")
                     pusat_t = st.selectbox("Tempatkan ke pusat", semua_pusat, key="simp_pusat")
                     sedia_t = penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str) == str(pusat_t)]["JAWATAN FINAL"].tolist() if (not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns and "JAWATAN FINAL" in penempatan_all.columns) else []
-                    need_t = keperluan_pengawas(pusat_t, df_calon_master)
+                    need_t = keperluan_pengawas(pusat_t, df_calon_master, df_kuota_ppd)
                     kosong_t = jawatan_kosong(need_t, sedia_t)
                     if not kosong_t:
                         st.success(f"✅ {pusat_t} sudah lengkap - tiada jawatan kosong.")
@@ -3444,7 +3086,6 @@ with col_kanan:
                             if ok1 and ok2:
                                 flash("success", f"✅ {baru_pen['NAMA GURU']} ditempatkan di {pusat_t} sebagai {jaw_t}.")
                                 st.rerun()
-
                 st.markdown("---")
                 st.markdown("### ↩️ Keluarkan daripada Simpanan → Masuk Cadangan SUP")
                 st.caption("Guru dikeluarkan akan kembali ke senarai cadangan biasa (BELUM PILIH) dan boleh di-tick semula di Cadangan SUP.")
@@ -3470,11 +3111,9 @@ with col_kanan:
                         st.session_state["ppd_n"] = st.session_state.get("ppd_n", 0) + 1
                         flash("success", f"✅ {len(pilih_keluar)} guru dikeluarkan → masuk semula ke Cadangan SUP sebagai BELUM PILIH.")
                         st.rerun()
-
                 st.markdown("---")
                 st.markdown("### 🗑️ Kosongkan Senarai Petugas Simpanan")
                 st.caption("Semua petugas dalam simpanan akan dikosongkan dan masuk semula ke ruang Cadangan SUP sebagai BELUM PILIH. Selagi PPD tak tick semula, mereka tidak akan dijana.")
-                
                 if simpanan_all.empty:
                     st.info("Simpanan sudah kosong")
                 else:
@@ -3484,20 +3123,16 @@ with col_kanan:
                         sebab_kosong = st.text_input("Sebab Kosongkan Simpanan", placeholder="Contoh: Semak semula cadangan...", key="sebab_kosong_simpanan")
                     with col_k2:
                         confirm_kosong = st.text_input(f'Taip "KOSONGKAN {info["kod"]}" untuk sahkan', key="confirm_kosong")
-                    
                     if st.button(f"🗑️ KOSONGKAN SEMUA {len(simpanan_all)} DARI SIMPANAN → MASUK CADANGAN SUP", use_container_width=True, type="primary", disabled=confirm_kosong!=f"KOSONGKAN {info['kod']}", key="btn_kosongkan_simpanan"):
                         ic_simpanan = simpanan_all["IC"].map(norm_ic).tolist() if "IC" in simpanan_all.columns else []
-                        
                         def _kosongkan_simpanan(df):
                             if df.empty:
                                 return df
                             return df.iloc[0:0].copy()
-                        
                         def _kembalikan_ke_cadangan_pilihan(df_pilihan):
                             if df_pilihan.empty or "IC" not in df_pilihan.columns:
                                 return df_pilihan
                             return df_pilihan[~df_pilihan["IC"].map(norm_ic).isin(ic_simpanan)].copy()
-                        
                         def _log_kosong(df_log):
                             baris_log = []
                             for _, r in simpanan_all.iterrows():
@@ -3518,27 +3153,22 @@ with col_kanan:
                             if df_log.empty:
                                 return df_baru
                             return pd.concat([df_log, df_baru], ignore_index=True)
-                        
                         TAB_LOG = tab_daerah("log_simpanan", info['kod'])
                         TAB_PILIHAN_K = tab_daerah("pilihan_ppd", info['kod'])
-                        
                         ok1 = modify_sheet(TAB_SIMPANAN, _kosongkan_simpanan)
                         ok2 = modify_sheet(TAB_PILIHAN_K, _kembalikan_ke_cadangan_pilihan)
                         try:
                             modify_sheet(TAB_LOG, _log_kosong)
                         except:
                             pass
-                        
                         if ok1 and ok2:
                             flash("success", f"🗑️ {len(ic_simpanan)} petugas dikosongkan dari Simpanan dan masuk semula ke Cadangan SUP sebagai BELUM PILIH!")
                             st.rerun()
 
-
-        elif menu=="Hantar JPN":
+        elif menu == "Hantar JPN":
             st.header(f"📤 Hantar ke JPN - {info['ppd_nama']}")
             penempatan_all = read_sheet(TAB_PENEMPATAN)
             status_all = read_sheet(tab_tahun("status_hantar"))
-
             bil_petugas = 0
             bil_pusat_ada = 0
             bil_pusat_lengkap = 0
@@ -3547,8 +3177,7 @@ with col_kanan:
                 bil_petugas = len(pen_ppd)
                 kiraan = pen_ppd["NO PUSAT TUGAS"].astype(str).value_counts()
                 bil_pusat_ada = len(kiraan)
-                bil_pusat_lengkap = sum(1 for p in semua_pusat if kiraan.get(p, 0) >= keperluan_pengawas(p, df_calon_master) + 2)
-
+                bil_pusat_lengkap = sum(1 for p in semua_pusat if kiraan.get(p, 0) >= keperluan_pengawas(p, df_calon_master, df_kuota_ppd) + 2)
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric("Sekolah", f"{len(df_ppd)}")
@@ -3558,16 +3187,13 @@ with col_kanan:
                 st.metric("Pusat Ada Lantikan", f"{bil_pusat_ada}/{len(semua_pusat)}")
             with col4:
                 st.metric("Pusat Lengkap", f"{bil_pusat_lengkap}/{len(semua_pusat)}")
-
             if (not status_all.empty) and ("KOD PPD" in status_all.columns):
                 rekod = status_all[status_all["KOD PPD"].astype(str) == str(info['kod'])]
                 if not rekod.empty:
                     r = rekod.iloc[-1]
                     st.info(f"Status terakhir: {r.get('STATUS','')} | Dihantar: {r.get('TARIKH HANTAR','')} | Disahkan: {r.get('TARIKH SAH','') or '-'}")
-
             if bil_pusat_lengkap < len(semua_pusat):
                 st.warning(f"⚠️ {len(semua_pusat) - bil_pusat_lengkap} pusat belum lengkap. Anda masih boleh hantar, tapi JPN akan nampak status tak lengkap.")
-
             if st.button("📤 HANTAR ke JPN", use_container_width=True, type="primary"):
                 if bil_petugas == 0:
                     st.error("Belum ada petugas dilantik. Jana Penempatan dulu.")
@@ -3579,7 +3205,6 @@ with col_kanan:
                         "PUSAT LENGKAP": bil_pusat_lengkap, "BIL PETUGAS": bil_petugas,
                         "STATUS": "Dihantar", "TARIKH SAH": "",
                     }
-
                     def _hantar(df):
                         if not df.empty and "KOD PPD" not in df.columns:
                             raise ValueError("Format sheet status_hantar tidak dijangka - hubungi admin")
@@ -3587,15 +3212,15 @@ with col_kanan:
                             return pd.DataFrame([baris_hantar])
                         df = df[df["KOD PPD"].astype(str) != str(info['kod'])]
                         return pd.concat([df, pd.DataFrame([baris_hantar])], ignore_index=True) if not df.empty else pd.DataFrame([baris_hantar])
-
                     if modify_sheet("status_hantar", _hantar):
                         flash("success", f"✅ PPD {info['ppd_nama']} berjaya hantar {bil_pusat_ada} pusat ({bil_petugas} petugas) ke JPN!")
                         st.rerun()
+
     else:
-        if menu=="Semua PPD":
+        if menu == "Semua PPD":
             st.header(f"🏛️ Semua PPD - {len(mapping_df)} Sekolah - File: {os.path.basename(file_used)}")
             st.dataframe(mapping_df, use_container_width=True)
-        elif menu=="Sahkan PPD":
+        elif menu == "Sahkan PPD":
             st.header("✅ Sahkan PPD")
             status_all = read_sheet(tab_tahun("status_hantar"))
             if status_all.empty:
@@ -3616,7 +3241,7 @@ with col_kanan:
                 if modify_sheet("status_hantar", _sahkan):
                     flash("success", f"✅ {label_ppd[kod_sah]} DISAHKAN!")
                     st.rerun()
-        elif menu=="Pindah Data Daerah":
+        elif menu == "Pindah Data Daerah":
             st.header("🗂️ Pindah Data Lama ke Tab Setiap Daerah")
             st.info("Data dalam tab lama `maklumat_sekolah`, `cadangan_sup` dan `penempatan_ppd` akan disalin ke tab setiap daerah, contohnya `cadangan_sup_BK`. Tab lama TIDAK dipadam atau diubah (jadi ada salinan keselamatan). Selamat dijalankan berulang kali - baris yang dah ada akan dilangkau.")
             st.caption("Tab daerah: " + ", ".join(f"{k} ({n})" for _, _, n, k in PPD_LIST))
