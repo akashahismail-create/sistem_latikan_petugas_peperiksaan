@@ -1762,36 +1762,23 @@ with col_kanan:
                             else:
                                 return pd.DataFrame(baris_pilihan)
                         if modify_sheet(TAB_PILIHAN, _simpan_pilihan):
-                            tidak_dipilih = [r for r in edited.to_dict('records') if r.get("_TICK")!=True]
-                            if tidak_dipilih:
-                                baris_simpanan = []
-                                for r in tidak_dipilih:
-                                    orig = cadangan_ppd[cadangan_ppd["IC"].astype(str)==str(r.get("IC",""))].iloc[0] if not cadangan_ppd[cadangan_ppd["IC"].astype(str)==str(r.get("IC",""))].empty else r
-                                    baris_simpanan.append({
-                                        "KOD SEKOLAH ASAL GURU": orig.get("KOD SEKOLAH ASAL",""),
-                                        "NAMA SEKOLAH ASAL": orig.get("NAMA SEKOLAH ASAL",""),
-                                        "NAMA GURU": orig.get("NAMA GURU",""),
-                                        "IC": orig.get("IC",""),
-                                        "JANTINA": orig.get("JANTINA",""),
-                                        "POSKOD RUMAH": orig.get("POSKOD RUMAH",""),
-                                        "ALAMAT RUMAH": orig.get("ALAMAT RUMAH",""),
-                                        "NO TELEFON GURU": orig.get("NO TELEFON GURU",""),
-                                        "EMAIL GURU": orig.get("EMAIL GURU",""),
-                                        "JAWATAN ASAL": orig.get("JAWATAN CADANGAN","") or orig.get("JAWATAN CADANG",""),
-                                        "DIBATAL DARI PUSAT": "TIDAK DIPILIH PPD",
-                                        "TARIKH BATAL": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                        "BATAL OLEH": f"PPD {info['ppd_nama']} - Tidak Dipilih",
-                                        "SEBAB BATAL": f"Tidak dipilih PPD untuk jawatan {pilih_jawatan}",
-                                        "STATUS SIMPANAN": "Tidak Dipilih PPD"
-                                    })
-                                def _masuk_simpanan_tidak_dipilih(df_simp):
-                                    if df_simp.empty:
-                                        return pd.DataFrame(baris_simpanan)
-                                    ic_baru = [norm_ic(b["IC"]) for b in baris_simpanan]
-                                    df_simp = df_simp[~df_simp["IC"].map(norm_ic).isin(ic_baru)]
-                                    return pd.concat([df_simp, pd.DataFrame(baris_simpanan)], ignore_index=True)
-                                modify_sheet(TAB_SIMPANAN, _masuk_simpanan_tidak_dipilih)
-                            flash("success", f"✅ Disimpan! DIPILIH: {len([b for b in baris_pilihan if b['STATUS PILIHAN']=='DIPILIH'])} untuk {pilih_jawatan} - hanya mereka akan dijana!")
+                            # LOGIC BARU: Selagi PPD tak tick, simpanan kosong. Yang di-tick sahaja yang akan dijana.
+                            # Yang tidak di-tick KEKAL sebagai cadangan sahaja, tidak masuk simpanan.
+                            # Yang di-tick tapi belum dilantik akan dipaparkan dalam Petugas Simpanan sebagai "Sedia Dijana"
+                            dipilh_count = len([b for b in baris_pilihan if b['STATUS PILIHAN']=='DIPILIH'])
+                            tidak_count = len([b for b in baris_pilihan if b['STATUS PILIHAN']!='DIPILIH'])
+                            # Bersihkan simpanan dari yang tidak dipilih (supaya selagi tak tick, simpanan kosong)
+                            # Kita TIDAK masukkan tidak dipilih ke simpanan lagi
+                            # Sebaliknya, kalau ada yang sebelum ni masuk simpanan sebab tidak dipilih, kita keluarkan
+                            def _bersih_tidak_dipilih(df_simp):
+                                if df_simp.empty:
+                                    return df_simp
+                                # Buang yang status Tidak Dipilih PPD - sebab sekarang kita nak simpanan kosong selagi tak tick / hanya yang dipilih tapi belum jana
+                                mask_tidak = df_simp["STATUS SIMPANAN"].astype(str).str.contains("Tidak Dipilih PPD", na=False) if "STATUS SIMPANAN" in df_simp.columns else pd.Series([False]*len(df_simp))
+                                return df_simp[~mask_tidak].copy()
+                            modify_sheet(TAB_SIMPANAN, _bersih_tidak_dipilih)
+                            
+                            flash("success", f"✅ Disimpan! DIPILIH: {dipilh_count} untuk {pilih_jawatan} akan dijana. {tidak_count} tidak dipilih kekal sebagai cadangan sahaja (bukan simpanan). Selagi PPD tak tick, simpanan kosong.")
                             st.rerun()
                 with col_btn2:
                     if st.button("☑️ Pilih Semua", use_container_width=True):
@@ -2317,9 +2304,57 @@ with col_kanan:
                                 st.rerun()
         elif menu=="Petugas Simpanan":
             st.header(f"🅿️ Petugas Simpanan - {info['ppd_nama']}")
-            st.caption("Petugas yang dibatalkan penempatannya masuk ke sini. Mereka TIDAK dipilih oleh Jana Auto. Boleh ditempatkan semula ke mana-mana pusat, atau dikeluarkan daripada simpanan (kembali ke senarai cadangan biasa).")
+            st.caption("Selagi PPD tak tick cadangan SUP, senarai ini kosong. Lepas PPD tick, yang di-tick akan masuk untuk Jana. Jika belum dijana / belum ditempatkan manual, mereka ada di sini sebagai backup.")
             simpanan_all = read_sheet(TAB_SIMPANAN)
             penempatan_all = read_sheet(TAB_PENEMPATAN)
+            cadangan_all_s = read_sheet(TAB_CADANGAN)
+            TAB_PILIHAN_S = tab_daerah("pilihan_ppd", info['kod'])
+            pilihan_all_s = read_sheet(TAB_PILIHAN_S)
+            
+            # Jika ada pilihan DIPILIH tapi belum dilantik, gabungkan ke paparan simpanan sebagai "Sedia Dijana"
+            tambahan_sedia = []
+            if not pilihan_all_s.empty and not cadangan_all_s.empty:
+                peta_s = peta_guru_pusat(penempatan_all, simpanan_all)
+                ic_dipilih_s = pilihan_all_s[pilihan_all_s["STATUS PILIHAN"].astype(str).str.contains("DIPILIH") & ~pilihan_all_s["STATUS PILIHAN"].astype(str).str.contains("TIDAK")]["IC"].map(norm_ic).tolist() if "STATUS PILIHAN" in pilihan_all_s.columns else []
+                for ic_n in ic_dipilih_s:
+                    if pusat_guru(peta_s, ic_n, "", "") is None:  # belum dilantik di mana-mana
+                        # cari data penuh dari cadangan
+                        r_cad = cadangan_all_s[cadangan_all_s["IC"].map(norm_ic)==ic_n]
+                        if not r_cad.empty:
+                            r = r_cad.iloc[0]
+                            tambahan_sedia.append({
+                                "KOD SEKOLAH ASAL GURU": r.get("KOD SEKOLAH ASAL",""),
+                                "NAMA SEKOLAH ASAL": r.get("NAMA SEKOLAH ASAL",""),
+                                "NAMA GURU": r.get("NAMA GURU",""),
+                                "IC": r.get("IC",""),
+                                "JANTINA": r.get("JANTINA",""),
+                                "POSKOD RUMAH": r.get("POSKOD RUMAH",""),
+                                "ALAMAT RUMAH": r.get("ALAMAT RUMAH",""),
+                                "NO TELEFON GURU": r.get("NO TELEFON GURU",""),
+                                "EMAIL GURU": r.get("EMAIL GURU",""),
+                                "JAWATAN ASAL": r.get("JAWATAN CADANGAN","") or r.get("JAWATAN CADANG",""),
+                                "DIBATAL DARI PUSAT": "DIPILIH PPD - BELUM JANA",
+                                "NAMA PUSAT ASAL BATAL": "",
+                                "TARIKH BATAL": "",
+                                "BATAL OLEH": f"PPD {info['ppd_nama']} - Dipilih",
+                                "SEBAB BATAL": "Dipilih PPD tapi belum dijana / belum ditempatkan manual",
+                                "STATUS SIMPANAN": "Sedia Dijana (Tick PPD)"
+                            })
+            # Gabungkan
+            if tambahan_sedia:
+                df_tambahan = pd.DataFrame(tambahan_sedia)
+                if simpanan_all.empty:
+                    simpanan_all = df_tambahan
+                else:
+                    # Elak duplicate
+                    ic_exist = simpanan_all["IC"].map(norm_ic).tolist() if "IC" in simpanan_all.columns else []
+                    df_tambahan = df_tambahan[~df_tambahan["IC"].map(norm_ic).isin(ic_exist)]
+                    simpanan_all = pd.concat([simpanan_all, df_tambahan], ignore_index=True) if not df_tambahan.empty else simpanan_all
+                st.info(f"ℹ️ Ada {len(tambahan_sedia)} yang DIPILIH PPD tapi belum dijana - dipaparkan sebagai Sedia Dijana")
+            
+            if simpanan_all.empty:
+                st.info("📭 Simpanan kosong - selagi PPD tak tick cadangan SUP, tiada nama di sini. Sila tick di menu Cadangan SUP dahulu.")
+            
             if simpanan_all.empty or "IC" not in simpanan_all.columns:
                 st.info("Tiada petugas simpanan buat masa ini.")
             else:
