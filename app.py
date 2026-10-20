@@ -434,6 +434,29 @@ def bersihkan_duplikasi(df_pen, pusat_ppd):
     if not buang:
         return df_pen, []
     return df_pen.drop(index=buang).reset_index(drop=True), laporan
+def sah_telefon(t):
+    """No telefon: 9-12 digit (abaikan '-' dan jarak)."""
+    return 9 <= len(re.sub(r"\D", "", str(t))) <= 12
+
+
+def sah_email(e):
+    """Email boleh kosong; kalau diisi mesti format betul."""
+    e = str(e).strip()
+    return e == "" or re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e) is not None
+
+
+def normalkan_cadangan(df):
+    """Samakan lajur lama 'JAWATAN CADANG' dengan header sheet 'JAWATAN CADANGAN'."""
+    if "JAWATAN CADANG" not in df.columns:
+        return df
+    df = df.copy()
+    if "JAWATAN CADANGAN" in df.columns:
+        kosong = df["JAWATAN CADANGAN"].astype(str).str.strip().isin(["", "nan", "None"])
+        df.loc[kosong, "JAWATAN CADANGAN"] = df.loc[kosong, "JAWATAN CADANG"]
+        return df.drop(columns=["JAWATAN CADANG"])
+    return df.rename(columns={"JAWATAN CADANG": "JAWATAN CADANGAN"})
+
+
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
 
@@ -757,39 +780,74 @@ with col_kanan:
         elif menu=="Cadangan Petugas":
             st.header(f"👥 Cadangan - {info['nama']}")
             cadangan = read_sheet("cadangan_sup")
+            # Pusat milik sekolah ini (untuk NO PUSAT ASAL)
+            _senarai_p = []
+            for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
+                if _p.upper() not in _senarai_p:
+                    _senarai_p.append(_p.upper())
+            TIADA_PUSAT = "-- Tiada --"
             with st.form("guru"):
-                c1,c2,c3 = st.columns(3)
+                c1, c2, c3 = st.columns(3)
                 with c1:
-                    jaw = st.selectbox("JAWATAN", ["Ketua Pengawas","Timbalan Ketua Pengawas","Pengawas Peperiksaan","Pengemas Bilik","Penyelia Kawasan"])
-                    nama_g = st.text_input("NAMA GURU *")
+                    jaw = st.selectbox("JAWATAN CADANGAN", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Pengemas Bilik", "Penyelia Kawasan"])
+                    jantina = st.selectbox("JANTINA", ["L", "P"])
                 with c2:
-                    ic = st.text_input("IC *")
-                    jantina = st.selectbox("JANTINA", ["L","P"])
+                    nama_g = st.text_input("NAMA GURU *")
+                    tel_g = st.text_input("NO TELEFON GURU *", placeholder="contoh: 012-3456789")
                 with c3:
-                    pos_rumah = st.number_input("POSKOD RUMAH *",40000,49000,46000)
+                    ic = st.text_input("IC *", placeholder="contoh: 900101-10-1234")
+                    email_g = st.text_input("EMAIL GURU", placeholder="contoh: nama@moe.gov.my")
+                alamat_g = st.text_area("ALAMAT RUMAH *", placeholder="No rumah, jalan, taman, poskod, bandar")
+                c4, c5, c6 = st.columns(3)
+                with c4:
+                    pos_rumah = st.number_input("POSKOD RUMAH *", 40000, 49000, 46000)
+                with c5:
+                    pengalaman = st.number_input("PENGALAMAN SPM (bil. kali bertugas)", 0, 40, 0)
+                with c6:
+                    pusat_asal = st.selectbox("NO PUSAT ASAL (pusat sekolah anda)", _senarai_p + [TIADA_PUSAT])
                 if st.form_submit_button("➕ Tambah", use_container_width=True):
                     ic_digit = re.sub(r"\D", "", ic)
                     if not nama_g.strip() or not ic.strip():
                         st.error("Nama Guru dan IC wajib isi!")
                     elif len(ic_digit) != 12:
                         st.error("IC mesti 12 digit (contoh: 900101-10-1234)")
+                    elif len(alamat_g.strip()) < 10:
+                        st.error("Alamat Rumah wajib isi penuh (no rumah, jalan, taman, bandar).")
+                    elif not sah_telefon(tel_g):
+                        st.error("No Telefon Guru wajib isi dan mesti 9-12 digit (contoh: 012-3456789).")
+                    elif not sah_email(email_g):
+                        st.error("Format Email Guru tidak betul (contoh: nama@moe.gov.my) atau biarkan kosong.")
                     else:
                         ic_norm = norm_ic(ic)
-                        new_g_row = {"KOD SEKOLAH ASAL": info['kod_sekolah'], "NAMA SEKOLAH ASAL": info['nama'], "JAWATAN CADANG": jaw, "NAMA GURU": nama_g.strip(), "IC": ic.strip(), "JANTINA": jantina, "POSKOD RUMAH": pos_rumah, "TARIKH": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")}
+                        new_g_row = {
+                            "KOD SEKOLAH ASAL": info['kod_sekolah'], "NAMA SEKOLAH ASAL": info['nama'],
+                            "NAMA GURU": nama_g.strip(), "IC": ic.strip(), "JANTINA": jantina,
+                            "POSKOD RUMAH": pos_rumah, "ALAMAT RUMAH": re.sub(r"\s+", " ", alamat_g).strip(),
+                            "NO TELEFON GURU": tel_g.strip(), "EMAIL GURU": email_g.strip(),
+                            "JAWATAN CADANGAN": jaw, "PENGALAMAN SPM": int(pengalaman),
+                            "NO PUSAT ASAL": "" if pusat_asal == TIADA_PUSAT else pusat_asal,
+                            "STATUS": "Dicadang",
+                        }
 
                         def _tambah_guru(df):
                             if not df.empty and ("IC" not in df.columns or "KOD SEKOLAH ASAL" not in df.columns):
                                 raise ValueError("Format sheet cadangan_sup tidak dijangka - hubungi admin")
                             if df.empty:
                                 return pd.DataFrame([new_g_row])
+                            df = normalkan_cadangan(df)
                             sama = df["IC"].map(norm_ic) == ic_norm
                             lain = sama & (df["KOD SEKOLAH ASAL"].astype(str) != str(info['kod_sekolah']))
                             if lain.any():
                                 r = df[lain].iloc[0]
                                 raise ValueError(f"IC ini sudah dicadangkan oleh {r.get('NAMA SEKOLAH ASAL', r['KOD SEKOLAH ASAL'])}. Seorang guru hanya boleh dicadang oleh satu sekolah - hubungi PPD jika guru ini baru bertukar.")
+                            baris = dict(new_g_row)
+                            if sama.any() and "STATUS" in df.columns:
+                                s_lama = str(df[sama].iloc[0].get("STATUS", "")).strip()
+                                if s_lama and s_lama.lower() not in ("nan", "none"):
+                                    baris["STATUS"] = s_lama   # kekalkan status sedia ada
                             # IC sama dalam sekolah SENDIRI sahaja yang diganti (kemaskini)
                             df = df[~sama]
-                            return pd.concat([df, pd.DataFrame([new_g_row])], ignore_index=True) if not df.empty else pd.DataFrame([new_g_row])
+                            return pd.concat([df, pd.DataFrame([baris])], ignore_index=True) if not df.empty else pd.DataFrame([baris])
 
                         if modify_sheet("cadangan_sup", _tambah_guru):
                             flash("success", f"✅ {nama_g} ditambah / dikemaskini! - Hanya untuk {info['kod_sekolah']}")
@@ -1036,7 +1094,7 @@ with col_kanan:
                     
                     # Show dengan NAMA PUSAT
                     cols_show = []
-                    for c in ["NO PUSAT ASAL", "KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "NAMA PUSAT SEKOLAH", "NAMA GURU", "JAWATAN CADANG", "IC", "JANTINA", "POSKOD RUMAH", "ALAMAT RUMAH", "NO TELEFON GURU", "EMAIL GURU"]:
+                    for c in ["NO PUSAT ASAL", "KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "NAMA PUSAT SEKOLAH", "NAMA GURU", "JAWATAN CADANGAN", "JAWATAN CADANG", "IC", "JANTINA", "POSKOD RUMAH", "ALAMAT RUMAH", "NO TELEFON GURU", "EMAIL GURU", "PENGALAMAN SPM"]:
                         if c in cadangan_ppd.columns:
                             cols_show.append(c)
                     if cols_show:
@@ -1238,7 +1296,7 @@ with col_kanan:
                     bil_lain = int(senarai["STATUS"].str.startswith("🔒").sum())
                     bil_sini = int(senarai["STATUS"].str.startswith("📍").sum())
                     st.caption(f"✅ {len(calon_edit)} tersedia | 📍 {bil_sini} sudah di pusat ini | 🔒 {bil_lain} sudah dilantik di pusat lain (tak boleh dipilih) | {bil_tuan} guru sekolah tuan rumah ({kod_sek_pusat}) dikecualikan")
-                    lajur_calon = [c for c in ["NAMA GURU", "KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "IC", "JANTINA", "POSKOD RUMAH", "JAWATAN CADANG"] if c in senarai.columns]
+                    lajur_calon = [c for c in ["NAMA GURU", "KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "IC", "JANTINA", "POSKOD RUMAH", "NO TELEFON GURU", "PENGALAMAN SPM", "JAWATAN CADANGAN", "JAWATAN CADANG"] if c in senarai.columns]
                     st.dataframe(senarai[lajur_calon + ["STATUS"]], use_container_width=True, hide_index=True)
 
                     # Lantik manual dari senarai
@@ -1344,6 +1402,9 @@ with col_kanan:
                                         df_pen.loc[mask, "IC"] = guru_data.get("IC", "")
                                         df_pen.loc[mask, "JANTINA"] = guru_data.get("JANTINA", "")
                                         df_pen.loc[mask, "POSKOD RUMAH"] = guru_data.get("POSKOD RUMAH", "")
+                                        df_pen.loc[mask, "ALAMAT RUMAH"] = guru_data.get("ALAMAT RUMAH", "")
+                                        df_pen.loc[mask, "NO TELEFON GURU"] = guru_data.get("NO TELEFON GURU", "")
+                                        df_pen.loc[mask, "EMAIL GURU"] = guru_data.get("EMAIL GURU", "")
                                         df_pen.loc[mask, "STATUS PENEMPATAN"] = f"Tukar manual oleh PPD {info['ppd_nama']} - {pd.Timestamp.now().strftime('%Y-%m-%d')}"
                                         return df_pen
 
