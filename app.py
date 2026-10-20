@@ -3679,58 +3679,109 @@ with col_kanan:
                 st.subheader("📥 Install Backup Bersih BA..BK")
                 st.write("Install dari Sistem_Lantikan_SPM_2026_7.xlsx - buang BR/ZZ")
                 backup_file = None
-                for p in ["Sistem_Lantikan_SPM_2026_7.xlsx", "data/Sistem_Lantikan_SPM_2026_7.xlsx"]:
-                    if os.path.exists(p):
-                        backup_file = p
-                        break
-                import glob as glob_lib
+            backup_file_path = None
+            # Cari dalam repo
+            for p in ["Sistem_Lantikan_SPM_2026_7.xlsx", "data/Sistem_Lantikan_SPM_2026_7.xlsx", "Sistem_Lantikan_SPM_2026_7 - Copy.xlsx"]:
+                if os.path.exists(p):
+                    backup_file_path = p
+                    backup_file = p
+                    break
+            import glob as glob_lib
+            if not backup_file_path:
                 for g in glob_lib.glob("*.xlsx"):
-                    if "Lantikan" in g:
+                    if "Lantikan" in g or "Sistem" in g:
+                        backup_file_path = g
                         backup_file = g
                         break
-                if backup_file:
-                    st.success(f"✅ Jumpa: {backup_file}")
-                else:
-                    st.warning("Tak jumpa - upload manual")
-                    backup_file_up = st.file_uploader("Upload backup .xlsx", type=["xlsx"], key="backup_up_final")
-                    if backup_file_up:
-                        backup_file = backup_file_up
+                for g in glob_lib.glob("data/*.xlsx"):
+                    if "Lantikan" in g or "Sistem" in g:
+                        backup_file_path = g
+                        backup_file = g
+                        break
+
+            # Upload manual - sentiasa tunjuk
+            st.write("Jika tak jumpa auto, upload manual file Excel backup:")
+            backup_file_up = st.file_uploader("📤 Upload backup .xlsx (Sistem_Lantikan_SPM_2026_7.xlsx)", type=["xlsx"], key="backup_up_final_v2")
+
+            if backup_file_up:
+                backup_file = backup_file_up
+                st.success(f"✅ File upload diterima: {backup_file_up.name}")
+            elif backup_file_path:
+                st.success(f"✅ Jumpa auto: {backup_file_path}")
+                try:
+                    xls_check = pd.ExcelFile(backup_file_path)
+                    st.write(f"Sheets: {xls_check.sheet_names[:10]}")
+                except:
+                    st.write("File jumpa tapi tak boleh baca sheets")
+            else:
+                st.warning("⚠️ Tak jumpa file backup dalam GitHub. Sila upload manual file Sistem_Lantikan_SPM_2026_7.xlsx yang ada dalam laptop kau")
 
                 if st.button("🚀 INSTALL BERSIH BA..BK", type="primary", use_container_width=True):
                     if not backup_file:
-                        st.error("Takde file")
+                        st.error("❌ Takde file - Sila upload file Sistem_Lantikan_SPM_2026_7.xlsx dulu kat atas")
                     else:
                         try:
-                            xls = pd.ExcelFile(backup_file) if isinstance(backup_file, str) else pd.ExcelFile(backup_file)
+                            # Baca Excel - handle str path atau UploadedFile
+                            if isinstance(backup_file, str):
+                                xls = pd.ExcelFile(backup_file)
+                            else:
+                                # UploadedFile
+                                xls = pd.ExcelFile(backup_file)
+
                             PPD_VALID = ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]
-                            st.write("⏳ Delete BR lama...")
+                            st.write("⏳ Delete data lama (termasuk BR)...")
+                            deleted=0
                             for _ in range(30):
                                 res = supa.table("cadangan_sup").select("id").limit(1000).execute()
                                 if not res.data:
                                     break
                                 ids = [r["id"] for r in res.data]
                                 supa.table("cadangan_sup").delete().in_("id", ids).execute()
+                                deleted+=len(ids)
+                            st.write(f"Deleted {deleted} rows lama")
+
                             total_all=0
                             for ppd_code in PPD_VALID:
                                 sh = f"cadangan_sup_{ppd_code}"
                                 if sh not in xls.sheet_names:
+                                    st.write(f"Sheet {sh} takde, skip")
                                     continue
-                                df = pd.read_excel(backup_file, sheet_name=sh) if isinstance(backup_file, str) else pd.read_excel(backup_file, sheet_name=sh)
-                                if df.empty:
-                                    continue
-                                batch=[]
-                                for _, row in df.iterrows():
-                                    rd=row.to_dict()
-                                    clean={k: ("" if pd.isna(v) else str(v)) for k,v in rd.items()}
-                                    batch.append({"KOD_PPD": ppd_code, "data": clean})
-                                for i in range(0, len(batch), 100):
-                                    supa.table("cadangan_sup").insert(batch[i:i+100]).execute()
-                                total_all+=len(batch)
-                                st.write(f"✅ {ppd_code}: {len(batch)}")
+                                st.write(f"⏳ Baca {sh}...")
+                                try:
+                                    if isinstance(backup_file, str):
+                                        df = pd.read_excel(backup_file, sheet_name=sh)
+                                    else:
+                                        df = pd.read_excel(backup_file, sheet_name=sh)
+                                    if df.empty:
+                                        continue
+                                    if "NAMA GURU" in df.columns:
+                                        df = df.drop_duplicates(subset=["NAMA GURU", "KOD SEKOLAH ASAL"], keep="last")
+                                    batch=[]
+                                    for _, row in df.iterrows():
+                                        rd=row.to_dict()
+                                        clean={k: ("" if pd.isna(v) else str(v)) for k,v in rd.items()}
+                                        batch.append({"KOD_PPD": ppd_code, "data": clean, "KOD_SEKOLAH": str(clean.get("KOD SEKOLAH ASAL",""))[:20]})
+                                    for i in range(0, len(batch), 100):
+                                        supa.table("cadangan_sup").insert(batch[i:i+100]).execute()
+                                    total_all+=len(batch)
+                                    st.write(f"✅ {ppd_code}: {len(batch)} baris masuk")
+                                except Exception as e:
+                                    st.error(f"{ppd_code} error: {e}")
+
                             st.balloons()
-                            st.success(f"SELESAI {total_all} baris BA..BK!")
+                            st.success(f"🎉 SELESAI! {total_all} baris BA..BK dah masuk. BR dah hilang!")
+                            try:
+                                res = supa.table("cadangan_sup").select("KOD_PPD").limit(10000).execute()
+                                from collections import Counter
+                                c = Counter([r["KOD_PPD"] for r in res.data])
+                                st.write("### Summary sekarang:")
+                                st.json(dict(c))
+                            except Exception as e:
+                                st.write(f"Summary error: {e}")
                         except Exception as e:
-                            st.error(f"Gagal: {e}")
+                            st.error(f"Gagal install: {e}")
+                            import traceback
+                            st.code(traceback.format_exc())
 
             with tab2:
                 st.subheader("🗑️ Delete Semua 2026")
