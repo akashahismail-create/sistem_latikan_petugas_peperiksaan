@@ -2241,7 +2241,10 @@ with col_kanan:
             with tab2:
                 st.subheader("Batal Keseluruhan Daerah")
                 st.error(f"⚠️ Tindakan ini akan batal SEMUA {len(pen_ppd)} petugas di {len(semua_pusat)} pusat dalam PPD {info['ppd_nama']}!")
-                st.dataframe(pen_ppd, use_container_width=True) if not pen_ppd.empty else st.info("Tiada penempatan")
+                if not pen_ppd.empty:
+                    st.dataframe(pen_ppd, use_container_width=True)
+                else:
+                    st.info("Tiada penempatan")
                 
                 if not pen_ppd.empty:
                     sebab_all = st.text_input("Sebab Batal Keseluruhan", placeholder="Contoh: Penstrukturan semula, arahan JPN...", key="sebab_all")
