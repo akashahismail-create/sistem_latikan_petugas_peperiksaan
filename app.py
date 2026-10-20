@@ -1217,76 +1217,77 @@ if not st.session_state.logged_in:
     left, center, right = st.columns([1,2,1])
     with center:
         with st.container(border=True):
-        st.markdown("### 🔐 Log Masuk")
-        peranan = st.selectbox("1️⃣ Pilih Peranan", ["-- Pilih --", "JPN Selangor", "PPD", "SUP Sekolah"])
-        if peranan == "JPN Selangor":
-            st.info("JPN: ID 1 Password a")
-            jpn_pwd = st.text_input("Kata Laluan JPN", type="password", placeholder="a")
-            if st.button("🚀 Log Masuk JPN", use_container_width=True, type="primary"):
-                if jpn_pwd=="a":
-                    st.session_state.logged_in=True
-                    st.session_state.user_role="JPN"
-                    st.session_state.user_info={"nama":"JPN Selangor","role":"JPN","id":"1"}
-                    st.rerun()
-                else:
-                    st.error("Password salah")
-        elif peranan == "PPD":
-            st.markdown("#### 2️⃣ Pilih Daerah (PPD)")
-            ppd_daerah = st.selectbox("Daerah", ["-- Pilih Daerah --"] + [nama for _,_,nama,_ in PPD_LIST])
-            if ppd_daerah != "-- Pilih Daerah --":
-                ppd_info = PPD_USERS[ppd_daerah]
-                bil_sek = len(mapping_df[mapping_df["PPD"]==ppd_daerah]) if not mapping_df.empty else 0
-                st.success(f"PPD {ppd_daerah} ({ppd_info['kod']}) - {bil_sek} sekolah - Password {ppd_info['password']}")
-                ppd_pwd = st.text_input(f"Password PPD {ppd_daerah}", type="password")
-                if st.button(f"🚀 Log Masuk {ppd_daerah}", use_container_width=True, type="primary"):
-                    if ppd_pwd == ppd_info['password']:
+            st.markdown("### 🔐 Log Masuk")
+            peranan = st.selectbox("1️⃣ Pilih Peranan", ["-- Pilih --", "JPN Selangor", "PPD", "SUP Sekolah"])
+            if peranan == "JPN Selangor":
+                st.info("JPN: ID 1 Password a")
+                jpn_pwd = st.text_input("Kata Laluan JPN", type="password", placeholder="a")
+                if st.button("🚀 Log Masuk JPN", use_container_width=True, type="primary"):
+                    if jpn_pwd=="a":
                         st.session_state.logged_in=True
-                        st.session_state.user_role="PPD"
-                        st.session_state.user_info={"nama":f"PPD {ppd_daerah}","ppd_nama":ppd_daerah,"kod":ppd_info['kod'],"password":ppd_info['password'],"id":ppd_info['id'],"role":"PPD"}
+                        st.session_state.user_role="JPN"
+                        st.session_state.user_info={"nama":"JPN Selangor","role":"JPN","id":"1"}
                         st.rerun()
                     else:
                         st.error("Password salah")
-        elif peranan == "SUP Sekolah":
-            st.markdown("#### 2️⃣ Pilih Daerah")
-            order_daerah = ["Klang","Kuala Langat","Kuala Selangor","Hulu Langat","Hulu Selangor","Sabak Bernam","Gombak","Petaling Perdana","Sepang","Petaling Utama"]
-            if not mapping_df.empty:
-                daerah_ada = mapping_df["PPD"].unique().tolist()
-                daerah_list = [d for d in order_daerah if d in daerah_ada]
-            else:
-                daerah_list = order_daerah
-            sup_daerah = st.selectbox("Daerah Sekolah Anda", ["-- Pilih Daerah --"] + daerah_list)
-            if sup_daerah != "-- Pilih Daerah --":
-                df_daerah = mapping_df[mapping_df["PPD"]==sup_daerah].sort_values("NAMA SEKOLAH") if not mapping_df.empty else pd.DataFrame()
-                st.markdown(f"#### 3️⃣ Pilih Sekolah di {sup_daerah} ({len(df_daerah)} sekolah)")
-                if len(df_daerah)==0:
-                    st.warning("Senarai kosong! Check file dalam data/")
+            elif peranan == "PPD":
+                st.markdown("#### 2️⃣ Pilih Daerah (PPD)")
+                ppd_daerah = st.selectbox("Daerah", ["-- Pilih Daerah --"] + [nama for _,_,nama,_ in PPD_LIST])
+                if ppd_daerah != "-- Pilih Daerah --":
+                    ppd_info = PPD_USERS[ppd_daerah]
+                    bil_sek = len(mapping_df[mapping_df["PPD"]==ppd_daerah]) if not mapping_df.empty else 0
+                    st.success(f"PPD {ppd_daerah} ({ppd_info['kod']}) - {bil_sek} sekolah - Password {ppd_info['password']}")
+                    ppd_pwd = st.text_input(f"Password PPD {ppd_daerah}", type="password")
+                    if st.button(f"🚀 Log Masuk {ppd_daerah}", use_container_width=True, type="primary"):
+                        if ppd_pwd == ppd_info['password']:
+                            st.session_state.logged_in=True
+                            st.session_state.user_role="PPD"
+                            st.session_state.user_info={"nama":f"PPD {ppd_daerah}","ppd_nama":ppd_daerah,"kod":ppd_info['kod'],"password":ppd_info['password'],"id":ppd_info['id'],"role":"PPD"}
+                            st.rerun()
+                        else:
+                            st.error("Password salah")
+            elif peranan == "SUP Sekolah":
+                st.markdown("#### 2️⃣ Pilih Daerah")
+                order_daerah = ["Klang","Kuala Langat","Kuala Selangor","Hulu Langat","Hulu Selangor","Sabak Bernam","Gombak","Petaling Perdana","Sepang","Petaling Utama"]
+                if not mapping_df.empty:
+                    daerah_ada = mapping_df["PPD"].unique().tolist()
+                    daerah_list = [d for d in order_daerah if d in daerah_ada]
                 else:
-                    sekolah_options = [f"{row['NAMA SEKOLAH']} ({row['KOD SEKOLAH']}) - {row['BIL PUSAT']} pusat [{row['SENARAI PUSAT']}]" for _, row in df_daerah.iterrows()]
-                    sekolah_pilih = st.selectbox("Nama Sekolah (Masuk ikut sekolah, bukan pusat)", ["-- Pilih Sekolah --"] + sekolah_options)
-                    if sekolah_pilih != "-- Pilih Sekolah --":
-                        idx = sekolah_options.index(sekolah_pilih)
-                        row_sekolah = df_daerah.iloc[idx]
-                        st.success(f"✅ {row_sekolah['NAMA SEKOLAH']} - {row_sekolah['KOD SEKOLAH']} - {row_sekolah['BIL PUSAT']} pusat: {row_sekolah['SENARAI PUSAT']}")
-                        st.markdown("#### 4️⃣ Password Sahaja")
-                        sup_pwd = st.text_input(f"Password {row_sekolah['NAMA SEKOLAH']}", type="password", placeholder=f"{row_sekolah['PASSWORD']}")
-                        if st.button(f"🚀 Log Masuk {row_sekolah['NAMA SEKOLAH']}", use_container_width=True, type="primary"):
-                            if sup_pwd == str(row_sekolah['PASSWORD']):
-                                st.session_state.logged_in=True
-                                st.session_state.user_role="SUP"
-                                st.session_state.user_info={
-                                    "nama": row_sekolah['NAMA SEKOLAH'],
-                                    "kod_sekolah": row_sekolah['KOD SEKOLAH'],
-                                    "ppd": row_sekolah['PPD'],
-                                    "kod_ppd": row_sekolah['KOD PPD'],
-                                    "id": str(row_sekolah['ID']),
-                                    "password": str(row_sekolah['PASSWORD']),
-                                    "bil_pusat": row_sekolah['BIL PUSAT'],
-                                    "senarai_pusat": row_sekolah['SENARAI PUSAT'],
-                                    "role":"SUP"
-                                }
-                                st.rerun()
-                            else:
-                                st.error(f"Password salah")
+                    daerah_list = order_daerah
+                sup_daerah = st.selectbox("Daerah Sekolah Anda", ["-- Pilih Daerah --"] + daerah_list)
+                if sup_daerah != "-- Pilih Daerah --":
+                    df_daerah = mapping_df[mapping_df["PPD"]==sup_daerah].sort_values("NAMA SEKOLAH") if not mapping_df.empty else pd.DataFrame()
+                    st.markdown(f"#### 3️⃣ Pilih Sekolah di {sup_daerah} ({len(df_daerah)} sekolah)")
+                    if len(df_daerah)==0:
+                        st.warning("Senarai kosong! Check file dalam data/")
+                    else:
+                        sekolah_options = [f"{row['NAMA SEKOLAH']} ({row['KOD SEKOLAH']}) - {row['BIL PUSAT']} pusat [{row['SENARAI PUSAT']}]" for _, row in df_daerah.iterrows()]
+                        sekolah_pilih = st.selectbox("Nama Sekolah (Masuk ikut sekolah, bukan pusat)", ["-- Pilih Sekolah --"] + sekolah_options)
+                        if sekolah_pilih != "-- Pilih Sekolah --":
+                            idx = sekolah_options.index(sekolah_pilih)
+                            row_sekolah = df_daerah.iloc[idx]
+                            st.success(f"✅ {row_sekolah['NAMA SEKOLAH']} - {row_sekolah['KOD SEKOLAH']} - {row_sekolah['BIL PUSAT']} pusat: {row_sekolah['SENARAI PUSAT']}")
+                            st.markdown("#### 4️⃣ Password Sahaja")
+                            sup_pwd = st.text_input(f"Password {row_sekolah['NAMA SEKOLAH']}", type="password", placeholder=f"{row_sekolah['PASSWORD']}")
+                            if st.button(f"🚀 Log Masuk {row_sekolah['NAMA SEKOLAH']}", use_container_width=True, type="primary"):
+                                if sup_pwd == str(row_sekolah['PASSWORD']):
+                                    st.session_state.logged_in=True
+                                    st.session_state.user_role="SUP"
+                                    st.session_state.user_info={
+                                        "nama": row_sekolah['NAMA SEKOLAH'],
+                                        "kod_sekolah": row_sekolah['KOD SEKOLAH'],
+                                        "ppd": row_sekolah['PPD'],
+                                        "kod_ppd": row_sekolah['KOD PPD'],
+                                        "id": str(row_sekolah['ID']),
+                                        "password": str(row_sekolah['PASSWORD']),
+                                        "bil_pusat": row_sekolah['BIL PUSAT'],
+                                        "senarai_pusat": row_sekolah['SENARAI PUSAT'],
+                                        "role":"SUP"
+                                    }
+                                    st.rerun()
+                                else:
+                                    st.error(f"Password salah")
+
         with st.expander("ℹ️ Di mana update data?"):
             st.markdown(f"""
             **File yang sedang guna:** `{file_used}` - {len(mapping_df)} sekolah
