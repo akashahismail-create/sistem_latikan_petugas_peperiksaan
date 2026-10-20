@@ -122,7 +122,7 @@ def load_pusat_calon():
 
 df_calon_master = load_pusat_calon()
 
-====== HELPER GSHEET & PENEMPATAN (mula) ======
+# ====== HELPER GSHEET & PENEMPATAN (mula) ======
 GS_SPREADSHEET_ID_DEFAULT = "1dweem4yw6nKlo1wy5PA264prHEHpLoBPSu89jRFi484"
 
 @st.cache_resource(ttl=300, show_spinner=False)
@@ -309,7 +309,6 @@ def keperluan_asal(pusat, df_calon):
 
 def keperluan_pengawas(pusat, df_calon, df_kuota=None):
     # OPTIMIZED: JANGAN auto-load kuota_ppd. Biar kosong.
-    # PPD yang nak edit kuota, kena pass df_kuota sendiri.
     if df_kuota is None:
         df_kuota = pd.DataFrame()
     if df_kuota is not None and not df_kuota.empty and "NO PUSAT" in df_kuota.columns:
@@ -593,7 +592,7 @@ def pecah_data_lama(mapping_df, jeda=4):
             time.sleep(jeda)
     return laporan
 
-====== SENARAI GURU & MUAT NAIK / MUAT TURUN (mula) ======
+# ====== SENARAI GURU & MUAT NAIK / MUAT TURUN (mula) ======
 JAWATAN_CADANGAN_SAH = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Pengemas Bilik", "Penyelia Kawasan"]
 JAWATAN_LAZIM = "Pengawas Peperiksaan"
 LAJUR_GURU = ["KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "NAMA GURU", "IC", "JANTINA", "POSKOD RUMAH", "ALAMAT RUMAH",
@@ -1018,7 +1017,7 @@ def templat_excel_bytes(senarai_pusat=None):
     wb.save(buf)
     return buf.getvalue()
 
-====== SENARAI GURU & MUAT NAIK / MUAT TURUN (tamat) ======
+# ====== SENARAI GURU & MUAT NAIK / MUAT TURUN (tamat) ======
 def padam_cadangan_sekolah(df_cad, kod_sekolah, ic_dipilih, df_pen, df_simp=None):
     if df_cad.empty or "IC" not in df_cad.columns or "KOD SEKOLAH ASAL" not in df_cad.columns:
         raise ValueError("Data cadangan tidak dijumpai - muat semula halaman")
@@ -1149,7 +1148,7 @@ def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama
     }])
     return pd.concat([df, baru], ignore_index=True) if not df.empty else baru
 
-====== HELPER GSHEET & PENEMPATAN (tamat) ======
+# ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
 # Debug info
 st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
@@ -1874,7 +1873,6 @@ with col_kanan:
                         pusat_to_sekolah[p] = str(rc.get("KOD_SEKOLAH", ""))
 
         # ====== LOAD KUOTA SEKALI UNTUK PPD (OPTIMIZED) ======
-        # Load sekali sahaja di atas, pass ke semua fungsi. Tak auto-load berulang kali.
         df_kuota_ppd = read_sheet("kuota_ppd") if "kuota_ppd" not in st.session_state else st.session_state["kuota_ppd"]
         # ====== END LOAD KUOTA ======
 
@@ -2032,7 +2030,6 @@ with col_kanan:
                                 df = df[df["NO PUSAT"].astype(str) != str(pusat_pilih)]
                                 return pd.concat([df, pd.DataFrame([baris])], ignore_index=True)
                             if modify_sheet("kuota_ppd", _simpan_kuota):
-                                # Update session state supaya fungsi lain nampak perubahan
                                 st.session_state["kuota_ppd"] = read_sheet("kuota_ppd")
                                 flash("success", f"✅ Kuota {pusat_pilih} diubah: Asal {k_info['asal']} -> Edit {new_keperluan}. Sistem akan auto guna kuota baru di semua fungsi!")
                                 st.rerun()
