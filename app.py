@@ -162,9 +162,16 @@ def get_gsheet():
 
 
 @st.cache_resource(show_spinner=False)
-def get_lock():
-    """Satu kunci untuk semua pengguna - elak 2 orang tulis serentak (baca-ubah-tulis)."""
-    return threading.Lock()
+def _peta_kunci():
+    return {"master": threading.Lock(), "peta": {}}
+
+
+def get_lock(name="*"):
+    """Satu kunci SETIAP tab - elak 2 orang tulis tab yang sama serentak.
+    Daerah berbeza guna tab berbeza, jadi tak perlu tunggu satu sama lain."""
+    k = _peta_kunci()
+    with k["master"]:
+        return k["peta"].setdefault(name, threading.Lock())
 
 
 def _retry(fn, tries=3):
@@ -254,7 +261,7 @@ def modify_sheet(name, modifier):
     - modifier boleh `raise ValueError("mesej")` untuk batalkan; pulang None = tiada perubahan.
     Pulang True kalau berjaya."""
     try:
-        with get_lock():
+        with get_lock(name):
             df = read_sheet_strict(name)
             baru = modifier(df)
             if baru is not None:
@@ -457,6 +464,84 @@ def normalkan_cadangan(df):
     return df.rename(columns={"JAWATAN CADANG": "JAWATAN CADANGAN"})
 
 
+def tab_daerah(base, kod_ppd):
+    """Nama tab ikut daerah, contoh tab_daerah('cadangan_sup','BK') -> 'cadangan_sup_BK'."""
+    return f"{base}_{str(kod_ppd).strip().upper()}"
+
+
+def read_semua_daerah(base):
+    """Gabung tab 10 daerah (untuk JPN sahaja, paparan sahaja)."""
+    bahagian = []
+    for _, _, _, kod in PPD_LIST:
+        d = read_sheet(tab_daerah(base, kod))
+        if not d.empty:
+            bahagian.append(d)
+    return pd.concat(bahagian, ignore_index=True) if bahagian else pd.DataFrame()
+
+
+def pecah_data_lama(mapping_df, jeda=4):
+    """Salin data dalam tab lama (satu tab untuk semua daerah) ke tab setiap daerah.
+    - Tab lama TIDAK diubah / dipadam.
+    - Baris yang sudah ada dalam tab daerah dilangkau, jadi selamat dijalankan berulang kali.
+    - Baris yang kod sekolahnya tiada dalam senarai dilaporkan dan dibiar di tab lama."""
+    peta_sek = dict(zip(mapping_df["KOD SEKOLAH"].astype(str), mapping_df["KOD PPD"].astype(str)))
+
+    def k_mak(r):
+        return str(r.get("KOD SEKOLAH", "")).strip()
+
+    def k_cad(r):
+        return (kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", "")) or [""])[0]
+
+    def k_pen(r):
+        k = (kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL GURU", "")) or [""])[0]
+        return str(r.get("NO PUSAT TUGAS", "")).strip() + "|" + k
+
+    senarai = [("maklumat_sekolah", "KOD SEKOLAH", k_mak),
+               ("cadangan_sup", "KOD SEKOLAH ASAL", k_cad),
+               ("penempatan_ppd", "KOD SEKOLAH ASAL GURU", k_pen)]
+    laporan = []
+    for base, kol, kunci in senarai:
+        try:
+            lama = read_sheet_strict(base)
+        except Exception as e:
+            laporan.append({"TAB LAMA": base, "DAERAH": "-", "BARIS": 0, "STATUS": f"Gagal baca ({type(e).__name__})"})
+            continue
+        if lama.empty or kol not in lama.columns:
+            laporan.append({"TAB LAMA": base, "DAERAH": "-", "BARIS": 0, "STATUS": "Tiada data"})
+            continue
+        if base == "cadangan_sup":
+            lama = normalkan_cadangan(lama)
+        lama["_PPD"] = lama[kol].astype(str).map(peta_sek)
+        tak = int(lama["_PPD"].isna().sum())
+        if tak:
+            laporan.append({"TAB LAMA": base, "DAERAH": "(tak dikenali)", "BARIS": tak, "STATUS": "Dibiar di tab lama - kod sekolah tiada dalam senarai"})
+        for kod, grp in lama.dropna(subset=["_PPD"]).groupby("_PPD"):
+            baru = grp.drop(columns=["_PPD"]).reset_index(drop=True)
+            kiraan = {"n": 0}
+
+            def _gabung(df, baru=baru, kunci=kunci, kiraan=kiraan):
+                if df.empty:
+                    kiraan["n"] = len(baru)
+                    return baru
+                ada = {kunci(r) for _, r in df.iterrows()}
+                tambah = baru[[kunci(r) not in ada for _, r in baru.iterrows()]]
+                kiraan["n"] = len(tambah)
+                if tambah.empty:
+                    return None
+                return pd.concat([df, tambah], ignore_index=True)
+
+            ok = modify_sheet(tab_daerah(base, kod), _gabung)
+            if not ok:
+                status = "GAGAL - jalankan semula"
+            elif kiraan["n"] == 0:
+                status = "Sudah ada (tiada perubahan)"
+            else:
+                status = "Disalin"
+            laporan.append({"TAB LAMA": base, "DAERAH": kod, "BARIS": kiraan["n"], "STATUS": status})
+            time.sleep(jeda)   # elak had kuota Google (60 permintaan/min)
+    return laporan
+
+
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
 
@@ -619,7 +704,7 @@ with col_kiri:
     elif role=="PPD":
         menu = st.radio("Menu", ["Senarai Pusat", "Cadangan SUP", "Jana Penempatan", "Hantar JPN"], label_visibility="collapsed")
     else:
-        menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat"], label_visibility="collapsed")
+        menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat", "Pindah Data Daerah"], label_visibility="collapsed")
     st.markdown("---")
     exam_type = st.selectbox("Peperiksaan", ["SPM Bertulis", "SPM Amali Sains", "Ujian Mendengar", "Ujian Bertutur"])
     st.markdown("---")
@@ -648,11 +733,20 @@ with col_kanan:
         st.warning(f"GSheet tidak connect - data TIDAK boleh disimpan: {GS_ERR}")
     show_flash()
 
+    # Setiap daerah ada tab sendiri (contoh cadangan_sup_BK) - data daerah tak bercampur
+    _kod_daerah = str(info.get("kod_ppd") or info.get("kod") or "").strip().upper()
+    if role in ("SUP", "PPD") and _kod_daerah not in {t[3] for t in PPD_LIST}:
+        st.error("Kod daerah tidak sah - sila log keluar dan log masuk semula.")
+        st.stop()
+    TAB_MAKLUMAT = tab_daerah("maklumat_sekolah", _kod_daerah)
+    TAB_CADANGAN = tab_daerah("cadangan_sup", _kod_daerah)
+    TAB_PENEMPATAN = tab_daerah("penempatan_ppd", _kod_daerah)
+
     if role=="SUP":
         if menu=="Maklumat Sekolah":
             st.header(f"🏫 {info['nama']} - {info['senarai_pusat']}")
             st.info(f"Kod {info['kod_sekolah']} | {info['bil_pusat']} pusat | Masuk ikut sekolah bukan pusat")
-            maklumat = read_sheet("maklumat_sekolah")
+            maklumat = read_sheet(TAB_MAKLUMAT)
             # === AUTO-LOAD data sedia ada ===
             existing = pd.DataFrame()
             if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
@@ -765,7 +859,7 @@ with col_kanan:
                             df = df[df["KOD SEKOLAH"].astype(str) != str(info['kod_sekolah'])]
                         return pd.concat([df, pd.DataFrame([new_row])], ignore_index=True) if not df.empty else pd.DataFrame([new_row])
 
-                    if modify_sheet("maklumat_sekolah", _simpan_maklumat):
+                    if modify_sheet(TAB_MAKLUMAT, _simpan_maklumat):
                         flash("success", f"✅ {nama_sek} berjaya dikemaskini! (Satu rekod sahaja untuk {info['kod_sekolah']})")
                         st.rerun()
             # === FIX: Hanya papar sekolah sendiri sahaja ===
@@ -779,7 +873,7 @@ with col_kanan:
             
         elif menu=="Cadangan Petugas":
             st.header(f"👥 Cadangan - {info['nama']}")
-            cadangan = read_sheet("cadangan_sup")
+            cadangan = read_sheet(TAB_CADANGAN)
             # Pusat milik sekolah ini (untuk NO PUSAT ASAL)
             _senarai_p = []
             for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
@@ -849,7 +943,7 @@ with col_kanan:
                             df = df[~sama]
                             return pd.concat([df, pd.DataFrame([baris])], ignore_index=True) if not df.empty else pd.DataFrame([baris])
 
-                        if modify_sheet("cadangan_sup", _tambah_guru):
+                        if modify_sheet(TAB_CADANGAN, _tambah_guru):
                             flash("success", f"✅ {nama_g} ditambah / dikemaskini! - Hanya untuk {info['kod_sekolah']}")
                             st.rerun()
             # === FIX: Hanya papar cadangan sekolah sendiri ===
@@ -864,8 +958,8 @@ with col_kanan:
                 st.info("Belum ada cadangan")
         else:
             st.header("📤 Status")
-            maklumat_s = read_sheet("maklumat_sekolah")
-            cadangan_s = read_sheet("cadangan_sup")
+            maklumat_s = read_sheet(TAB_MAKLUMAT)
+            cadangan_s = read_sheet(TAB_CADANGAN)
             kod_ini = str(info['kod_sekolah'])
             own_m = maklumat_s[maklumat_s["KOD SEKOLAH"].astype(str) == kod_ini] if (not maklumat_s.empty and "KOD SEKOLAH" in maklumat_s.columns) else pd.DataFrame()
             own_c = cadangan_s[cadangan_s["KOD SEKOLAH ASAL"].astype(str) == kod_ini] if (not cadangan_s.empty and "KOD SEKOLAH ASAL" in cadangan_s.columns) else pd.DataFrame()
@@ -945,7 +1039,7 @@ with col_kanan:
         
         # 4. Dari penempatan_ppd sheet juga
         try:
-            pen_tmp = read_sheet("penempatan_ppd")
+            pen_tmp = read_sheet(TAB_PENEMPATAN)
             if not pen_tmp.empty and "NO PUSAT TUGAS" in pen_tmp.columns:
                 for _, rp in pen_tmp.iterrows():
                     p = str(rp.get("NO PUSAT TUGAS","")).strip()
@@ -998,7 +1092,7 @@ with col_kanan:
     
             
             # Load penempatan untuk kira status
-            penempatan_all = read_sheet("penempatan_ppd")
+            penempatan_all = read_sheet(TAB_PENEMPATAN)
             
             # Buat status table - KASHAH: 11 kelas = 17 pengawas +1 KP +1 TKP =19 total, Penyelia exclude
             status_data = []
@@ -1040,7 +1134,7 @@ with col_kanan:
             st.metric("Pusat Lengkap Dilantik", f"{lengkap}/{len(semua_pusat)}")
             
             # Detail maklumat sekolah
-            maklumat_all = read_sheet("maklumat_sekolah")
+            maklumat_all = read_sheet(TAB_MAKLUMAT)
             if not maklumat_all.empty and "KOD SEKOLAH" in maklumat_all.columns:
                 maklumat_ppd = maklumat_all[maklumat_all["KOD SEKOLAH"].astype(str).isin(kod_sekolah_ppd)]
                 st.markdown(f"#### 📊 Maklumat Sekolah - {info['ppd_nama']}: {len(maklumat_ppd)}/{len(df_ppd)} dah isi")
@@ -1051,7 +1145,7 @@ with col_kanan:
         
         elif menu=="Cadangan SUP":
             st.header(f"📋 Cadangan SUP - {info['ppd_nama']} ({len(kod_sekolah_ppd)} sekolah)")
-            cadangan_all = read_sheet("cadangan_sup")
+            cadangan_all = read_sheet(TAB_CADANGAN)
             if not cadangan_all.empty and "KOD SEKOLAH ASAL" in cadangan_all.columns:
                 cadangan_ppd = cadangan_all[cadangan_all["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)].copy()
                 # Tambah NAMA PUSAT untuk setiap sekolah asal
@@ -1117,8 +1211,8 @@ with col_kanan:
             st.markdown("PPD pilih pusat, terus nampak siapa Ketua, Timbalan, Pengawas yang sistem tempatkan. Boleh edit terus!")
             st.caption("Susunan: 1 Ketua Pengawas + 1 Timbalan + Pengawas ikut keperluan pusat. Penyelia Kawasan exclude (Bilik Kebal). Seorang guru hanya dilantik di SATU pusat; guru sekolah tuan rumah tak jaga pusat sendiri.")
 
-            cadangan_all = read_sheet("cadangan_sup")
-            penempatan_all = read_sheet("penempatan_ppd")
+            cadangan_all = read_sheet(TAB_CADANGAN)
+            penempatan_all = read_sheet(TAB_PENEMPATAN)
             ada_pen = (not penempatan_all.empty) and ("NO PUSAT TUGAS" in penempatan_all.columns)
 
             if not cadangan_all.empty and "KOD SEKOLAH ASAL" in cadangan_all.columns:
@@ -1142,7 +1236,7 @@ with col_kanan:
                     return pd.concat([df_pen, baru], ignore_index=True) if not df_pen.empty else baru
 
                 with st.spinner("Menjana penempatan..."):
-                    ok = modify_sheet("penempatan_ppd", _ubah)
+                    ok = modify_sheet(TAB_PENEMPATAN, _ubah)
                 if not ok:
                     return
                 if hasil["rows"]:
@@ -1183,7 +1277,7 @@ with col_kanan:
                         return df2
 
                     with st.spinner("Membetulkan penempatan..."):
-                        ok_b = modify_sheet("penempatan_ppd", _betul)
+                        ok_b = modify_sheet(TAB_PENEMPATAN, _betul)
                     if ok_b:
                         flash("success", f"✅ {hasil_b['buang']} duplikasi dibuang, {len(hasil_b['rows'])} petugas BARU (berbeza) ditempatkan.")
                         if hasil_b["kurang"]:
@@ -1207,7 +1301,7 @@ with col_kanan:
                         if df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns:
                             return None
                         return df_pen[~df_pen["NO PUSAT TUGAS"].astype(str).isin(semua_pusat)]
-                    if modify_sheet("penempatan_ppd", _kosong_semua):
+                    if modify_sheet(TAB_PENEMPATAN, _kosong_semua):
                         flash("success", f"✅ Semua {len(semua_pusat)} pusat daerah {info['ppd_nama']} dikosongkan!")
                         st.rerun()
             with col_bulk3:
@@ -1253,7 +1347,7 @@ with col_kanan:
                             if df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns:
                                 return None
                             return df_pen[df_pen["NO PUSAT TUGAS"].astype(str) != str(pusat_pilih)]
-                        if modify_sheet("penempatan_ppd", _kosong_satu):
+                        if modify_sheet(TAB_PENEMPATAN, _kosong_satu):
                             flash("success", f"✅ {pusat_pilih} dikosongkan!")
                             st.rerun()
 
@@ -1339,7 +1433,7 @@ with col_kanan:
                                     } for g in guru_dipilih])
                                     return pd.concat([df_pen, baru], ignore_index=True) if not df_pen.empty else baru
 
-                                if modify_sheet("penempatan_ppd", _lantik):
+                                if modify_sheet(TAB_PENEMPATAN, _lantik):
                                     flash("success", f"✅ {len(guru_dipilih)} guru dilantik sebagai {pilih_jaw} di {pusat_pilih}.")
                                     st.rerun()
                 st.markdown("---")
@@ -1408,7 +1502,7 @@ with col_kanan:
                                         df_pen.loc[mask, "STATUS PENEMPATAN"] = f"Tukar manual oleh PPD {info['ppd_nama']} - {pd.Timestamp.now().strftime('%Y-%m-%d')}"
                                         return df_pen
 
-                                    if modify_sheet("penempatan_ppd", _tukar):
+                                    if modify_sheet(TAB_PENEMPATAN, _tukar):
                                         flash("success", f"✅ {petugas_pilih} ditukar kepada {guru_data.get('NAMA GURU','')} dari {guru_data.get('KOD SEKOLAH ASAL','')}")
                                         st.rerun()
 
@@ -1417,7 +1511,7 @@ with col_kanan:
 
         else:
             st.header(f"📤 Hantar ke JPN - {info['ppd_nama']}")
-            penempatan_all = read_sheet("penempatan_ppd")
+            penempatan_all = read_sheet(TAB_PENEMPATAN)
             status_all = read_sheet("status_hantar")
 
             bil_petugas = 0
@@ -1497,10 +1591,24 @@ with col_kanan:
                 if modify_sheet("status_hantar", _sahkan):
                     flash("success", f"✅ {label_ppd[kod_sah]} DISAHKAN!")
                     st.rerun()
+        elif menu=="Pindah Data Daerah":
+            st.header("🗂️ Pindah Data Lama ke Tab Setiap Daerah")
+            st.info("Data dalam tab lama `maklumat_sekolah`, `cadangan_sup` dan `penempatan_ppd` akan disalin ke tab setiap daerah, contohnya `cadangan_sup_BK`. Tab lama TIDAK dipadam atau diubah (jadi ada salinan keselamatan). Selamat dijalankan berulang kali - baris yang dah ada akan dilangkau.")
+            st.caption("Tab daerah: " + ", ".join(f"{k} ({n})" for _, _, n, k in PPD_LIST))
+            st.warning("Proses ini mengambil beberapa minit (ada jeda untuk elak had kuota Google). Jangan tutup halaman sehingga jadual keputusan keluar.")
+            sahkan_pindah = st.checkbox("Saya faham, teruskan pemindahan", key="sahkan_pindah")
+            if st.button("🚚 Mulakan Pemindahan", use_container_width=True, type="primary", disabled=not sahkan_pindah):
+                with st.spinner("Memindahkan data ikut daerah... (beberapa minit)"):
+                    hasil_pindah = pecah_data_lama(mapping_df)
+                st.dataframe(pd.DataFrame(hasil_pindah), use_container_width=True, hide_index=True)
+                if any(str(h["STATUS"]).startswith("GAGAL") or str(h["STATUS"]).startswith("Gagal") for h in hasil_pindah):
+                    st.warning("Sebahagian gagal (biasanya had kuota Google). Tunggu seminit dan tekan Mulakan semula - yang dah siap akan dilangkau.")
+                else:
+                    st.success("✅ Selesai. App kini baca/tulis ikut tab daerah.")
         else:
             st.header("📄 Jana Surat")
             st.info("Fungsi jana surat belum dibina (templat surat belum ditetapkan). Buat masa ini, muat turun senarai penempatan dalam CSV.")
-            penempatan_all = read_sheet("penempatan_ppd")
+            penempatan_all = read_semua_daerah("penempatan_ppd")
             if penempatan_all.empty:
                 st.warning("Belum ada data penempatan.")
             else:
