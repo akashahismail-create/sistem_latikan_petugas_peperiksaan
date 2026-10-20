@@ -11,6 +11,7 @@ import glob
 import re
 import time
 import threading
+from io import BytesIO
 
 try:
     import gspread
@@ -684,6 +685,472 @@ def pecah_data_lama(mapping_df, jeda=4):
     return laporan
 
 
+# ====== SENARAI GURU & MUAT NAIK / MUAT TURUN (mula) ======
+JAWATAN_CADANGAN_SAH = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Pengemas Bilik", "Penyelia Kawasan"]
+JAWATAN_LAZIM = "Pengawas Peperiksaan"
+LAJUR_GURU = ["KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "NAMA GURU", "IC", "JANTINA", "POSKOD RUMAH", "ALAMAT RUMAH",
+              "NO TELEFON GURU", "EMAIL GURU", "PENGALAMAN SPM", "NO PUSAT ASAL", "JAWATAN CADANGAN"]
+LAJUR_TEMPLAT = ["NAMA GURU", "IC", "JANTINA", "NO TELEFON GURU", "EMAIL GURU", "ALAMAT RUMAH", "POSKOD RUMAH",
+                 "PENGALAMAN SPM", "NO PUSAT ASAL", "JAWATAN CADANGAN"]
+_ALIAS_LAJUR = {
+    "NAMA GURU": ["NAMA GURU", "NAMA"],
+    "IC": ["IC", "NO IC", "NO. IC", "NO KP", "NO. KP", "NO KAD PENGENALAN"],
+    "JANTINA": ["JANTINA"],
+    "NO TELEFON GURU": ["NO TELEFON GURU", "NO TELEFON", "NO. TELEFON", "NO TEL", "TELEFON"],
+    "EMAIL GURU": ["EMAIL GURU", "EMAIL", "E-MEL", "EMEL"],
+    "ALAMAT RUMAH": ["ALAMAT RUMAH", "ALAMAT"],
+    "POSKOD RUMAH": ["POSKOD RUMAH", "POSKOD"],
+    "PENGALAMAN SPM": ["PENGALAMAN SPM", "PENGALAMAN"],
+    "NO PUSAT ASAL": ["NO PUSAT ASAL", "NO PUSAT"],
+    "JAWATAN CADANGAN": ["JAWATAN CADANGAN", "JAWATAN"],
+}
+MAKS_BARIS_MUAT_NAIK = 1000
+
+
+def _teks(v):
+    """Nilai sel -> teks bersih (NaN -> '', 900101.0 -> '900101')."""
+    if v is None:
+        return ""
+    try:
+        if pd.isna(v):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    s = str(v).strip()
+    if re.fullmatch(r"\d+\.0", s):
+        s = s[:-2]
+    return s
+
+
+def _bersih_teks(s):
+    """Rapikan jarak & buang aksara pembuka formula (=, +, -, @) supaya selamat bila dibuka dalam Excel."""
+    s = re.sub(r"\s+", " ", _teks(s)).strip()
+    return s.lstrip("=+-@ ").strip() if s[:1] in ("=", "+", "-", "@") else s
+
+
+def format_ic(x):
+    d = re.sub(r"\D", "", str(x)).zfill(12)
+    return f"{d[:6]}-{d[6:8]}-{d[8:]}"
+
+
+def norm_telefon(t):
+    """012-345 6789 / 1234567890 / +60123456789 -> 0123456789 (Excel selalu buang sifar depan)."""
+    d = re.sub(r"\D", "", str(t))
+    if not d:
+        return ""
+    if d.startswith("60") and len(d) >= 10:
+        d = "0" + d[2:]
+    elif not d.startswith("0"):
+        d = "0" + d
+    return d
+
+
+def _ke_int(v, lalai=None):
+    s = _teks(v)
+    if s == "":
+        return lalai
+    try:
+        return int(float(s))
+    except ValueError:
+        return None
+
+
+def validasi_guru(nama, ic, alamat, tel, email):
+    """Pulang mesej ralat (str) atau '' kalau semua sah. Sama dengan peraturan borang Cadangan Petugas."""
+    d = re.sub(r"\D", "", str(ic))
+    if not str(nama).strip() or not str(ic).strip():
+        return "Nama Guru dan IC wajib isi!"
+    if not (11 <= len(d) <= 12):
+        return "IC mesti 12 digit (contoh: 900101-10-1234)"
+    if len(str(alamat).strip()) < 10:
+        return "Alamat Rumah wajib isi penuh (no rumah, jalan, taman, bandar)."
+    if not sah_telefon(norm_telefon(tel)):
+        return "No Telefon Guru wajib isi dan mesti 9-12 digit (contoh: 012-3456789)."
+    if not sah_email(email):
+        return "Format Email Guru tidak betul (contoh: nama@moe.gov.my) atau biarkan kosong."
+    return ""
+
+
+def kekurangan_guru(r):
+    """Senarai maklumat yang tak lengkap untuk seorang guru (untuk semak sebelum hantar)."""
+    k = []
+    if not _teks(r.get("NAMA GURU", "")):
+        k.append("nama")
+    if not (11 <= len(re.sub(r"\D", "", str(r.get("IC", "")))) <= 12):
+        k.append("IC")
+    if len(_teks(r.get("ALAMAT RUMAH", ""))) < 10:
+        k.append("alamat")
+    if not sah_telefon(norm_telefon(r.get("NO TELEFON GURU", ""))):
+        k.append("telefon")
+    return k
+
+
+def baca_fail_guru(fail):
+    """Baca fail muat naik (.xlsx / .csv) sebagai DataFrame teks."""
+    nama = str(getattr(fail, "name", "")).lower()
+    if nama.endswith(".csv"):
+        try:
+            return pd.read_csv(fail, dtype=str, keep_default_na=False, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            fail.seek(0)
+            return pd.read_csv(fail, dtype=str, keep_default_na=False, encoding="latin-1")
+    if nama.endswith(".xlsx"):
+        xl = pd.ExcelFile(fail, engine="openpyxl")
+        helaian = "Senarai Guru" if "Senarai Guru" in xl.sheet_names else xl.sheet_names[0]
+        return xl.parse(helaian, dtype=str).fillna("")
+    raise ValueError("Format fail tidak disokong. Guna .xlsx (templat) atau .csv")
+
+
+def proses_muat_naik(df_up, kod_sekolah, nama_sekolah, senarai_pusat):
+    """Semak fail muat naik baris demi baris. Pulang (df_sah[LAJUR_GURU], ralat[list dict]).
+    Baris bermasalah TIDAK dimasukkan; baris sah boleh terus diimport."""
+    df = df_up.copy()
+    df.columns = [re.sub(r"\s+", " ", str(c)).strip().upper() for c in df.columns]
+    peta = {}
+    for kanon, alias in _ALIAS_LAJUR.items():
+        for a in alias:
+            if a in df.columns:
+                peta[kanon] = a
+                break
+    wajib = ["NAMA GURU", "IC", "ALAMAT RUMAH", "NO TELEFON GURU", "POSKOD RUMAH"]
+    hilang = [w for w in wajib if w not in peta]
+    if hilang:
+        raise ValueError("Lajur wajib tiada dalam fail: " + ", ".join(hilang) + ". Sila guna templat Excel yang dimuat turun.")
+    if len(df) > MAKS_BARIS_MUAT_NAIK:
+        raise ValueError(f"Fail terlalu besar ({len(df)} baris). Maksimum {MAKS_BARIS_MUAT_NAIK} baris.")
+
+    pusat_sah = [str(p).upper() for p in (senarai_pusat or [])]
+    jaw_peta = {j.upper(): j for j in JAWATAN_CADANGAN_SAH}
+    jaw_peta.update({"PENGAWAS": "Pengawas Peperiksaan", "KP": "Ketua Pengawas", "TKP": "Timbalan Ketua Pengawas"})
+    baik, ralat, lihat = [], [], {}
+    for i, (_, r) in enumerate(df.iterrows()):
+        no = i + 2   # baris 1 = tajuk
+        ambil = lambda k: _teks(r[peta[k]]) if k in peta else ""
+        nama, ic_raw, jan_raw = _bersih_teks(ambil("NAMA GURU")), ambil("IC"), ambil("JANTINA")
+        alamat, tel_raw, email = _bersih_teks(ambil("ALAMAT RUMAH")), ambil("NO TELEFON GURU"), ambil("EMAIL GURU").lower()
+        pos_raw, peng_raw, pusat_raw, jaw_raw = ambil("POSKOD RUMAH"), ambil("PENGALAMAN SPM"), ambil("NO PUSAT ASAL"), ambil("JAWATAN CADANGAN")
+        if not any([nama, ic_raw, alamat, tel_raw, email, pos_raw, jan_raw]):
+            continue   # baris kosong
+        m = []
+        if not nama:
+            m.append("nama kosong")
+        d = re.sub(r"\D", "", ic_raw)
+        if not (11 <= len(d) <= 12):
+            m.append("IC mesti 12 digit")
+            ic_fmt = ""
+        else:
+            ic_fmt = format_ic(d)
+            k = norm_ic(d)
+            if k in lihat:
+                m.append(f"IC sama dengan baris {lihat[k]} dalam fail")
+            else:
+                lihat[k] = no
+        jan = {"L": "L", "LELAKI": "L", "M": "L", "P": "P", "PEREMPUAN": "P", "F": "P"}.get(jan_raw.upper())
+        if not jan:
+            m.append("jantina mesti L atau P")
+        pos = re.sub(r"\D", "", pos_raw)
+        if len(pos) != 5:
+            m.append("poskod mesti 5 digit")
+        if len(alamat) < 10:
+            m.append("alamat terlalu pendek / kosong")
+        tel = norm_telefon(tel_raw)
+        if not sah_telefon(tel):
+            m.append("no telefon mesti 9-12 digit")
+        if not sah_email(email):
+            m.append("format email salah")
+        peng = _ke_int(peng_raw, 0)
+        if peng is None or not (0 <= peng <= 40):
+            m.append("pengalaman SPM mesti nombor 0-40")
+            peng = 0
+        pusat = _bersih_teks(pusat_raw).upper()
+        if not pusat and len(pusat_sah) == 1:
+            pusat = pusat_sah[0]
+        if pusat and pusat_sah and pusat not in pusat_sah:
+            m.append(f"no pusat asal {pusat} bukan pusat sekolah ini ({', '.join(pusat_sah)})")
+        jaw = ""
+        if jaw_raw:
+            jaw = jaw_peta.get(_bersih_teks(jaw_raw).upper(), "")
+            if not jaw:
+                m.append("jawatan tidak sah")
+        if m:
+            ralat.append({"BARIS": no, "NAMA GURU": nama, "MASALAH": "; ".join(m)})
+            continue
+        baik.append({"KOD SEKOLAH ASAL": str(kod_sekolah), "NAMA SEKOLAH ASAL": nama_sekolah, "NAMA GURU": nama, "IC": ic_fmt,
+                     "JANTINA": jan, "POSKOD RUMAH": int(pos), "ALAMAT RUMAH": alamat, "NO TELEFON GURU": tel,
+                     "EMAIL GURU": email, "PENGALAMAN SPM": int(peng), "NO PUSAT ASAL": pusat, "JAWATAN CADANGAN": jaw})
+    return pd.DataFrame(baik, columns=LAJUR_GURU), ralat
+
+
+def gabung_guru_sekolah(df_roster, df_baru, kod_sekolah, nama_sekolah):
+    """Masukkan / kemaskini guru dalam Senarai Guru (padan IC dalam sekolah SAMA sahaja).
+    Tidak pernah memadam sesiapa. Pulang (df, bil_baru, bil_kemaskini)."""
+    kod = str(kod_sekolah)
+    baru = df_baru.copy()
+    for c in LAJUR_GURU:
+        if c not in baru.columns:
+            baru[c] = ""
+    baru["KOD SEKOLAH ASAL"] = kod
+    baru["NAMA SEKOLAH ASAL"] = nama_sekolah
+    if df_roster is None or df_roster.empty:
+        return baru[LAJUR_GURU].reset_index(drop=True), len(baru), 0
+    if "IC" not in df_roster.columns or "KOD SEKOLAH ASAL" not in df_roster.columns:
+        raise ValueError("Format sheet guru_sekolah tidak dijangka - hubungi admin")
+    df = df_roster.copy().astype(object)
+    for c in LAJUR_GURU:
+        if c not in df.columns:
+            df[c] = ""
+    ada = {}
+    for idx, r in df.iterrows():
+        if str(r["KOD SEKOLAH ASAL"]) == kod and norm_ic(r["IC"]):
+            ada.setdefault(norm_ic(r["IC"]), idx)
+    tambah, n_baru, n_kemaskini = [], 0, 0
+    lihat = set()
+    for _, g in baru.iterrows():
+        k = norm_ic(g["IC"])
+        if not k or k in lihat:
+            continue
+        lihat.add(k)
+        if k in ada:
+            for c in LAJUR_GURU:
+                v = g[c]
+                if c == "JAWATAN CADANGAN" and not _teks(v):
+                    continue   # kekalkan jawatan sedia ada kalau fail tak tulis
+                df.at[ada[k], c] = v
+            n_kemaskini += 1
+        else:
+            r = {c: g[c] for c in LAJUR_GURU}
+            if not _teks(r["JAWATAN CADANGAN"]):
+                r["JAWATAN CADANGAN"] = JAWATAN_LAZIM
+            tambah.append(r)
+            n_baru += 1
+    if tambah:
+        df = pd.concat([df, pd.DataFrame(tambah)], ignore_index=True)
+    return df, n_baru, n_kemaskini
+
+
+def senarai_guru_sekolah(df_roster, df_cad, kod_sekolah):
+    """Semua guru sekolah ini: Senarai Guru + (cadangan lama yang belum ada dalam senarai).
+    Lajur CADANGAN = True kalau guru itu sudah dihantar sebagai cadangan."""
+    kod = str(kod_sekolah)
+
+    def milik(df):
+        if df is None or df.empty or "IC" not in df.columns or "KOD SEKOLAH ASAL" not in df.columns:
+            return pd.DataFrame()
+        return df[df["KOD SEKOLAH ASAL"].astype(str) == kod]
+
+    r = milik(df_roster)
+    c = milik(normalkan_cadangan(df_cad) if (df_cad is not None and not df_cad.empty) else df_cad)
+    cad = {}
+    for _, x in c.iterrows():
+        k = norm_ic(x.get("IC", ""))
+        if k:
+            cad.setdefault(k, x)
+    out, lihat = [], set()
+    for _, x in r.iterrows():
+        k = norm_ic(x.get("IC", ""))
+        if not k or k in lihat:
+            continue
+        lihat.add(k)
+        b = {col: x.get(col, "") for col in LAJUR_GURU}
+        if k in cad:
+            jc = _teks(cad[k].get("JAWATAN CADANGAN", ""))
+            if jc:
+                b["JAWATAN CADANGAN"] = jc
+        b["CADANGAN"] = k in cad
+        out.append(b)
+    for k, x in cad.items():
+        if k in lihat:
+            continue
+        b = {col: x.get(col, "") for col in LAJUR_GURU}
+        b["CADANGAN"] = True
+        out.append(b)
+    df = pd.DataFrame(out, columns=LAJUR_GURU + ["CADANGAN"])
+    if df.empty:
+        return df
+    df["JAWATAN CADANGAN"] = df["JAWATAN CADANGAN"].map(lambda v: _teks(v) if _teks(v) in JAWATAN_CADANGAN_SAH else JAWATAN_LAZIM)
+    return df.sort_values("NAMA GURU", kind="stable").reset_index(drop=True)
+
+
+def buang_guru_roster(df_roster, kod_sekolah, ic_dipilih, ic_cadangan):
+    """Buang guru daripada Senarai Guru. Guru yang sedang jadi cadangan tak boleh dibuang (tarik balik dulu)."""
+    if df_roster.empty or "IC" not in df_roster.columns or "KOD SEKOLAH ASAL" not in df_roster.columns:
+        raise ValueError("Senarai Guru tidak dijumpai - muat semula halaman")
+    pilih = {norm_ic(i) for i in ic_dipilih}
+    if pilih & set(ic_cadangan):
+        raise ValueError("Ada guru yang sedang dicadangkan - nyah-tick dan Hantar dahulu untuk menarik balik cadangan.")
+    sasar = (df_roster["KOD SEKOLAH ASAL"].astype(str) == str(kod_sekolah)) & df_roster["IC"].map(norm_ic).isin(pilih)
+    if not sasar.any():
+        raise ValueError("Guru yang dipilih tak dijumpai (mungkin sudah dibuang) - muat semula halaman")
+    return df_roster[~sasar].reset_index(drop=True), int(sasar.sum())
+
+
+def hantar_cadangan(df_cad, kod_sekolah, nama_sekolah, ticked_df, df_pen, df_simp):
+    """HANTAR: senarai cadangan sekolah ini jadi TEPAT guru yang di-tick (ia yang dilihat PPD).
+    - Guru baru di-tick -> ditambah; yang sedia ada -> dikemaskini (status dikekalkan).
+    - Guru yang dinyah-tick -> ditarik balik, KECUALI sudah dilantik / disimpan PPD (ditolak).
+    - IC yang sudah dicadang sekolah lain -> ditolak.
+    Pulang (df_baru, statistik)."""
+    kod = str(kod_sekolah)
+    ic_hantar = {norm_ic(x) for x in ticked_df["IC"] if norm_ic(x)}
+    if not ic_hantar:
+        raise ValueError("Tiada guru dipilih untuk dihantar")
+    df = pd.DataFrame()
+    if df_cad is not None and not df_cad.empty:
+        if "IC" not in df_cad.columns or "KOD SEKOLAH ASAL" not in df_cad.columns:
+            raise ValueError("Format sheet cadangan_sup tidak dijangka - hubungi admin")
+        df = normalkan_cadangan(df_cad).astype(object)
+    own, lain = pd.DataFrame(), pd.DataFrame()
+    if not df.empty:
+        m = df["KOD SEKOLAH ASAL"].astype(str) == kod
+        own, lain = df[m], df[~m]
+    if not lain.empty:
+        bt = lain[lain["IC"].map(norm_ic).isin(ic_hantar)]
+        if not bt.empty:
+            r = bt.iloc[0]
+            raise ValueError(f"{r.get('NAMA GURU', '')} sudah dicadangkan oleh {r.get('NAMA SEKOLAH ASAL', r['KOD SEKOLAH ASAL'])} - hubungi PPD jika guru ini baru bertukar.")
+    own_map = {}
+    for _, r in own.iterrows():
+        k = norm_ic(r.get("IC", ""))
+        if k:
+            own_map.setdefault(k, r)
+    tarik = [k for k in own_map if k not in ic_hantar]
+    if tarik:
+        peta = peta_guru_pusat(df_pen, df_simp)
+        terkunci = []
+        for k in tarik:
+            r = own_map[k]
+            p_ = pusat_guru(peta, r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", ""))
+            if p_ is not None:
+                terkunci.append(f"{r.get('NAMA GURU', '')} ({'Simpanan' if p_ == 'SIMPANAN' else p_})")
+        if terkunci:
+            raise ValueError("Tak boleh ditarik balik kerana sudah dilantik / disimpan PPD: " + ", ".join(terkunci) + ". Tick semula guru itu, atau minta PPD kosongkan lantikan dahulu.")
+    baris, lihat, n_baru, n_kemaskini = [], set(), 0, 0
+    for _, g in ticked_df.iterrows():
+        k = norm_ic(g.get("IC", ""))
+        if not k or k in lihat:
+            continue
+        lihat.add(k)
+        status = "Dicadang"
+        if k in own_map:
+            s = _teks(own_map[k].get("STATUS", ""))
+            if s and s.lower() not in ("nan", "none"):
+                status = s
+            n_kemaskini += 1
+        else:
+            n_baru += 1
+        pos, peng = _ke_int(g.get("POSKOD RUMAH", "")), _ke_int(g.get("PENGALAMAN SPM", ""), 0)
+        baris.append({
+            "KOD SEKOLAH ASAL": kod, "NAMA SEKOLAH ASAL": nama_sekolah, "NAMA GURU": g.get("NAMA GURU", ""), "IC": g.get("IC", ""),
+            "JANTINA": g.get("JANTINA", ""), "POSKOD RUMAH": pos if pos is not None else g.get("POSKOD RUMAH", ""),
+            "ALAMAT RUMAH": g.get("ALAMAT RUMAH", ""), "NO TELEFON GURU": g.get("NO TELEFON GURU", ""), "EMAIL GURU": g.get("EMAIL GURU", ""),
+            "JAWATAN CADANGAN": _teks(g.get("JAWATAN CADANGAN", "")) or JAWATAN_LAZIM,
+            "PENGALAMAN SPM": peng if peng is not None else 0, "NO PUSAT ASAL": g.get("NO PUSAT ASAL", ""), "STATUS": status,
+        })
+    hasil = pd.concat([lain, pd.DataFrame(baris)], ignore_index=True) if not lain.empty else pd.DataFrame(baris)
+    return hasil, {"baru": n_baru, "kemaskini": n_kemaskini, "tarik": len(tarik), "jumlah": len(baris)}
+
+
+def excel_bytes(df, nama_sheet="Data"):
+    """DataFrame -> fail .xlsx (bytes). Teks tak akan jadi formula."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    wb = Workbook()
+    ws = wb.active
+    ws.title = nama_sheet[:31]
+    ws.append([str(c) for c in df.columns])
+    for row in df.itertuples(index=False, name=None):
+        ws.append([_cell(v) for v in row])
+    for r in ws.iter_rows(min_row=2):
+        for c in r:
+            if isinstance(c.value, str):
+                c.data_type = "s"
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="0B5394")
+    for i, col in enumerate(df.columns, start=1):
+        panjang = max([len(str(col))] + [len(str(v)) for v in df[col].head(200)]) if len(df) else len(str(col))
+        ws.column_dimensions[get_column_letter(i)].width = min(max(12, panjang + 2), 45)
+    ws.freeze_panes = "A2"
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def templat_excel_bytes(senarai_pusat=None):
+    """Templat muat naik Senarai Guru (dengan pilihan drop-down + helaian Panduan)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Senarai Guru"
+    ws.append(LAJUR_TEMPLAT)
+    wajib = {"NAMA GURU", "IC", "JANTINA", "NO TELEFON GURU", "ALAMAT RUMAH", "POSKOD RUMAH"}
+    for i, c in enumerate(ws[1], start=1):
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="C0392B" if LAJUR_TEMPLAT[i - 1] in wajib else "0B5394")
+    lebar = {"NAMA GURU": 34, "IC": 18, "JANTINA": 10, "NO TELEFON GURU": 17, "EMAIL GURU": 28, "ALAMAT RUMAH": 50,
+             "POSKOD RUMAH": 13, "PENGALAMAN SPM": 16, "NO PUSAT ASAL": 15, "JAWATAN CADANGAN": 26}
+    for i, nama in enumerate(LAJUR_TEMPLAT, start=1):
+        h = get_column_letter(i)
+        ws.column_dimensions[h].width = lebar.get(nama, 18)
+        if nama in ("IC", "NO TELEFON GURU", "POSKOD RUMAH", "NO PUSAT ASAL"):
+            for r in range(2, 502):
+                ws[f"{h}{r}"].number_format = "@"   # teks - sifar depan tak hilang
+    col = {n: get_column_letter(i) for i, n in enumerate(LAJUR_TEMPLAT, start=1)}
+    dv_j = DataValidation(type="list", formula1='"L,P"', allow_blank=True)
+    dv_w = DataValidation(type="list", formula1='"' + ",".join(JAWATAN_CADANGAN_SAH) + '"', allow_blank=True)
+    ws.add_data_validation(dv_j)
+    ws.add_data_validation(dv_w)
+    dv_j.add(f"{col['JANTINA']}2:{col['JANTINA']}501")
+    dv_w.add(f"{col['JAWATAN CADANGAN']}2:{col['JAWATAN CADANGAN']}501")
+    if senarai_pusat:
+        teks = ",".join(str(p) for p in senarai_pusat)
+        if len(teks) < 250:
+            dv_p = DataValidation(type="list", formula1=f'"{teks}"', allow_blank=True)
+            ws.add_data_validation(dv_p)
+            dv_p.add(f"{col['NO PUSAT ASAL']}2:{col['NO PUSAT ASAL']}501")
+    ws.freeze_panes = "A2"
+
+    pg = wb.create_sheet("Panduan")
+    baris = [
+        ["PANDUAN ISI TEMPLAT SENARAI GURU"], [""],
+        ["1. Isi di helaian 'Senarai Guru'. Satu baris = satu guru. Jangan ubah nama lajur (baris 1)."],
+        ["2. Lajur bertanda MERAH wajib diisi: NAMA GURU, IC, JANTINA, NO TELEFON GURU, ALAMAT RUMAH, POSKOD RUMAH."],
+        ["3. Kod sekolah & nama sekolah diisi automatik oleh sistem."],
+        ["4. Selepas muat naik, TICK guru yang akan bertugas di menu 'Senarai Guru', kemudian tekan Hantar."], [""],
+        ["LAJUR", "PERATURAN", "CONTOH"],
+        ["NAMA GURU", "Wajib", "AHMAD BIN ALI"],
+        ["IC", "Wajib, 12 digit (boleh ada '-')", "900101-10-1234"],
+        ["JANTINA", "Wajib: L atau P", "L"],
+        ["NO TELEFON GURU", "Wajib, 9-12 digit", "012-3456789"],
+        ["EMAIL GURU", "Pilihan; format email yang betul", "ahmad@moe.gov.my"],
+        ["ALAMAT RUMAH", "Wajib, alamat penuh", "No 5, Jalan Mawar 3, Taman Bunga, 47500 Subang Jaya"],
+        ["POSKOD RUMAH", "Wajib, 5 digit", "47500"],
+        ["PENGALAMAN SPM", "Pilihan; bil. kali bertugas (0-40)", "3"],
+        ["NO PUSAT ASAL", "Pilihan; pusat milik sekolah anda" + (": " + ", ".join(str(p) for p in senarai_pusat) if senarai_pusat else ""), (str(senarai_pusat[0]) if senarai_pusat else "")],
+        ["JAWATAN CADANGAN", "Pilihan; " + ", ".join(JAWATAN_CADANGAN_SAH) + " (kosong = Pengawas Peperiksaan)", "Pengawas Peperiksaan"],
+        [""], ["Muat naik semula fail yang sama selamat: guru dengan IC sama akan dikemaskini, bukan berganda."],
+    ]
+    for b in baris:
+        pg.append(b)
+    pg["A1"].font = Font(bold=True, size=13)
+    for c in pg[8]:
+        c.font = Font(bold=True)
+    pg.column_dimensions["A"].width = 24
+    pg.column_dimensions["B"].width = 62
+    pg.column_dimensions["C"].width = 52
+    for r in pg.iter_rows():
+        for c in r:
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+# ====== SENARAI GURU & MUAT NAIK / MUAT TURUN (tamat) ======
+
+
 def padam_cadangan_sekolah(df_cad, kod_sekolah, ic_dipilih, df_pen, df_simp=None):
     """Buang cadangan guru (ikut IC) HANYA milik sekolah ini. Pulang (df_baru, bil_dipadam).
     Tolak (ValueError) kalau guru sudah dilantik PPD di mana-mana pusat."""
@@ -993,7 +1460,7 @@ with col_kiri:
         st.markdown(f"**PPD:** {info['ppd_nama']} ({info['kod']}) - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
     st.markdown("---")
     if role=="SUP":
-        menu = st.radio("Menu", ["Maklumat Sekolah", "Cadangan Petugas", "Status"], label_visibility="collapsed")
+        menu = st.radio("Menu", ["Maklumat Sekolah", "Senarai Guru", "Muat Naik / Muat Turun", "Cadangan Petugas", "Status"], label_visibility="collapsed")
     elif role=="PPD":
         menu = st.radio("Menu", ["Senarai Pusat", "Kuota Pusat", "Cadangan SUP", "Jana Penempatan", "Penempatan Manual", "Batal Penempatan", "Petugas Simpanan", "Hantar JPN"], label_visibility="collapsed")
     else:
@@ -1042,6 +1509,7 @@ with col_kanan:
     TAB_CADANGAN = tab_daerah("cadangan_sup", _kod_daerah)
     TAB_PENEMPATAN = tab_daerah("penempatan_ppd", _kod_daerah)
     TAB_SIMPANAN = tab_daerah("petugas_simpanan", _kod_daerah)
+    TAB_GURU = tab_daerah("guru_sekolah", _kod_daerah)
 
     if role=="SUP":
         if menu=="Maklumat Sekolah":
@@ -1172,6 +1640,222 @@ with col_kanan:
                 else:
                     st.info("Belum ada rekod untuk sekolah ini dalam Google Sheet")
             
+        elif menu=="Senarai Guru":
+            st.header(f"🧑‍🏫 Senarai Guru - {info['nama']}")
+            st.caption("Semua guru sekolah anda. TICK guru yang akan bertugas, pilih jawatan, kemudian tekan Hantar. Senarai yang dihantar terus masuk ke portal PPD (menu Cadangan SUP).")
+            kod_s = str(info['kod_sekolah'])
+            n_g = st.session_state.get("guru_n", 0)
+            _pusat_g = []
+            for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
+                if _p.upper() not in _pusat_g:
+                    _pusat_g.append(_p.upper())
+            guru_roster = read_sheet(TAB_GURU)
+            cadangan_g = read_sheet(TAB_CADANGAN)
+            senarai_g = senarai_guru_sekolah(guru_roster, cadangan_g, kod_s)
+
+            if senarai_g.empty:
+                st.info("Belum ada guru. Muat naik fail Excel di menu **Muat Naik / Muat Turun**, atau tambah seorang guru di bawah.")
+            else:
+                peta_g = peta_guru_pusat(read_sheet(TAB_PENEMPATAN), read_sheet(TAB_SIMPANAN))
+                status_ppd = []
+                for _, r_ in senarai_g.iterrows():
+                    p_ = pusat_guru(peta_g, r_["IC"], r_["NAMA GURU"], r_["KOD SEKOLAH ASAL"])
+                    status_ppd.append("" if p_ is None else ("🅿️ Simpanan PPD" if p_ == "SIMPANAN" else f"🔒 Dilantik di {p_}"))
+                senarai_g["STATUS PPD"] = status_ppd
+                m1, m2, m3 = st.columns(3)
+                with m1:
+                    st.metric("Jumlah Guru", len(senarai_g))
+                with m2:
+                    st.metric("Sudah Dicadang (dihantar)", int(senarai_g["CADANGAN"].sum()))
+                with m3:
+                    st.metric("Dilantik PPD", int((senarai_g["STATUS PPD"] != "").sum()))
+
+                lajur_edit = ["CADANGAN", "NAMA GURU", "IC", "JANTINA", "JAWATAN CADANGAN", "NO TELEFON GURU", "ALAMAT RUMAH", "PENGALAMAN SPM", "NO PUSAT ASAL", "STATUS PPD"]
+                paparan = senarai_g[lajur_edit].copy()
+                paparan["CADANGAN"] = paparan["CADANGAN"].astype(bool)
+                diedit = st.data_editor(
+                    paparan, hide_index=True, use_container_width=True, key=f"guru_edit_{n_g}",
+                    disabled=[c for c in lajur_edit if c not in ("CADANGAN", "JAWATAN CADANGAN")],
+                    column_config={
+                        "CADANGAN": st.column_config.CheckboxColumn("✔ Cadangan", help="Tick guru yang akan bertugas"),
+                        "JAWATAN CADANGAN": st.column_config.SelectboxColumn("Jawatan", options=JAWATAN_CADANGAN_SAH, required=True),
+                    },
+                )
+                tick = diedit["CADANGAN"].fillna(False).astype(bool)
+                ticked_df = senarai_g[tick.values].copy()
+                ticked_df["JAWATAN CADANGAN"] = diedit.loc[tick, "JAWATAN CADANGAN"].map(lambda v: _teks(v) or JAWATAN_LAZIM).values
+                dulu = senarai_g["CADANGAN"].astype(bool)
+                n_tick = int(tick.sum())
+                n_baru_t = int((tick & ~dulu).sum())
+                n_tarik_t = int((~tick & dulu).sum())
+                st.info(f"Dipilih: **{n_tick}** guru | Baharu: {n_baru_t} | Ditarik balik: {n_tarik_t}")
+                if n_tarik_t:
+                    st.warning(f"⚠️ {n_tarik_t} guru yang sebelum ini dicadangkan akan DITARIK BALIK daripada senarai PPD (kecuali yang sudah dilantik PPD - itu akan ditolak).")
+
+                if st.button(f"📤 HANTAR {n_tick} CADANGAN KE PPD", use_container_width=True, type="primary", disabled=n_tick == 0, key=f"guru_hantar_{n_g}"):
+                    sedia_cad = {norm_ic(x) for x in cadangan_g["IC"]} if (not cadangan_g.empty and "IC" in cadangan_g.columns) else set()
+                    tak_lengkap = []
+                    for _, r_ in ticked_df.iterrows():
+                        if norm_ic(r_["IC"]) not in sedia_cad:
+                            k_ = kekurangan_guru(r_)
+                            if k_:
+                                tak_lengkap.append(f"{r_['NAMA GURU']} ({', '.join(k_)})")
+                    if tak_lengkap:
+                        st.error("Maklumat belum lengkap, kemaskini dahulu: " + "; ".join(tak_lengkap))
+                    else:
+                        hasil_h = {}
+                        # 1) pastikan semua guru yang dihantar ada dalam Senarai Guru (tak memadam apa-apa)
+                        ok_r = modify_sheet(TAB_GURU, lambda dfr: gabung_guru_sekolah(dfr, ticked_df, kod_s, info['nama'])[0])
+                        if ok_r:
+                            def _sync_cad(df_cad):
+                                baru_c, stat = hantar_cadangan(df_cad, kod_s, info['nama'], ticked_df, read_sheet_strict(TAB_PENEMPATAN), read_sheet_strict(TAB_SIMPANAN))
+                                hasil_h.update(stat)
+                                return baru_c
+                            # 2) senarai cadangan sekolah ini jadi tepat guru yang di-tick
+                            if modify_sheet(TAB_CADANGAN, _sync_cad):
+                                flash("success", f"✅ {hasil_h['jumlah']} cadangan dihantar ke PPD (baharu {hasil_h['baru']}, dikemaskini {hasil_h['kemaskini']}, ditarik balik {hasil_h['tarik']}).")
+                                st.session_state["guru_n"] = n_g + 1
+                                st.rerun()
+
+            # ----- Tambah seorang guru -----
+            with st.expander("➕ Tambah / kemaskini seorang guru"):
+                with st.form(f"form_guru_roster_{n_g}"):
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        jaw_f = st.selectbox("JAWATAN CADANGAN", JAWATAN_CADANGAN_SAH, index=JAWATAN_CADANGAN_SAH.index(JAWATAN_LAZIM))
+                        jan_f = st.selectbox("JANTINA", ["L", "P"])
+                    with c2:
+                        nama_f = st.text_input("NAMA GURU *")
+                        tel_f = st.text_input("NO TELEFON GURU *", placeholder="contoh: 012-3456789")
+                    with c3:
+                        ic_f = st.text_input("IC *", placeholder="contoh: 900101-10-1234")
+                        email_f = st.text_input("EMAIL GURU", placeholder="contoh: nama@moe.gov.my")
+                    alamat_f = st.text_area("ALAMAT RUMAH *", placeholder="No rumah, jalan, taman, poskod, bandar")
+                    c4, c5, c6 = st.columns(3)
+                    with c4:
+                        pos_f = st.number_input("POSKOD RUMAH *", 10000, 99999, 46000)
+                    with c5:
+                        peng_f = st.number_input("PENGALAMAN SPM (bil. kali bertugas)", 0, 40, 0)
+                    with c6:
+                        pusat_f = st.selectbox("NO PUSAT ASAL", _pusat_g + ["-- Tiada --"])
+                    if st.form_submit_button("💾 Simpan ke Senarai Guru", use_container_width=True):
+                        masalah_f = validasi_guru(nama_f, ic_f, alamat_f, tel_f, email_f)
+                        if masalah_f:
+                            st.error(masalah_f)
+                        else:
+                            baris_f = pd.DataFrame([{
+                                "NAMA GURU": _bersih_teks(nama_f), "IC": format_ic(ic_f), "JANTINA": jan_f, "POSKOD RUMAH": int(pos_f),
+                                "ALAMAT RUMAH": _bersih_teks(alamat_f), "NO TELEFON GURU": norm_telefon(tel_f), "EMAIL GURU": email_f.strip().lower(),
+                                "PENGALAMAN SPM": int(peng_f), "NO PUSAT ASAL": "" if pusat_f == "-- Tiada --" else pusat_f, "JAWATAN CADANGAN": jaw_f,
+                            }])
+                            hasil_f = {}
+
+                            def _simpan_f(dfr):
+                                df_n, nb, nk = gabung_guru_sekolah(dfr, baris_f, kod_s, info['nama'])
+                                hasil_f.update(baru=nb, kemaskini=nk)
+                                return df_n
+                            if modify_sheet(TAB_GURU, _simpan_f):
+                                flash("success", f"✅ {_bersih_teks(nama_f)} {'ditambah' if hasil_f['baru'] else 'dikemaskini'} dalam Senarai Guru. Tick di jadual untuk jadikan cadangan.")
+                                st.session_state["guru_n"] = n_g + 1
+                                st.rerun()
+
+            # ----- Buang guru -----
+            if not senarai_g.empty:
+                with st.expander("🗑️ Buang guru daripada Senarai Guru"):
+                    boleh_buang = senarai_g[~senarai_g["CADANGAN"].astype(bool)]
+                    label_b = {norm_ic(r_["IC"]): f"{r_['NAMA GURU']} | IC: {r_['IC']}" for _, r_ in boleh_buang.iterrows() if norm_ic(r_["IC"])}
+                    st.caption("Hanya guru yang TIDAK sedang dicadangkan boleh dibuang. Untuk buang guru yang dicadangkan: nyah-tick, Hantar, kemudian buang di sini.")
+                    if not label_b:
+                        st.info("Tiada guru yang boleh dibuang.")
+                    else:
+                        pilih_b = st.multiselect("Pilih guru", list(label_b.keys()), format_func=lambda k: label_b[k], key=f"guru_buang_{n_g}")
+                        sah_b = st.checkbox("Ya, buang terus daripada Google Sheet (tidak boleh dipulihkan)", key=f"guru_buang_sah_{n_g}")
+                        if st.button(f"🗑️ Buang {len(pilih_b)} guru", use_container_width=True, disabled=not (pilih_b and sah_b), key=f"guru_buang_btn_{n_g}"):
+                            ic_cad_b = {norm_ic(x) for x in cadangan_g["IC"]} if (not cadangan_g.empty and "IC" in cadangan_g.columns) else set()
+                            hasil_b = {}
+
+                            def _buang_r(dfr):
+                                baru_r, bil = buang_guru_roster(dfr, kod_s, pilih_b, ic_cad_b)
+                                hasil_b["bil"] = bil
+                                return baru_r
+                            if modify_sheet(TAB_GURU, _buang_r):
+                                flash("success", f"✅ {hasil_b['bil']} guru dibuang daripada Senarai Guru.")
+                                st.session_state["guru_n"] = n_g + 1
+                                st.rerun()
+        elif menu=="Muat Naik / Muat Turun":
+            st.header(f"📁 Muat Naik / Muat Turun - {info['nama']}")
+            st.caption("1) Muat turun templat Excel  →  2) isi senarai guru sekolah  →  3) muat naik di sini  →  4) tick cadangan di menu **Senarai Guru** dan Hantar.")
+            kod_s = str(info['kod_sekolah'])
+            up_n = st.session_state.get("up_n", 0)
+            _pusat_u = []
+            for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
+                if _p.upper() not in _pusat_u:
+                    _pusat_u.append(_p.upper())
+
+            st.markdown("### ⬇️ 1. Muat turun templat")
+            st.download_button("⬇️ Muat turun Templat Excel (kosong)", data=templat_excel_bytes(_pusat_u), file_name=f"templat_senarai_guru_{kod_s}.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_templat")
+
+            st.markdown("---")
+            st.markdown("### ⬆️ 2. Muat naik senarai guru (terus ke Google Sheet)")
+            fail_up = st.file_uploader("Pilih fail Excel (.xlsx) atau CSV", type=["xlsx", "csv"], key=f"up_guru_{up_n}")
+            if fail_up is not None:
+                try:
+                    df_up = baca_fail_guru(fail_up)
+                    df_sah, ralat_up = proses_muat_naik(df_up, kod_s, info['nama'], _pusat_u)
+                except ValueError as e:
+                    st.error(f"⚠️ {e}")
+                    df_sah, ralat_up = None, []
+                except Exception as e:
+                    st.error(f"⚠️ Fail tak dapat dibaca ({type(e).__name__}). Pastikan fail Excel yang sah dan tidak berkata laluan.")
+                    df_sah, ralat_up = None, []
+                if df_sah is not None:
+                    u1, u2, u3 = st.columns(3)
+                    with u1:
+                        st.metric("Baris dibaca", len(df_sah) + len(ralat_up))
+                    with u2:
+                        st.metric("Sah", len(df_sah))
+                    with u3:
+                        st.metric("Ada masalah", len(ralat_up))
+                    if ralat_up:
+                        st.error("Baris di bawah TIDAK akan diimport. Betulkan dalam fail dan muat naik semula (baris sah boleh diimport dahulu).")
+                        st.dataframe(pd.DataFrame(ralat_up), use_container_width=True, hide_index=True)
+                    if not df_sah.empty:
+                        st.markdown("**Pratonton baris sah:**")
+                        st.dataframe(df_sah[["NAMA GURU", "IC", "JANTINA", "NO TELEFON GURU", "ALAMAT RUMAH", "POSKOD RUMAH", "NO PUSAT ASAL", "JAWATAN CADANGAN"]], use_container_width=True, hide_index=True)
+                        if st.button(f"📤 Import {len(df_sah)} guru ke Google Sheet", use_container_width=True, type="primary", key=f"up_btn_{up_n}"):
+                            hasil_u = {}
+
+                            def _import(dfr):
+                                df_n, nb, nk = gabung_guru_sekolah(dfr, df_sah, kod_s, info['nama'])
+                                hasil_u.update(baru=nb, kemaskini=nk)
+                                return df_n
+                            if modify_sheet(TAB_GURU, _import):
+                                flash("success", f"✅ Muat naik berjaya: {hasil_u['baru']} guru baharu, {hasil_u['kemaskini']} dikemaskini" + (f", {len(ralat_up)} baris ditolak." if ralat_up else ".") + " Sila tick cadangan di menu Senarai Guru.")
+                                st.session_state["up_n"] = up_n + 1
+                                st.rerun()
+                    else:
+                        st.warning("Tiada baris sah untuk diimport.")
+
+            st.markdown("---")
+            st.markdown("### ⬇️ 3. Muat turun data")
+            guru_dl = senarai_guru_sekolah(read_sheet(TAB_GURU), read_sheet(TAB_CADANGAN), kod_s)
+            d1, d2 = st.columns(2)
+            with d1:
+                if guru_dl.empty:
+                    st.info("Senarai Guru masih kosong.")
+                else:
+                    df_dl = guru_dl.copy()
+                    df_dl["CADANGAN"] = df_dl["CADANGAN"].map(lambda b: "Ya" if b else "Tidak")
+                    st.download_button(f"⬇️ Senarai Guru sekolah ({len(df_dl)} guru)", data=excel_bytes(df_dl, "Senarai Guru"), file_name=f"senarai_guru_{kod_s}_{st.session_state.get('tahun_pilih', 2026)}.xlsx",
+                                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_roster")
+            with d2:
+                cad_dl = guru_dl[guru_dl["CADANGAN"].astype(bool)] if not guru_dl.empty else guru_dl
+                if cad_dl.empty:
+                    st.info("Belum ada cadangan dihantar.")
+                else:
+                    st.download_button(f"⬇️ Senarai Cadangan dihantar ({len(cad_dl)} guru)", data=excel_bytes(cad_dl.drop(columns=["CADANGAN"]), "Cadangan"), file_name=f"cadangan_{kod_s}_{st.session_state.get('tahun_pilih', 2026)}.xlsx",
+                                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_cadangan")
         elif menu=="Cadangan Petugas":
             st.header(f"👥 Cadangan - {info['nama']}")
             cadangan = read_sheet(TAB_CADANGAN)
@@ -1245,6 +1929,8 @@ with col_kanan:
                             return pd.concat([df, pd.DataFrame([baris])], ignore_index=True) if not df.empty else pd.DataFrame([baris])
 
                         if modify_sheet(TAB_CADANGAN, _tambah_guru):
+                            # pastikan guru ini juga ada dalam Senarai Guru sekolah
+                            modify_sheet(TAB_GURU, lambda dfr: gabung_guru_sekolah(dfr, pd.DataFrame([new_g_row]), str(info['kod_sekolah']), info['nama'])[0])
                             flash("success", f"✅ {nama_g} ditambah / dikemaskini! - Hanya untuk {info['kod_sekolah']}")
                             st.rerun()
             # === FIX: Hanya papar cadangan sekolah sendiri ===
@@ -1297,6 +1983,12 @@ with col_kanan:
             else:
                 st.success("✅ Maklumat Sekolah: sudah diisi")
                 st.dataframe(own_m, use_container_width=True)
+            guru_st = read_sheet(TAB_GURU)
+            own_g = guru_st[guru_st["KOD SEKOLAH ASAL"].astype(str) == kod_ini] if (not guru_st.empty and "KOD SEKOLAH ASAL" in guru_st.columns) else pd.DataFrame()
+            if own_g.empty:
+                st.warning("❌ Senarai Guru: belum diisi (muat naik fail Excel di menu Muat Naik / Muat Turun)")
+            else:
+                st.success(f"✅ Senarai Guru: {len(own_g)} guru")
             if own_c.empty:
                 st.warning("❌ Cadangan Petugas: belum ada")
             else:
