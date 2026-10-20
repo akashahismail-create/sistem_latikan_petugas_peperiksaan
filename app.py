@@ -1190,6 +1190,23 @@ def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama
 
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
+
+# FIX NameError: define file_used & mapping_df from Supabase
+try:
+    file_used = "Supabase LIVE"
+    supa_tmp, _ = get_supabase()
+    if supa_tmp:
+        try:
+            r = supa_tmp.table("maklumat_sekolah").select("data").limit(5000).execute()
+            mapping_df = _df_from_rows(r.data)
+        except:
+            mapping_df = pd.DataFrame()
+    else:
+        mapping_df = pd.DataFrame()
+except:
+    file_used = "Supabase LIVE"
+    mapping_df = pd.DataFrame()
+
 PPD_LIST = [
     ("1", "a", "Klang", "BA"), ("2", "b", "Kuala Langat", "BB"),
     ("3", "c", "Kuala Selangor", "BC"), ("4", "d", "Hulu Langat", "BD"),
@@ -1292,7 +1309,7 @@ if not st.session_state.logged_in:
             **Senarai PPD:** Edit `PPD_LIST` dalam `app.py`
             """)
     st.markdown("---")
-    st.caption(f"Data: {len(mapping_df)} sekolah dari {os.path.basename(file_used)} | Tanpa Sidebar")
+    st.caption(f"Data: Supabase LIVE | Tanpa Sidebar")
     st.stop()
 
 # Dah login
@@ -1301,7 +1318,7 @@ info = st.session_state.user_info
 
 st.markdown(f"""
 <div style="background:#0B5394; color:white; padding:10px 15px; border-radius:8px;">
-<b>📚 SPM 2026</b> | {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | {info.get('bil_pusat','')} pusat | File: {os.path.basename(file_used)}
+<b>📚 SPM 2026</b> | {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | {info.get('bil_pusat','')} pusat | File: Supabase LIVE
 </div>
 """, unsafe_allow_html=True)
 
@@ -3247,7 +3264,7 @@ with col_kanan:
 
     else:
         if menu == "Semua PPD":
-            st.header(f"🏛️ Semua PPD - {len(mapping_df)} Sekolah - File: {os.path.basename(file_used)}")
+            st.header(f"🏛️ Semua PPD - {len(mapping_df)} Sekolah - File: Supabase LIVE")
             st.dataframe(mapping_df, use_container_width=True)
         elif menu == "Sahkan PPD":
             st.header("✅ Sahkan PPD")
