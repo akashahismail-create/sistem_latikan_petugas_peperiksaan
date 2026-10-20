@@ -186,60 +186,8 @@ def _retry(fn, tries=3):
             time.sleep(1.5 * (i + 1))
 
 
-def _normalize_sheet_name(s):
-    import re
-    s = str(s).lower().strip()
-    s = re.sub(r"[\s\-_]+", "_", s)
-    s = re.sub(r"_+", "_", s)
-    return s
-
-@st.cache_data(ttl=300, show_spinner=False)
-def list_all_sheets():
-    try:
-        client, sid, err = get_gsheet()
-        if client is None:
-            return [], err
-        sh = _retry(lambda: client.open_by_key(sid))
-        sheets = _retry(lambda: sh.worksheets())
-        return [ws.title for ws in sheets], None
-    except Exception as e:
-        return [], str(e)
-
-def find_matching_sheet(target_name):
-    try:
-        all_sheets, err = list_all_sheets()
-        if not all_sheets:
-            return None
-        target_norm = _normalize_sheet_name(target_name)
-        target_lower = target_name.lower().strip()
-        if target_name in all_sheets:
-            return target_name
-        for s in all_sheets:
-            if s.lower() == target_lower:
-                return s
-        for s in all_sheets:
-            if _normalize_sheet_name(s) == target_norm:
-                return s
-        target_parts = target_norm.split("_")
-        for s in all_sheets:
-            s_norm = _normalize_sheet_name(s)
-            if all(part in s_norm for part in target_parts if len(part)>1):
-                return s
-            if target_norm in s_norm or s_norm in target_norm:
-                return s
-        import re
-        target_no_year = re.sub(r"_?\d{4}$", "", target_name)
-        target_no_year_norm = _normalize_sheet_name(target_no_year)
-        for s in all_sheets:
-            if _normalize_sheet_name(s) == target_no_year_norm:
-                return s
-            if target_no_year_norm in _normalize_sheet_name(s):
-                return s
-        return None
-    except Exception:
-        return None
-
 def read_sheet_strict(name):
+    """Baca sheet. Kalau GAGAL -> timbul ralat (JANGAN pulang kosong). Sheet tak wujud -> DataFrame kosong."""
     client, sid, err = get_gsheet()
     if client is None:
         raise RuntimeError(f"Google Sheet tidak connect: {err}")
@@ -247,19 +195,12 @@ def read_sheet_strict(name):
     try:
         ws = sh.worksheet(name)
     except gspread.exceptions.WorksheetNotFound:
-        matched = find_matching_sheet(name)
-        if matched and matched != name:
-            try:
-                ws = sh.worksheet(matched)
-            except gspread.exceptions.WorksheetNotFound:
-                return pd.DataFrame()
-        else:
-            return pd.DataFrame()
+        return pd.DataFrame()
     records = _retry(lambda: ws.get_all_records(numericise_ignore=["all"]))
     return pd.DataFrame(records)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=15, show_spinner=False)
 def _cached_read(name):
     return read_sheet_strict(name)
 
@@ -2673,95 +2614,36 @@ with col_kanan:
 
 
                 st.markdown("---")
-                st.markdown("### ❌ Batal Cadangan SUP (PPD Sahaja)")
-                st.caption("Fungsi ini akan buang nama guru dari senarai Cadangan SUP PPD sahaja. Nama guru masih kekal dalam Senarai Guru SUP (master guru sekolah). Guna bila guru tidak layak, bertukar, atau cadangan salah.")
+                st.markdown("### ❌ Batal Cadangan SUP (PPD Sahaja) - Cepat")
+                st.caption("Buang nama dari Cadangan SUP PPD sahaja. Nama masih kekal di Senarai Guru SUP.")
                 
                 if not cadangan_ppd.empty:
-                    col_batal1, col_batal2 = st.columns([2,1])
-                    with col_batal1:
-                        opsi_batal = []
-                        for _, r in cadangan_ppd.iterrows():
-                            label = f"{r.get('NAMA GURU','')} - {r.get('IC','')} - {r.get('KOD SEKOLAH ASAL','')} - {r.get('JAWATAN CADANGAN','') or r.get('JAWATAN CADANG','')}"
-                            opsi_batal.append(label)
-                        pilih_batal = st.multiselect("Pilih guru untuk Batal dari Cadangan SUP PPD", opsi_batal, key="batal_cadangan_multiselect")
-                    with col_batal2:
-                        st.warning("⚠️ Batal hanya buang dari Cadangan SUP PPD, TIDAK buang dari Senarai Guru SUP")
-                        sebab_batal = st.text_input("Sebab Batal (optional)", placeholder="Contoh: Bertukar sekolah, tidak layak", key="sebab_batal")
-                    
+                    opsi_batal = [f"{r.get('NAMA GURU','')} - {r.get('IC','')} - {r.get('KOD SEKOLAH ASAL','')}" for _, r in cadangan_ppd.iterrows()]
+                    pilih_batal = st.multiselect("Pilih guru untuk Batal", opsi_batal, key="batal_cadangan_fast")
                     if pilih_batal:
                         ic_batal = []
                         for label in pilih_batal:
                             try:
-                                parts = label.split(" - ")
-                                ic = parts[1].strip() if len(parts)>=2 else ""
-                                if ic:
-                                    ic_batal.append(ic)
+                                ic = label.split(" - ")[1].strip()
+                                ic_batal.append(ic)
                             except:
                                 pass
-                        
-                        st.error(f"Anda akan batal {len(ic_batal)} guru dari Cadangan SUP PPD {info['kod']}. Nama masih kekal di Senarai Guru SUP.")
-                        
-                        col_batal_confirm1, col_batal_confirm2 = st.columns(2)
-                        with col_batal_confirm1:
-                            if st.button(f"❌ Sahkan Batal {len(ic_batal)} Guru dari PPD Sahaja", use_container_width=True, type="primary", key="btn_batal_ppd"):
-                                log_batal = []
-                                for ic in ic_batal:
-                                    row = cadangan_ppd[cadangan_ppd["IC"].astype(str)==ic]
-                                    nama = row["NAMA GURU"].values[0] if not row.empty else ""
-                                    kod_sek = row["KOD SEKOLAH ASAL"].values[0] if not row.empty else ""
-                                    log_batal.append({
-                                        "IC": ic,
-                                        "NAMA GURU": nama,
-                                        "KOD SEKOLAH ASAL": kod_sek,
-                                        "TARIKH BATAL": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                        "DIBATAL OLEH": f"PPD {info['ppd_nama']}",
-                                        "SEBAB": sebab_batal,
-                                        "STATUS": "BATAL DARI PPD - MASIH DALAM SENARAI GURU SUP"
-                                    })
-                                
-                                def _batal_dari_cadangan(df_old):
-                                    if df_old.empty:
-                                        return df_old
-                                    ic_norm_batal = [norm_ic(ic) for ic in ic_batal]
-                                    mask_batal = df_old["IC"].map(norm_ic).isin(ic_norm_batal)
-                                    if "KOD SEKOLAH ASAL" in df_old.columns:
-                                        mask_batal = mask_batal & df_old["KOD SEKOLAH ASAL"].astype(str).isin(kod_sekolah_ppd)
-                                    return df_old[~mask_batal].copy()
-                                
-                                def _batal_dari_pilihan(df_old):
-                                    if df_old.empty:
-                                        return df_old
-                                    ic_norm_batal = [norm_ic(ic) for ic in ic_batal]
-                                    return df_old[~df_old["IC"].map(norm_ic).isin(ic_norm_batal)].copy()
-                                
-                                ok1 = modify_sheet(TAB_CADANGAN, _batal_dari_cadangan)
-                                ok2 = modify_sheet(TAB_PILIHAN, _batal_dari_pilihan)
-                                
-                                TAB_LOG_BATAL = tab_daerah("log_batal_ppd", info['kod'])
-                                def _simpan_log(df_old):
-                                    if df_old.empty:
-                                        return pd.DataFrame(log_batal)
-                                    return pd.concat([df_old, pd.DataFrame(log_batal)], ignore_index=True)
-                                
-                                ok3 = modify_sheet(TAB_LOG_BATAL, _simpan_log)
-                                
-                                if ok1:
-                                    flash("success", f"✅ {len(ic_batal)} guru dibatal dari Cadangan SUP PPD {info['kod']}. Nama masih kekal dalam Senarai Guru SUP (master). Log disimpan di {TAB_LOG_BATAL}")
-                                    st.rerun()
-                        with col_batal_confirm2:
-                            if st.button("Batalkan", use_container_width=True, key="btn_batal_cancel"):
-                                st.info("Batal dibatalkan")
+                        if st.button(f"❌ Sahkan Batal {len(ic_batal)} Guru", use_container_width=True, type="primary", key="btn_batal_fast"):
+                            def _batal(df_old):
+                                if df_old.empty:
+                                    return df_old
+                                return df_old[~df_old["IC"].map(norm_ic).isin([norm_ic(x) for x in ic_batal])].copy()
+                            def _batal_pilihan(df_old):
+                                if df_old.empty:
+                                    return df_old
+                                return df_old[~df_old["IC"].map(norm_ic).isin([norm_ic(x) for x in ic_batal])].copy()
+                            ok1 = modify_sheet(TAB_CADANGAN, _batal)
+                            ok2 = modify_sheet(TAB_PILIHAN, _batal_pilihan)
+                            if ok1:
+                                flash("success", f"✅ {len(ic_batal)} guru dibatal dari PPD sahaja, masih ada di Senarai Guru SUP")
+                                st.rerun()
                 else:
-                    st.info("Tiada cadangan untuk dibatal")
-                
-                with st.expander("📜 Log Batal PPD (audit)"):
-                    TAB_LOG_BATAL = tab_daerah("log_batal_ppd", info['kod'])
-                    log_df = read_sheet(TAB_LOG_BATAL)
-                    if log_df.empty:
-                        st.info("Belum ada log batal")
-                    else:
-                        st.dataframe(log_df, use_container_width=True)
-                        st.caption("Log ini untuk audit - guru yang dibatal dari PPD masih ada dalam Senarai Guru SUP")
+                    st.info("Tiada cadangan")
 
 
         elif menu=="Jana Penempatan":
