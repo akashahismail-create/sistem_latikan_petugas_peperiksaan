@@ -542,6 +542,26 @@ def pecah_data_lama(mapping_df, jeda=4):
     return laporan
 
 
+def padam_cadangan_sekolah(df_cad, kod_sekolah, ic_dipilih, df_pen):
+    """Buang cadangan guru (ikut IC) HANYA milik sekolah ini. Pulang (df_baru, bil_dipadam).
+    Tolak (ValueError) kalau guru sudah dilantik PPD di mana-mana pusat."""
+    if df_cad.empty or "IC" not in df_cad.columns or "KOD SEKOLAH ASAL" not in df_cad.columns:
+        raise ValueError("Data cadangan tidak dijumpai - muat semula halaman")
+    milik = df_cad["KOD SEKOLAH ASAL"].astype(str) == str(kod_sekolah)
+    sasar = milik & df_cad["IC"].map(norm_ic).isin({norm_ic(i) for i in ic_dipilih})
+    if not sasar.any():
+        raise ValueError("Guru yang dipilih tak dijumpai (mungkin sudah dipadam) - muat semula halaman")
+    peta = peta_guru_pusat(df_pen)
+    terkunci = []
+    for _, r in df_cad[sasar].iterrows():
+        p_ = pusat_guru(peta, r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", ""))
+        if p_ is not None:
+            terkunci.append(f"{r.get('NAMA GURU', '')} ({p_})")
+    if terkunci:
+        raise ValueError("Tak boleh dipadam kerana sudah dilantik PPD: " + ", ".join(terkunci) + ". Minta PPD kosongkan lantikan itu dahulu.")
+    return df_cad[~sasar].reset_index(drop=True), int(sasar.sum())
+
+
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
 
@@ -952,6 +972,34 @@ with col_kanan:
                 if not cadangan_sendiri.empty:
                     st.markdown(f"#### 👥 Senarai Cadangan Anda - {info['kod_sekolah']} ({len(cadangan_sendiri)} orang)")
                     st.dataframe(cadangan_sendiri, use_container_width=True)
+
+                    # ===== PADAM CADANGAN =====
+                    st.markdown("#### 🗑️ Padam Cadangan")
+                    label_padam = {}
+                    if "IC" in cadangan_sendiri.columns:
+                        for _, r_ in cadangan_sendiri.iterrows():
+                            k_ = norm_ic(r_.get("IC", ""))
+                            if k_:
+                                label_padam[k_] = f"{r_.get('NAMA GURU', '')} | IC: {r_.get('IC', '')} | {r_.get('JAWATAN CADANGAN', r_.get('JAWATAN CADANG', ''))}"
+                    if not label_padam:
+                        st.info("Tiada cadangan yang boleh dipadam.")
+                    else:
+                        pilih_padam = st.multiselect("Pilih guru yang nak dipadam", list(label_padam.keys()), format_func=lambda k: label_padam[k], key=f"padam_pilih_{st.session_state.get('padam_n', 0)}")
+                        sahkan_padam = st.checkbox("Ya, padam terus daripada Google Sheet (tidak boleh dipulihkan)", key=f"padam_sahkan_{st.session_state.get('padam_n', 0)}")
+                        if st.button(f"🗑️ Padam {len(pilih_padam)} guru", use_container_width=True, disabled=not (pilih_padam and sahkan_padam), key="padam_btn"):
+                            hasil_padam = {}
+
+                            def _padam(df):
+                                # Semak lantikan dengan bacaan segar; kalau gagal baca -> batal (selamat)
+                                df_pen = read_sheet_strict(TAB_PENEMPATAN)
+                                baru, bil = padam_cadangan_sekolah(df, info['kod_sekolah'], pilih_padam, df_pen)
+                                hasil_padam["bil"] = bil
+                                return baru
+
+                            if modify_sheet(TAB_CADANGAN, _padam):
+                                flash("success", f"✅ {hasil_padam['bil']} cadangan dipadam terus daripada Google Sheet.")
+                                st.session_state["padam_n"] = st.session_state.get("padam_n", 0) + 1   # kosongkan pilihan
+                                st.rerun()
                 else:
                     st.info(f"Belum ada cadangan untuk {info['kod_sekolah']}")
             else:
