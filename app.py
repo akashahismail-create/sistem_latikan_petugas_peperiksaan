@@ -292,16 +292,93 @@ def norm_ic(x):
     return d.zfill(12) if d else ""
 
 
-def keperluan_pengawas(pusat, df_calon):
-    """Bilangan Pengawas Peperiksaan untuk satu pusat (default 10). KP + TKP ditambah berasingan."""
-    if df_calon is not None and not df_calon.empty and "NO_PUSAT" in df_calon.columns and "PETUGAS_NEEDED" in df_calon.columns:
+def keperluan_asal(pusat, df_calon):
+    """Data asal ikut formula - tidak diubah. Pulang (petugas_needed, kelas, calon)."""
+    petugas = 10
+    kelas = 0
+    calon = 0
+    if df_calon is not None and not df_calon.empty and "NO_PUSAT" in df_calon.columns:
         r = df_calon[df_calon["NO_PUSAT"].astype(str) == str(pusat)]
         if not r.empty:
             try:
-                return int(r.iloc[0]["PETUGAS_NEEDED"])
-            except (ValueError, TypeError):
+                calon = int(r.iloc[0].get("JUMLAH_CALON", 0))
+            except: pass
+            try:
+                kelas = int(r.iloc[0].get("JUMLAH_KELAS", 0))
+            except: pass
+            if "PETUGAS_NEEDED" in df_calon.columns:
+                try:
+                    petugas = int(r.iloc[0]["PETUGAS_NEEDED"])
+                except:
+                    petugas = kelas + 10 if kelas else 10
+            else:
+                petugas = kelas + 10 if kelas else 10
+    else:
+        petugas = 10
+    return petugas, kelas, calon
+
+def keperluan_pengawas(pusat, df_calon, df_kuota=None):
+    """Bilangan Pengawas FINAL - check kuota_ppd dulu, kalau PPD edit guna yang edit, kalau tak guna asal."""
+    # Auto load kuota jika tidak diberi (supaya semua fungsi auto berubah bila PPD edit)
+    if df_kuota is None:
+        try:
+            df_kuota = read_sheet("kuota_ppd")
+        except:
+            df_kuota = pd.DataFrame()
+    # 1. Check kuota override dari PPD
+    if df_kuota is not None and not df_kuota.empty and "NO PUSAT" in df_kuota.columns:
+        r = df_kuota[df_kuota["NO PUSAT"].astype(str) == str(pusat)]
+        if not r.empty:
+            last = r.iloc[-1]
+            try:
+                for col in ["KEPERLUAN EDIT", "KEPERLUAN_PENGAWAS", "JUMLAH_PENGAWAS", "PETUGAS_EDIT", "KEPERLUAN AKHIR"]:
+                    if col in df_kuota.columns and str(last.get(col,"")).strip() != "" and str(last.get(col)).lower()!="nan":
+                        return int(float(str(last.get(col)).strip()))
+            except:
                 pass
-    return 10
+    asal, _, _ = keperluan_asal(pusat, df_calon)
+    return asal
+
+def get_kuota_info(pusat, df_calon, df_kuota=None):
+    """Untuk paparan: asal vs edit vs formula"""
+    if df_kuota is None:
+        try:
+            df_kuota = read_sheet("kuota_ppd")
+        except:
+            df_kuota = pd.DataFrame()
+    asal, kelas, calon = keperluan_asal(pusat, df_calon)
+    formula = (kelas + 10) if kelas else asal
+    edit = None
+    catatan = ""
+    tarikh_edit = ""
+    edited_by = ""
+    if df_kuota is not None and not df_kuota.empty and "NO PUSAT" in df_kuota.columns:
+        r = df_kuota[df_kuota["NO PUSAT"].astype(str) == str(pusat)]
+        if not r.empty:
+            last = r.iloc[-1]
+            for col in ["KEPERLUAN EDIT", "KEPERLUAN_PENGAWAS", "JUMLAH_PENGAWAS", "PETUGAS_EDIT", "KEPERLUAN AKHIR"]:
+                if col in df_kuota.columns:
+                    try:
+                        v = str(last.get(col,"")).strip()
+                        if v and v.lower()!="nan":
+                            edit = int(float(v))
+                            break
+                    except: pass
+            for col in ["CATATAN", "ALASAN", "NOTA"]:
+                if col in df_kuota.columns:
+                    catatan = str(last.get(col,"") or "")
+                    break
+            for col in ["TARIKH EDIT", "TARIKH"]:
+                if col in df_kuota.columns:
+                    tarikh_edit = str(last.get(col,"") or "")
+                    break
+            for col in ["EDIT OLEH", "PPD"]:
+                if col in df_kuota.columns:
+                    edited_by = str(last.get(col,"") or "")
+                    break
+    final = edit if edit is not None else asal
+    return {"asal": asal, "kelas": kelas, "calon": calon, "formula": formula, "edit": edit, "final": final, "catatan": catatan, "tarikh": tarikh_edit, "oleh": edited_by}
+
 
 
 def jawatan_kosong(need_peng, jawatan_sedia):
@@ -861,7 +938,7 @@ with col_kiri:
     if role=="SUP":
         menu = st.radio("Menu", ["Maklumat Sekolah", "Cadangan Petugas", "Status"], label_visibility="collapsed")
     elif role=="PPD":
-        menu = st.radio("Menu", ["Senarai Pusat", "Cadangan SUP", "Jana Penempatan", "Penempatan Manual", "Petugas Simpanan", "Hantar JPN"], label_visibility="collapsed")
+        menu = st.radio("Menu", ["Senarai Pusat", "Kuota Pusat", "Cadangan SUP", "Jana Penempatan", "Penempatan Manual", "Petugas Simpanan", "Hantar JPN"], label_visibility="collapsed")
     else:
         menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat", "Pindah Data Daerah"], label_visibility="collapsed")
     st.markdown("---")
@@ -1271,7 +1348,12 @@ with col_kanan:
                 dppd = df_calon_master[df_calon_master["NO_PUSAT"].astype(str).str.startswith(info['kod'])]
                 tc = int(dppd["JUMLAH_CALON"].sum()) if not dppd.empty else 0
                 tk = int(dppd["JUMLAH_KELAS"].sum()) if not dppd.empty else 0
-                tp = int(dppd["PETUGAS_NEEDED"].sum()) if not dppd.empty else 0
+                # tp guna final kuota (kalau PPD edit)
+                tp = 0
+                if not dppd.empty:
+                    for _, r in dppd.iterrows():
+                        p = str(r.get("NO_PUSAT",""))
+                        tp += keperluan_pengawas(p, df_calon_master)
                 tt = tp + len(dppd)*2
                 st.header(f"🏢 PPD {info['ppd_nama']} - {len(df_ppd)} sekolah, {len(semua_pusat)} pusat")
                 st.info(f"Daerah {info['kod']} = {info['ppd_nama']} | {len(semua_pusat)} pusat ada calon (bukan 71 spare) | 📊 {tc} calon, {tk} kelas, {tp} pengawas + {len(dppd)*2} KP/TKP = {tt} petugas di pusat | Penyelia Kawasan exclude (Bilik Kebal)")
@@ -1293,13 +1375,24 @@ with col_kanan:
                 kelas_c = 0
                 pengawas_c = 10
                 total_c = 12
-                if not df_calon_master.empty:
+                # Guna kuota final (PPD edit jika ada) - auto ubah semua fungsi
+                info_k = get_kuota_info(pusat, df_calon_master)
+                calon_c = info_k["calon"]
+                kelas_c = info_k["kelas"]
+                pengawas_c = info_k["final"]  # <-- FINAL yang diguna sistem (asal atau edit PPD)
+                total_c = pengawas_c + 2
+                # Fallback kalau info_k kosong, guna asal df
+                if not df_calon_master.empty and calon_c==0 and kelas_c==0:
                     rc = df_calon_master[df_calon_master["NO_PUSAT"].astype(str)==pusat]
                     if not rc.empty:
-                        calon_c = int(rc.iloc[0].get("JUMLAH_CALON",0))
-                        kelas_c = int(rc.iloc[0].get("JUMLAH_KELAS",0))
-                        pengawas_c = int(rc.iloc[0].get("PETUGAS_NEEDED",10))
-                        total_c = pengawas_c + 2
+                        calon_c = int(rc.iloc[0].get("JUMLAH_CALON",calon_c))
+                        kelas_c = int(rc.iloc[0].get("JUMLAH_KELAS",kelas_c))
+                        if pengawas_c==10 and "PETUGAS_NEEDED" in rc.columns:
+                            try:
+                                pengawas_c = int(rc.iloc[0].get("PETUGAS_NEEDED",pengawas_c))
+                                total_c = pengawas_c + 2
+                            except:
+                                pass
                 
                 if not penempatan_all.empty and "NO PUSAT TUGAS" in penempatan_all.columns:
                     bil = len(penempatan_all[penempatan_all["NO PUSAT TUGAS"].astype(str)==pusat])
@@ -1331,6 +1424,178 @@ with col_kanan:
                     st.warning(f"⚠️ {len(belum)} sekolah belum isi")
                     st.dataframe(belum[["KOD SEKOLAH","NAMA SEKOLAH"]], use_container_width=True)
         
+
+        elif menu=="Kuota Pusat":
+            st.header(f"⚙️ Kuota Pusat - PPD {info['ppd_nama']} ({info['kod']})")
+            st.info("Data asal dikekalkan ikut formula KELAS + 10 / PETUGAS_NEEDED. PPD boleh edit KEPERLUAN EDIT ikut kesesuaian. Bila edit, semua fungsi (Senarai Pusat, Jana Penempatan, Hantar JPN) akan auto guna kuota baru.")
+            
+            # Load kuota sheet
+            df_kuota_all = read_sheet("kuota_ppd")
+            if df_kuota_all.empty:
+                st.warning("Belum ada edit kuota - semua guna data asal.")
+            else:
+                st.caption(f"Ada {len(df_kuota_all)} rekod kuota dalam sheet")
+            
+            # Build table kuota
+            kuota_data = []
+            for pusat in semua_pusat:
+                info_k = get_kuota_info(pusat, df_calon_master, df_kuota_all)
+                kod_sek_pusat = pusat_to_sekolah.get(pusat, "")
+                nama_pusat = pusat_to_nama.get(pusat, pusat)
+                kuota_data.append({
+                    "NO PUSAT": pusat,
+                    "NAMA PUSAT": nama_pusat,
+                    "KOD SEKOLAH TUAN RUMAH": kod_sek_pusat,
+                    "JUMLAH CALON": info_k["calon"],
+                    "BIL KELAS": info_k["kelas"],
+                    "FORMULA (Kelas+10)": info_k["formula"],
+                    "ASAL (PETUGAS_NEEDED)": info_k["asal"],
+                    "KEPERLUAN EDIT": info_k["edit"] if info_k["edit"] is not None else "-",
+                    "FINAL (Diguna Sistem)": info_k["final"],
+                    "TOTAL + KP/TKP": info_k["final"] + 2,
+                    "CATATAN": info_k["catatan"]
+                })
+            
+            df_tunjuk = pd.DataFrame(kuota_data)
+            st.dataframe(df_tunjuk, use_container_width=True, height=400)
+            
+            st.markdown("---")
+            st.subheader("✏️ Edit Kuota Pusat")
+            
+            col1, col2 = st.columns([2,3])
+            with col1:
+                pusat_pilih = st.selectbox("Pilih Pusat untuk Edit", ["-- Pilih --"] + semua_pusat, format_func=lambda x: f"{x} - {pusat_to_nama.get(x,'')}" if x!="-- Pilih --" else x)
+                
+                if pusat_pilih != "-- Pilih --":
+                    k_info = get_kuota_info(pusat_pilih, df_calon_master, df_kuota_all)
+                    st.markdown(f"#### {pusat_pilih}")
+                    c_a,c_b,c_c = st.columns(3)
+                    with c_a:
+                        st.metric("Asal", k_info["asal"])
+                    with c_b:
+                        st.metric("Kelas", k_info["kelas"])
+                        st.caption(f"Formula Kelas+10 = {k_info['formula']}")
+                    with c_c:
+                        st.metric("Final Sekarang", k_info["final"])
+                        if k_info["edit"] is not None:
+                            st.success(f"Edited: {k_info['edit']}")
+                        else:
+                            st.info("Guna Asal")
+                    
+                    if k_info["catatan"]:
+                        st.caption(f"Catatan lama: {k_info['catatan']}")
+            
+            with col2:
+                if pusat_pilih != "-- Pilih --":
+                    k_info = get_kuota_info(pusat_pilih, df_calon_master, df_kuota_all)
+                    with st.form(f"edit_kuota_{pusat_pilih}"):
+                        st.markdown(f"Edit Keperluan untuk **{pusat_pilih}**")
+                        def_val = k_info["edit"] if k_info["edit"] is not None else k_info["asal"]
+                        new_keperluan = st.number_input("KEPERLUAN EDIT (Bil Pengawas Sahaja, tidak termasuk KP/TKP)", 1, 50, int(def_val))
+                        catatan = st.text_input("CATATAN / ALASAN EDIT", value=k_info["catatan"], placeholder="Contoh: Tambah 2 sebab dewan besar, kelas tumpang...")
+                        
+                        col_s1, col_s2 = st.columns(2)
+                        with col_s1:
+                            btn_simpan = st.form_submit_button("💾 Simpan Kuota", use_container_width=True, type="primary")
+                        with col_s2:
+                            btn_reset = st.form_submit_button("🔄 Reset ke Asal", use_container_width=True)
+                        
+                        if btn_simpan:
+                            baris = {
+                                "NO PUSAT": pusat_pilih,
+                                "NAMA PUSAT": pusat_to_nama.get(pusat_pilih, pusat_pilih),
+                                "KOD PPD": info['kod'],
+                                "PPD": info['ppd_nama'],
+                                "KOD SEKOLAH TUAN RUMAH": pusat_to_sekolah.get(pusat_pilih, ""),
+                                "JUMLAH CALON": k_info["calon"],
+                                "BIL KELAS": k_info["kelas"],
+                                "FORMULA (Kelas+10)": k_info["formula"],
+                                "ASAL (PETUGAS_NEEDED)": k_info["asal"],
+                                "KEPERLUAN EDIT": int(new_keperluan),
+                                "KEPERLUAN AKHIR": int(new_keperluan),
+                                "FINAL DIGUNA": int(new_keperluan),
+                                "CATATAN": catatan,
+                                "TARIKH EDIT": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "EDIT OLEH": f"PPD {info['ppd_nama']} ({info['kod']})",
+                                "TOTAL DENGAN KP/TKP": int(new_keperluan)+2
+                            }
+                            
+                            def _simpan_kuota(df):
+                                if df.empty:
+                                    return pd.DataFrame([baris])
+                                # Buang rekod lama pusat sama
+                                df = df[df["NO PUSAT"].astype(str) != str(pusat_pilih)]
+                                return pd.concat([df, pd.DataFrame([baris])], ignore_index=True)
+                            
+                            if modify_sheet("kuota_ppd", _simpan_kuota):
+                                flash("success", f"✅ Kuota {pusat_pilih} diubah: Asal {k_info['asal']} -> Edit {new_keperluan}. Sistem akan auto guna kuota baru di semua fungsi!")
+                                st.rerun()
+                        
+                        if btn_reset:
+                            def _reset_kuota(df):
+                                if df.empty:
+                                    return df
+                                return df[df["NO PUSAT"].astype(str) != str(pusat_pilih)]
+                            
+                            if modify_sheet("kuota_ppd", _reset_kuota):
+                                flash("success", f"🔄 Kuota {pusat_pilih} direset ke asal ({k_info['asal']}) - Formula Kelas+10")
+                                st.rerun()
+            
+            st.markdown("---")
+            st.markdown("### 📥 Export / Import Kuota")
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                if not df_tunjuk.empty:
+                    st.download_button("⬇️ Muat turun Kuota (CSV)", data=df_tunjuk.to_csv(index=False).encode("utf-8-sig"), file_name=f"kuota_{info['kod']}_{pd.Timestamp.now().strftime('%Y%m%d')}.csv", mime="text/csv", use_container_width=True)
+            with col_e2:
+                uploaded = st.file_uploader("Upload CSV Kuota (NO PUSAT, KEPERLUAN EDIT)", type=["csv","xlsx"])
+                if uploaded and st.button("📤 Import Kuota Pukal"):
+                    try:
+                        if uploaded.name.endswith(".xlsx"):
+                            df_up = pd.read_excel(uploaded)
+                        else:
+                            df_up = pd.read_csv(uploaded)
+                        # Validate
+                        if "NO PUSAT" not in df_up.columns or "KEPERLUAN EDIT" not in df_up.columns:
+                            st.error("CSV mesti ada column NO PUSAT dan KEPERLUAN EDIT")
+                        else:
+                            count=0
+                            for _, r in df_up.iterrows():
+                                p = str(r["NO PUSAT"]).strip()
+                                if p not in semua_pusat:
+                                    continue
+                                try:
+                                    edit_val = int(float(r["KEPERLUAN EDIT"]))
+                                except:
+                                    continue
+                                k_info = get_kuota_info(p, df_calon_master, df_kuota_all)
+                                baris = {
+                                    "NO PUSAT": p,
+                                    "NAMA PUSAT": pusat_to_nama.get(p, p),
+                                    "KOD PPD": info['kod'],
+                                    "PPD": info['ppd_nama'],
+                                    "JUMLAH CALON": k_info["calon"],
+                                    "BIL KELAS": k_info["kelas"],
+                                    "FORMULA (Kelas+10)": k_info["formula"],
+                                    "ASAL (PETUGAS_NEEDED)": k_info["asal"],
+                                    "KEPERLUAN EDIT": edit_val,
+                                    "KEPERLUAN AKHIR": edit_val,
+                                    "CATATAN": str(r.get("CATATAN","")),
+                                    "TARIKH EDIT": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "EDIT OLEH": f"PPD {info['ppd_nama']} Import Pukal"
+                                }
+                                def _imp(df, b=baris, pp=p):
+                                    if df.empty:
+                                        return pd.DataFrame([b])
+                                    df = df[df["NO PUSAT"].astype(str) != pp]
+                                    return pd.concat([df, pd.DataFrame([b])], ignore_index=True)
+                                modify_sheet("kuota_ppd", _imp)
+                                count+=1
+                            st.success(f"✅ {count} kuota diimport!")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal import: {e}")
+
         elif menu=="Cadangan SUP":
             st.header(f"📋 Cadangan SUP - {info['ppd_nama']} ({len(kod_sekolah_ppd)} sekolah)")
             cadangan_all = read_sheet(TAB_CADANGAN)
