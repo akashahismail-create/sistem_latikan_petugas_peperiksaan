@@ -1,5 +1,5 @@
 """
-MIGRASI FROM EXCEL - FIXED FOR FILENAME WITH SPACE (7)
+MIGRASI FROM EXCEL - FIXED KEY
 """
 import streamlit as st
 import pandas as pd
@@ -8,10 +8,10 @@ import os, glob
 
 st.set_page_config(page_title="MIGRASI EXCEL -> SUPABASE", layout="centered")
 st.title("🚀 MIGRASI Excel -> Supabase")
-st.write("Auto detect file Sistem_Lantikan_SPM_2026 (7).xlsx")
+st.write("Versi FIXED KEY - Guna anon key penuh")
 
 SUPABASE_URL = "https://gnmaijhugkkvxejvsotk.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamh1Z2trdnhlanZzb3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0ODc4OTcsImV4cCI6MjEwODA2Mzg5N30.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
 try:
     if "SUPABASE_URL" in st.secrets:
         SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -23,20 +23,20 @@ except:
     pass
 
 st.subheader("1. Sambung Supabase")
+st.code(f"URL: {SUPABASE_URL}\nKEY: {SUPABASE_KEY[:20]}...{SUPABASE_KEY[-10:]}")
 try:
     supa = create_client(SUPABASE_URL, SUPABASE_KEY)
-    st.success(f"✅ Supabase OK")
+    # Test query
+    supa.table("maklumat_sekolah").select("id").limit(1).execute()
+    st.success(f"✅ Supabase OK - Key sah")
 except Exception as e:
     st.error(f"❌ Supabase gagal: {e}")
     st.stop()
 
 st.subheader("2. Cari File Excel")
-# Cari semua xlsx di root
 candidates = glob.glob("*.xlsx") + glob.glob("data/*.xlsx")
-st.write(f"File xlsx jumpa: {candidates}")
-
+st.write(f"File jumpa: {candidates}")
 excel_path = None
-# Prioriti cari yang ada Lantikan
 for p in candidates:
     if "Lantikan" in p or "lanti" in p.lower():
         excel_path = p
@@ -44,7 +44,7 @@ for p in candidates:
 if not excel_path and candidates:
     excel_path = candidates[0]
 
-uploaded = st.file_uploader("Atau upload manual jika tak jumpa", type=["xlsx"])
+uploaded = st.file_uploader("Upload manual", type=["xlsx"])
 if uploaded:
     with open("/tmp/upload.xlsx", "wb") as f:
         f.write(uploaded.getbuffer())
@@ -55,10 +55,10 @@ if excel_path and os.path.exists(excel_path):
     xls = pd.ExcelFile(excel_path)
     st.write(f"Sheet: {xls.sheet_names}")
 else:
-    st.error("❌ Tak jumpa file Excel. Upload Sistem_Lantikan_SPM_2026 (7).xlsx")
+    st.error("❌ Tak jumpa Excel")
     st.stop()
 
-def df_to_batch(df, table_base):
+def df_to_batch(df):
     batch=[]
     for _, row in df.iterrows():
         rd=row.to_dict()
@@ -86,8 +86,6 @@ if st.button("🚀 MULA MIGRASI DARI EXCEL", type="primary", use_container_width
         "maklumat_sekolah": [s for s in all_sheets if "maklumat_sekolah" in s],
         "cadangan_sup": [s for s in all_sheets if "cadangan_sup" in s],
         "penempatan_ppd": [s for s in all_sheets if "penempatan_ppd" in s],
-        "kuota_ppd": [s for s in all_sheets if "kuota_ppd" in s],
-        "sah_jpn": [s for s in all_sheets if "sah_jpn" in s],
     }
     prog=st.progress(0)
     for idx, (table, sheets) in enumerate(groups.items()):
@@ -101,39 +99,28 @@ if st.button("🚀 MULA MIGRASI DARI EXCEL", type="primary", use_container_width
                     df=pd.read_excel(excel_path, sheet_name=sh_name)
                     if not df.empty:
                         dfs.append(df)
-                except Exception as e:
-                    st.warning(f"{sh_name} skip: {e}")
+                except:
+                    pass
             if not dfs:
                 continue
             combined=pd.concat(dfs, ignore_index=True)
             if table=="maklumat_sekolah" and "KOD SEKOLAH" in combined.columns:
                 combined=combined.drop_duplicates(subset=["KOD SEKOLAH"])
             if table=="penempatan_ppd" and "NAMA GURU" in combined.columns:
-                # keep last
                 combined=combined.drop_duplicates(subset=["NAMA GURU", "NO PUSAT TUGAS"], keep="last")
             st.write(f"Total {len(combined)} baris")
             try:
                 supa.table(table).delete().neq("id", -1).execute()
             except Exception as e:
-                st.warning(f"Delete warning {table}: {e}")
-            batch=df_to_batch(combined, table)
-            # Supabase table names: maklumat_sekolah, cadangan_sup, penempatan_ppd exist. kuota_ppd, sah_jpn maybe not exist yet - we try
-            target_table = table if table in ["maklumat_sekolah","cadangan_sup","penempatan_ppd","status_hantar"] else "maklumat_sekolah" if "maklumat" in table else table
-            # Actually we have kuota_ppd and sah_jpn not in original 4, but we created? Try insert to penempatan or skip
-            # For kuota_ppd and sah_jpn we will insert to status_hantar or create new? Let's just insert to their own table if exists, else skip with log
-            try:
-                for i in range(0, len(batch), 100):
-                    supa.table(table).insert(batch[i:i+100]).execute()
-                st.success(f"✅ {table}: {len(batch)} baris")
-            except Exception as e:
-                # If table not exist, try insert to maklumat or log
-                st.warning(f"Table {table} belum wujud di Supabase, skip. Error: {e}")
-                if table in ["maklumat_sekolah","cadangan_sup","penempatan_ppd"]:
-                    raise e
+                st.warning(f"Delete {table}: {e}")
+            batch=df_to_batch(combined)
+            for i in range(0, len(batch), 100):
+                supa.table(table).insert(batch[i:i+100]).execute()
+                st.write(f"  Insert {i+len(batch[i:i+100])}/{len(batch)}")
+            st.success(f"✅ {table}: {len(batch)} baris")
         except Exception as e:
             st.error(f"❌ {table} gagal: {e}")
             st.exception(e)
         prog.progress((idx+1)/len(groups))
     st.balloons()
-    st.success("SELESAI! Check Supabase Table Editor, data dah ada, bukan empty lagi.")
-    st.info("Lepas ni rename balik: App-MIGRASI-FROM-EXCEL.py -> migrate.py backup, dan app_backup.py -> app.py untuk guna app asal JPN/PPD/SUP")
+    st.success("SELESAI! Check Supabase Table Editor")
