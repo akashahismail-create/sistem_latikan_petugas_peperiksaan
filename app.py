@@ -1531,7 +1531,7 @@ with col_kiri:
     elif role=="PPD":
         menu = st.radio("Menu", ["Senarai Pusat", "Kuota Pusat", "Cadangan SUP", "Jana Penempatan", "Penempatan Manual", "Batal Penempatan", "Petugas Simpanan", "Hantar JPN"], label_visibility="collapsed")
     else:
-        menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat", "Pindah Data Daerah"], label_visibility="collapsed")
+        menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat", "Pindah Data Daerah", "Backup & Restore 2026"], label_visibility="collapsed")
     st.markdown("---")
     tahun_list = [2026, 2027, 2028, 2029, 2030]
     if "tahun_pilih" not in st.session_state:
@@ -3663,6 +3663,140 @@ with col_kanan:
                     st.warning("Sebahagian gagal (biasanya had kuota Google). Tunggu seminit dan tekan Mulakan semula - yang dah siap akan dilangkau.")
                 else:
                     st.success("✅ Selesai. App kini baca/tulis ikut tab daerah.")
+
+        elif menu=="Backup & Restore 2026":
+            st.header("🗄️ JPN - Backup & Restore Data 2026")
+            st.warning("⚠️ Hanya JPN - Data LIVE Supabase")
+
+            supa, err = get_supabase()
+            if not supa:
+                st.error(f"Supabase tak connect: {err}")
+                st.stop()
+
+            tab1, tab2, tab3, tab4 = st.tabs(["📥 Install Backup", "🗑️ Delete 2026", "📤 Upload Template", "📋 Download Template"])
+
+            with tab1:
+                st.subheader("📥 Install Backup Bersih BA..BK")
+                st.write("Install dari Sistem_Lantikan_SPM_2026_7.xlsx - buang BR/ZZ")
+                backup_file = None
+                for p in ["Sistem_Lantikan_SPM_2026_7.xlsx", "data/Sistem_Lantikan_SPM_2026_7.xlsx"]:
+                    if os.path.exists(p):
+                        backup_file = p
+                        break
+                import glob as glob_lib
+                for g in glob_lib.glob("*.xlsx"):
+                    if "Lantikan" in g:
+                        backup_file = g
+                        break
+                if backup_file:
+                    st.success(f"✅ Jumpa: {backup_file}")
+                else:
+                    st.warning("Tak jumpa - upload manual")
+                    backup_file_up = st.file_uploader("Upload backup .xlsx", type=["xlsx"], key="backup_up_final")
+                    if backup_file_up:
+                        backup_file = backup_file_up
+
+                if st.button("🚀 INSTALL BERSIH BA..BK", type="primary", use_container_width=True):
+                    if not backup_file:
+                        st.error("Takde file")
+                    else:
+                        try:
+                            xls = pd.ExcelFile(backup_file) if isinstance(backup_file, str) else pd.ExcelFile(backup_file)
+                            PPD_VALID = ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]
+                            st.write("⏳ Delete BR lama...")
+                            for _ in range(30):
+                                res = supa.table("cadangan_sup").select("id").limit(1000).execute()
+                                if not res.data:
+                                    break
+                                ids = [r["id"] for r in res.data]
+                                supa.table("cadangan_sup").delete().in_("id", ids).execute()
+                            total_all=0
+                            for ppd_code in PPD_VALID:
+                                sh = f"cadangan_sup_{ppd_code}"
+                                if sh not in xls.sheet_names:
+                                    continue
+                                df = pd.read_excel(backup_file, sheet_name=sh) if isinstance(backup_file, str) else pd.read_excel(backup_file, sheet_name=sh)
+                                if df.empty:
+                                    continue
+                                batch=[]
+                                for _, row in df.iterrows():
+                                    rd=row.to_dict()
+                                    clean={k: ("" if pd.isna(v) else str(v)) for k,v in rd.items()}
+                                    batch.append({"KOD_PPD": ppd_code, "data": clean})
+                                for i in range(0, len(batch), 100):
+                                    supa.table("cadangan_sup").insert(batch[i:i+100]).execute()
+                                total_all+=len(batch)
+                                st.write(f"✅ {ppd_code}: {len(batch)}")
+                            st.balloons()
+                            st.success(f"SELESAI {total_all} baris BA..BK!")
+                        except Exception as e:
+                            st.error(f"Gagal: {e}")
+
+            with tab2:
+                st.subheader("🗑️ Delete Semua 2026")
+                tables_del = ["maklumat_sekolah", "cadangan_sup", "penempatan_ppd", "status_hantar", "kuota_ppd"]
+                for tbl in tables_del:
+                    try:
+                        res2 = supa.table(tbl).select("KOD_PPD").limit(10000).execute()
+                        st.write(f"{tbl}: {len(res2.data)} baris")
+                    except:
+                        pass
+                confirm_del = st.text_input("Taip DELETE2026:", key="del_final")
+                if st.button("🗑️ DELETE SEMUA 2026", type="primary", use_container_width=True):
+                    if confirm_del != "DELETE2026":
+                        st.error("Kena taip DELETE2026")
+                    else:
+                        for tbl in tables_del:
+                            for _ in range(50):
+                                res = supa.table(tbl).select("id").limit(1000).execute()
+                                if not res.data:
+                                    break
+                                ids = [r["id"] for r in res.data]
+                                supa.table(tbl).delete().in_("id", ids).execute()
+                            st.success(f"✅ {tbl} kosong")
+                        st.balloons()
+                        st.success("SEMUA 2026 DIPADAM!")
+
+            with tab3:
+                st.subheader("📤 Upload Template")
+                uploaded = st.file_uploader("Upload Excel", type=["xlsx"], key="up_template_final")
+                if uploaded:
+                    xls = pd.ExcelFile(uploaded)
+                    st.write(f"Sheets: {xls.sheet_names}")
+                    target_table = st.selectbox("Table:", ["cadangan_sup", "penempatan_ppd", "maklumat_sekolah"], key="target_final2")
+                    if st.button(f"Upload ke {target_table}", type="primary"):
+                        total=0
+                        for sh in xls.sheet_names:
+                            df = pd.read_excel(uploaded, sheet_name=sh)
+                            if df.empty:
+                                continue
+                            kod_ppd="BK"
+                            for c in ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]:
+                                if c in sh:
+                                    kod_ppd=c
+                                    break
+                            batch=[]
+                            for _, row in df.iterrows():
+                                rd=row.to_dict()
+                                clean={k: ("" if pd.isna(v) else str(v)) for k,v in rd.items()}
+                                batch.append({"KOD_PPD": kod_ppd, "data": clean})
+                            for i in range(0, len(batch), 100):
+                                supa.table(target_table).insert(batch[i:i+100]).execute()
+                            total+=len(batch)
+                        st.success(f"✅ {total} upload")
+
+            with tab4:
+                st.subheader("📋 Download Template")
+                import io
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df1 = pd.DataFrame(columns=["KOD SEKOLAH", "NAMA SEKOLAH", "PPD", "KOD PPD"])
+                    df1.to_excel(writer, sheet_name="maklumat_sekolah", index=False)
+                    for c in ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]:
+                        df = pd.DataFrame(columns=["KOD SEKOLAH ASAL", "NAMA GURU", "IC"])
+                        df.to_excel(writer, sheet_name=f"cadangan_sup_{c}", index=False)
+                st.download_button("📥 Download Template", data=output.getvalue(), file_name="Template_JPN.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
         else:
             st.header("📄 Jana Surat")
             st.info("Fungsi jana surat belum dibina (templat surat belum ditetapkan). Buat masa ini, muat turun senarai penempatan dalam CSV.")
