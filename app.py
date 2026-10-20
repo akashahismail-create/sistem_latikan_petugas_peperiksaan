@@ -2439,6 +2439,73 @@ with col_kanan:
                         st.session_state["ppd_n"] = st.session_state.get("ppd_n", 0) + 1   # segarkan pilihan
                         flash("success", f"✅ {len(pilih_keluar)} guru dikeluarkan daripada simpanan.")
                         st.rerun()
+
+                st.markdown("---")
+                st.markdown("### 🗑️ Kosongkan Senarai Petugas Simpanan")
+                st.caption("Semua petugas dalam simpanan akan dikosongkan dan masuk semula ke ruang Cadangan SUP sebagai BELUM PILIH. Selagi PPD tak tick semula, mereka tidak akan dijana.")
+                
+                if simpanan_all.empty:
+                    st.info("Simpanan sudah kosong")
+                else:
+                    st.warning(f"⚠️ Tindakan ini akan kosongkan {len(simpanan_all)} petugas dari simpanan dan masukkan semula ke Cadangan SUP!")
+                    col_k1, col_k2 = st.columns(2)
+                    with col_k1:
+                        sebab_kosong = st.text_input("Sebab Kosongkan Simpanan", placeholder="Contoh: Semak semula cadangan...", key="sebab_kosong_simpanan")
+                    with col_k2:
+                        confirm_kosong = st.text_input(f'Taip "KOSONGKAN {info["kod"]}" untuk sahkan', key="confirm_kosong")
+                    
+                    if st.button(f"🗑️ KOSONGKAN SEMUA {len(simpanan_all)} DARI SIMPANAN → MASUK CADANGAN SUP", use_container_width=True, type="primary", disabled=confirm_kosong!=f"KOSONGKAN {info['kod']}", key="btn_kosongkan_simpanan"):
+                        # Ambil semua IC dalam simpanan
+                        ic_simpanan = simpanan_all["IC"].map(norm_ic).tolist() if "IC" in simpanan_all.columns else []
+                        
+                        def _kosongkan_simpanan(df):
+                            if df.empty:
+                                return df
+                            # Kosongkan semua untuk daerah ini (sebab TAB_SIMPANAN sudah ikut daerah, so kosongkan semua)
+                            return df.iloc[0:0].copy()  # kosong
+                        
+                        def _kembalikan_ke_cadangan_pilihan(df_pilihan):
+                            # Buang dari pilihan_ppd supaya jadi BELUM PILIH semula
+                            if df_pilihan.empty or "IC" not in df_pilihan.columns:
+                                return df_pilihan
+                            return df_pilihan[~df_pilihan["IC"].map(norm_ic).isin(ic_simpanan)].copy()
+                        
+                        # Log untuk audit
+                        def _log_kosong(df_log):
+                            baris_log = []
+                            for _, r in simpanan_all.iterrows():
+                                baris_log.append({
+                                    "IC": r.get("IC",""),
+                                    "NAMA GURU": r.get("NAMA GURU",""),
+                                    "KOD SEKOLAH ASAL": r.get("KOD SEKOLAH ASAL GURU","") or r.get("KOD SEKOLAH ASAL",""),
+                                    "TINDAKAN": "KOSONGKAN SIMPANAN → CADANGAN SUP",
+                                    "TARIKH": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "OLEH": f"PPD {info['ppd_nama']}",
+                                    "SEBAB": sebab_kosong,
+                                    "DARI": r.get("DIBATAL DARI PUSAT","") or r.get("STATUS SIMPANAN",""),
+                                    "JAWATAN ASAL": r.get("JAWATAN ASAL","")
+                                })
+                            if not baris_log:
+                                return df_log
+                            df_baru = pd.DataFrame(baris_log)
+                            if df_log.empty:
+                                return df_baru
+                            return pd.concat([df_log, df_baru], ignore_index=True)
+                        
+                        TAB_LOG = tab_daerah("log_simpanan", info['kod'])
+                        TAB_PILIHAN_K = tab_daerah("pilihan_ppd", info['kod'])
+                        
+                        ok1 = modify_sheet(TAB_SIMPANAN, _kosongkan_simpanan)
+                        ok2 = modify_sheet(TAB_PILIHAN_K, _kembalikan_ke_cadangan_pilihan)
+                        # Optional log
+                        try:
+                            modify_sheet(TAB_LOG, _log_kosong)
+                        except:
+                            pass
+                        
+                        if ok1 and ok2:
+                            flash("success", f"🗑️ {len(ic_simpanan)} petugas dikosongkan dari Simpanan dan masuk semula ke Cadangan SUP sebagai BELUM PILIH! Sila pergi ke Cadangan SUP untuk tick semula.")
+                            st.rerun()
         else:
             st.header(f"📤 Hantar ke JPN - {info['ppd_nama']}")
             penempatan_all = read_sheet(TAB_PENEMPATAN)
