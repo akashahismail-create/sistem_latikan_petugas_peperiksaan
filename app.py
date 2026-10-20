@@ -1190,8 +1190,44 @@ def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama
 
 # ====== HELPER GSHEET & PENEMPATAN (tamat) ======
 
-# Debug info
-st.sidebar.write(f"File guna: {file_used}, total {len(mapping_df)}")
+
+# FIX NameError & KeyError: define file_used & mapping_df from Supabase with safe columns
+try:
+    file_used = "Supabase LIVE"
+    supa_tmp, _ = get_supabase()
+    if supa_tmp:
+        try:
+            r = supa_tmp.table("maklumat_sekolah").select("data").limit(5000).execute()
+            mapping_df = _df_from_rows(r.data)
+        except Exception as e:
+            mapping_df = pd.DataFrame()
+    else:
+        mapping_df = pd.DataFrame()
+except Exception as e:
+    file_used = "Supabase LIVE"
+    mapping_df = pd.DataFrame()
+
+# Ensure required columns exist to avoid KeyError
+for col in ["PPD", "KOD PPD", "KOD_PPD", "KOD SEKOLAH", "NAMA SEKOLAH", "BIL PUSAT", "SENARAI PUSAT", "ID", "PASSWORD"]:
+    if col not in mapping_df.columns:
+        mapping_df[col] = ""
+# Normalize KOD PPD
+if "KOD PPD" not in mapping_df.columns and "KOD_PPD" in mapping_df.columns:
+    mapping_df["KOD PPD"] = mapping_df["KOD_PPD"]
+
+
+def safe_filter_count(df, col, val):
+    try:
+        if col in df.columns:
+            return len(df[df[col]==val])
+        # try alternative col names
+        for alt in [col, col.replace(' ', '_'), 'KOD_PPD', 'KOD PPD', 'PPD']:
+            if alt in df.columns:
+                return len(df[df[alt]==val])
+        return len(df)
+    except:
+        return 0
+
 PPD_LIST = [
     ("1", "a", "Klang", "BA"), ("2", "b", "Kuala Langat", "BB"),
     ("3", "c", "Kuala Selangor", "BC"), ("4", "d", "Hulu Langat", "BD"),
@@ -1207,13 +1243,7 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     st.markdown('<div class="big-title">📚 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN</div>', unsafe_allow_html=True)
     st.markdown('<div class="big-title" style="font-size:22px;">SELANGOR 2026</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sub-title">{len(mapping_df)} Sekolah Termasuk Persendirian • File: {os.path.basename(file_used)} <br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
-    with st.expander(f"🔍 Debug Data - File guna: {file_used} - {len(mapping_df)} sekolah", expanded=False):
-        st.write(f"File yang dibaca: {file_used}")
-        st.write(f"Jumlah sekolah: {len(mapping_df)}")
-        if not mapping_df.empty:
-            st.write("Daerah yang ada:", mapping_df["PPD"].value_counts().to_dict())
-            st.dataframe(mapping_df.head(10))
+    st.markdown(f'<div class="sub-title">SPM 2026 • Supabase LIVE • 10 PPD Selangor <br>SPM Bertulis • Amali Sains • Mendengar • Bertutur</div>', unsafe_allow_html=True)
     left, center, right = st.columns([1,2,1])
     with center:
         with st.container(border=True):
@@ -1300,7 +1330,7 @@ if not st.session_state.logged_in:
             **Senarai PPD:** Edit `PPD_LIST` dalam `app.py`
             """)
     st.markdown("---")
-    st.caption(f"Data: {len(mapping_df)} sekolah dari {os.path.basename(file_used)} | Tanpa Sidebar")
+    st.caption(f"Data: Supabase LIVE | Tanpa Sidebar")
     st.stop()
 
 # Dah login
@@ -1309,7 +1339,7 @@ info = st.session_state.user_info
 
 st.markdown(f"""
 <div style="background:#0B5394; color:white; padding:10px 15px; border-radius:8px;">
-<b>📚 SPM 2026</b> | {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | {info.get('bil_pusat','')} pusat | File: {os.path.basename(file_used)}
+<b>📚 SPM 2026</b> | {info['nama']} | {role} | {info.get('ppd','')} {info.get('kod_sekolah','')} | {info.get('bil_pusat','')} pusat | File: Supabase LIVE
 </div>
 """, unsafe_allow_html=True)
 
@@ -1333,7 +1363,11 @@ with col_kiri:
         st.markdown(f"Pusat: {info['bil_pusat']} pusat")
         st.code(info['senarai_pusat'])
     elif role == "PPD":
-        st.markdown(f"PPD: {info['ppd_nama']} ({info['kod']}) - {len(mapping_df[mapping_df['KOD PPD']==info['kod']])} sekolah")
+        try:
+            cnt = len(mapping_df[mapping_df['KOD PPD']==info['kod']]) if 'KOD PPD' in mapping_df.columns else len(mapping_df[mapping_df['KOD_PPD']==info['kod']]) if 'KOD_PPD' in mapping_df.columns else len(mapping_df)
+        except:
+            cnt = len(mapping_df) if not mapping_df.empty else 0
+        st.markdown(f"PPD: {info['ppd_nama']} ({info['kod']}) - {cnt} sekolah")
     st.markdown("---")
     if role == "SUP":
         menu = st.radio("Menu", ["Maklumat Sekolah", "Senarai Guru", "Muat Naik / Muat Turun", "Cadangan Petugas", "Status"], label_visibility="collapsed")
@@ -3255,7 +3289,7 @@ with col_kanan:
 
     else:
         if menu == "Semua PPD":
-            st.header(f"🏛️ Semua PPD - {len(mapping_df)} Sekolah - File: {os.path.basename(file_used)}")
+            st.header(f"🏛️ Semua PPD - {len(mapping_df)} Sekolah - File: Supabase LIVE")
             st.dataframe(mapping_df, use_container_width=True)
         elif menu == "Sahkan PPD":
             st.header("✅ Sahkan PPD")
