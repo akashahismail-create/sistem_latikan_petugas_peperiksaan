@@ -2612,40 +2612,6 @@ with col_kanan:
 
 
 
-
-                st.markdown("---")
-                st.markdown("### ❌ Batal Cadangan SUP (PPD Sahaja) - Cepat")
-                st.caption("Buang nama dari Cadangan SUP PPD sahaja. Nama masih kekal di Senarai Guru SUP.")
-                
-                if not cadangan_ppd.empty:
-                    opsi_batal = [f"{r.get('NAMA GURU','')} - {r.get('IC','')} - {r.get('KOD SEKOLAH ASAL','')}" for _, r in cadangan_ppd.iterrows()]
-                    pilih_batal = st.multiselect("Pilih guru untuk Batal", opsi_batal, key="batal_cadangan_fast")
-                    if pilih_batal:
-                        ic_batal = []
-                        for label in pilih_batal:
-                            try:
-                                ic = label.split(" - ")[1].strip()
-                                ic_batal.append(ic)
-                            except:
-                                pass
-                        if st.button(f"❌ Sahkan Batal {len(ic_batal)} Guru", use_container_width=True, type="primary", key="btn_batal_fast"):
-                            def _batal(df_old):
-                                if df_old.empty:
-                                    return df_old
-                                return df_old[~df_old["IC"].map(norm_ic).isin([norm_ic(x) for x in ic_batal])].copy()
-                            def _batal_pilihan(df_old):
-                                if df_old.empty:
-                                    return df_old
-                                return df_old[~df_old["IC"].map(norm_ic).isin([norm_ic(x) for x in ic_batal])].copy()
-                            ok1 = modify_sheet(TAB_CADANGAN, _batal)
-                            ok2 = modify_sheet(TAB_PILIHAN, _batal_pilihan)
-                            if ok1:
-                                flash("success", f"✅ {len(ic_batal)} guru dibatal dari PPD sahaja, masih ada di Senarai Guru SUP")
-                                st.rerun()
-                else:
-                    st.info("Tiada cadangan")
-
-
         elif menu=="Jana Penempatan":
             st.header(f"🎯 Lantikan Ikut Pusat - {info['ppd_nama']}")
             st.markdown("PPD pilih pusat, terus nampak siapa Ketua, Timbalan, Pengawas yang sistem tempatkan. Boleh edit terus!")
