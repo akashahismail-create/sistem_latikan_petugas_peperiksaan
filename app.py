@@ -191,39 +191,197 @@ def to_excel(df):
 if "role" not in st.session_state:
     st.session_state.role=None
 
-# ================= LOGIN PAGE =================
+# ================= LOGIN PAGE - MUKA DEPAN CANTIK =================
 if st.session_state.role is None:
-    st.title("📚 Sistem Pelantikan Petugas Peperiksaan Selangor 2026")
-    st.caption(f"Supabase: {SUPABASE_URL} | Key: Active ✅")
+    # CSS Cantik
+    st.markdown("""
+    <style>
+    .main-title {text-align:center; font-size:42px; font-weight:800; color:#0d47a1; margin-bottom:0; letter-spacing:1px;}
+    .sub-title {text-align:center; font-size:18px; color:#546e7a; margin-top:5px; margin-bottom:25px;}
+    .login-card {background: white; padding:20px; border-radius:15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border:1px solid #e0e0e0;}
+    .stTabs [data-baseweb="tab-list"] {gap: 10px; justify-content: center;}
+    .stTabs [data-baseweb="tab"] {height:50px; font-weight:600; font-size:16px; border-radius:10px 10px 0 0;}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="main-title">🏫 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title" style="font-size:32px; margin-top:-10px;">SPM SELANGOR 2026</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Jabatan Pendidikan Negeri Selangor | 369 Sekolah | 506 Pusat | 71,064 Calon</div>', unsafe_allow_html=True)
+
+    # Load sekolah list untuk dropdown
+    @st.cache_data(ttl=600)
+    def load_sekolah_list():
+        try:
+            res = supa.table("sekolah_master").select("*").limit(1000).execute()
+            data = res.data or []
+            rows=[]
+            for r in data:
+                kod = r.get("kod_sekolah") or r.get("KOD_SEKOLAH") or ""
+                nama = r.get("nama_sekolah") or r.get("NAMA_SEKOLAH") or ""
+                kod_ppd = r.get("kod_ppd") or r.get("KOD_PPD") or "BH"
+                if kod and nama:
+                    rows.append({"KOD_SEKOLAH":kod.upper().strip(), "NAMA_SEKOLAH":nama.upper().strip(), "KOD_PPD":kod_ppd.upper().strip(), "PPD":PPD_MAP.get(kod_ppd.upper().strip(),"")})
+            df = pd.DataFrame(rows)
+            # Sort by PPD order BA->BK then nama
+            order_map = {k:i for i,k in enumerate(KOD_DAERAH)}
+            if not df.empty:
+                df["order"] = df["KOD_PPD"].map(order_map)
+                df = df.sort_values(["order","NAMA_SEKOLAH"]).reset_index(drop=True)
+                df["ID"] = df.index + 1
+                df["PASSWORD"] = df["ID"].astype(str)  # password = ID, old style 12345...
+                df["PASSWORD_LAMA"] = "12345" + df["ID"].astype(str)  # alternative old format
+            return df
+        except Exception as e:
+            return pd.DataFrame()
+
+    df_sekolah_all = load_sekolah_list()
+    
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["🏫 SUP - Sekolah", "🏢 PPD - Daerah", "🏛️ JPN - Negeri"])
+
+    with tab1:
+        st.markdown("### 🏫 Log Masuk SUP - Penyelia Sekolah")
+        st.caption("Pilih Daerah → Pilih Sekolah → Masuk Password. Password ikut sekolah (ID 1-369). Untuk testing, password dipaparkan di bawah.")
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            # Pilih Daerah
+            daerah_opts = [(k, f"{k} - {PPD_MAP[k]}") for k in KOD_DAERAH]
+            pilih_ppd_label = st.selectbox("1️⃣ Pilih Daerah (PPD)", options=[f"{k} - {PPD_MAP[k]}" for k in KOD_DAERAH], key="sup_daerah")
+            pilih_ppd_code = pilih_ppd_label.split(" - ")[0] if pilih_ppd_label else "BA"
+            
+            # Filter sekolah by PPD
+            if not df_sekolah_all.empty:
+                df_filtered = df_sekolah_all[df_sekolah_all["KOD_PPD"] == pilih_ppd_code]
+            else:
+                df_filtered = pd.DataFrame()
+            
+            if df_filtered.empty:
+                st.warning(f"Tiada sekolah untuk {pilih_ppd_code} - cuba load atau taip manual")
+                sekolah_manual = st.text_input("KOD SEKOLAH (Manual)", value="BFT8002", key="sup_kod_manual").upper()
+                pilih_sekolah_kod = sekolah_manual
+                pilih_sekolah_nama = f"SEKOLAH {sekolah_manual}"
+                sup_id = 1
+                sup_password_expected = "1"
+            else:
+                # Dropdown sekolah
+                sekolah_options = [f"{row['KOD_SEKOLAH']} - {row['NAMA_SEKOLAH']}" for _, row in df_filtered.iterrows()]
+                pilih_sekolah_str = st.selectbox(f"2️⃣ Pilih Sekolah ({len(df_filtered)} sekolah di {PPD_MAP[pilih_ppd_code]})", options=sekolah_options, key="sup_sekolah_list")
+                # Extract kod
+                pilih_sekolah_kod = pilih_sekolah_str.split(" - ")[0] if pilih_sekolah_str else ""
+                row_sel = df_filtered[df_filtered["KOD_SEKOLAH"] == pilih_sekolah_kod].iloc[0] if not df_filtered[df_filtered["KOD_SEKOLAH"] == pilih_sekolah_kod].empty else None
+                if row_sel is not None:
+                    pilih_sekolah_nama = row_sel["NAMA_SEKOLAH"]
+                    sup_id = int(row_sel["ID"])
+                    sup_password_expected = str(row_sel["PASSWORD"])
+                    sup_password_lama = str(row_sel["PASSWORD_LAMA"])
+                else:
+                    pilih_sekolah_nama = ""
+                    sup_id = 1
+                    sup_password_expected = "1"
+                    sup_password_lama = "123451"
+
+        with col_b:
+            st.markdown(f"**Sekolah Dipilih:** `{pilih_sekolah_kod}` - {pilih_sekolah_nama}")
+            st.markdown(f"**ID Sekolah:** {sup_id} | **PPD:** {pilih_ppd_code} - {PPD_MAP.get(pilih_ppd_code,'')}")
+            
+            # Show password for testing
+            with st.container(border=True):
+                st.markdown("🔑 **Password Untuk Testing (Paparan Sementara)**")
+                if not df_filtered.empty and 'sup_password_expected' in locals():
+                    st.code(f"ID: {sup_id}\nPassword Baru: {sup_password_expected}\nPassword Lama Style: {sup_password_lama} / 12345{sup_id}\nContoh: Taip {sup_password_expected} atau {sup_password_lama}", language="text")
+                else:
+                    st.code(f"Password: {sup_id} atau 12345{sup_id}", language="text")
+            
+            pwd_input = st.text_input("3️⃣ Masuk Password", type="password", key="sup_pwd", placeholder=f"Contoh: {sup_password_expected if 'sup_password_expected' in locals() else '1'}")
+            
+            if st.button("🚀 Masuk SUP Sekolah", use_container_width=True, type="primary", key="btn_sup"):
+                # Check password - accept ID or 12345+ID or just ID
+                valid_pw = [str(sup_id), f"12345{sup_id}", f"12345{ sup_id }".replace(" ",""), sup_password_expected if 'sup_password_expected' in locals() else str(sup_id)]
+                if not df_sekolah_all.empty and 'sup_password_lama' in locals():
+                    valid_pw.append(sup_password_lama)
+                # Also accept plain "1", "a", etc for backward compat
+                if pwd_input.strip() in valid_pw or pwd_input.strip() == "12345" or pwd_input.strip().lower() == "a" or pwd_input.strip() == "":
+                    # For testing, allow empty as well to ease test
+                    if pwd_input.strip() == "" and not st.checkbox("Benarkan login tanpa password untuk testing?", key="allow_empty"):
+                        st.error(f"Password salah! Cuba {sup_password_expected} atau {sup_password_lama}")
+                    else:
+                        info=get_sekolah(pilih_sekolah_kod)
+                        # Override with selected
+                        info["kod_sekolah"]=pilih_sekolah_kod
+                        info["nama_sekolah"]=pilih_sekolah_nama
+                        info["kod_ppd"]=pilih_ppd_code
+                        st.session_state.role="SUP"
+                        st.session_state.kod=pilih_sekolah_kod
+                        st.session_state.info=info
+                        st.session_state.sup_id=sup_id
+                        st.rerun()
+                else:
+                    st.error(f"Password salah! Sepatutnya: {sup_password_expected} atau {sup_password_lama}. Kau taip: {pwd_input}")
+
+        # Show full list for testing
+        with st.expander(f"📋 Lihat Senarai 369 Sekolah & Password (Untuk Testing - {len(df_sekolah_all)} sekolah)", expanded=False):
+            if not df_sekolah_all.empty:
+                st.dataframe(df_sekolah_all[["ID","KOD_SEKOLAH","NAMA_SEKOLAH","KOD_PPD","PPD","PASSWORD","PASSWORD_LAMA"]], use_container_width=True, height=400)
+                st.download_button("📥 Download Senarai Password Sekolah", to_excel(df_sekolah_all), file_name="SENARAI_PASSWORD_369_SEKOLAH.xlsx")
+            else:
+                st.warning("Gagal load sekolah_master - check RLS")
+
+    with tab2:
+        st.markdown("### 🏢 Log Masuk PPD - Pejabat Pendidikan Daerah")
+        st.caption("10 PPD Selangor | ID 1-10 | Password a-j (ikut turutan)")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            ppd_labels = [f"{i+1}. {KOD_DAERAH[i]} - {PPD_MAP[KOD_DAERAH[i]]} (ID:{i+1} Pwd:{chr(97+i)})" for i in range(len(KOD_DAERAH))]
+            pilih_ppd_full = st.selectbox("Pilih PPD", options=ppd_labels, key="ppd_full")
+            # Extract code
+            ppd_code = pilih_ppd_full.split(" - ")[0].split(". ")[1] if ". " in pilih_ppd_full else KOD_DAERAH[0]
+            ppd_id = KOD_DAERAH.index(ppd_code)+1 if ppd_code in KOD_DAERAH else 1
+            ppd_pwd_expected = chr(96+ppd_id)  # a-j
+        
+        with col2:
+            with st.container(border=True):
+                st.markdown("🔑 **Password PPD Untuk Testing**")
+                st.code(f"ID PPD: {ppd_id}\nPPD: {ppd_code} - {PPD_MAP.get(ppd_code,'')}\nPassword: {ppd_pwd_expected} atau {ppd_id} atau 12345{ppd_id}", language="text")
+            ppd_pwd = st.text_input("Masuk Password PPD", type="password", key="ppd_pwd", placeholder=f"Contoh: {ppd_pwd_expected}")
+            if st.button("🚀 Masuk PPD", use_container_width=True, type="primary", key="btn_ppd"):
+                valid = [ppd_pwd_expected, str(ppd_id), f"12345{ppd_id}", chr(96+ppd_id).upper(), ppd_code.lower(), "a","b","c","d","e","f","g","h","i","j"]
+                if ppd_pwd.strip().lower() in [v.lower() for v in valid] or ppd_pwd.strip() == "":
+                    st.session_state.role="PPD"
+                    st.session_state.kod=ppd_code
+                    st.session_state.ppd_id=ppd_id
+                    st.rerun()
+                else:
+                    st.error(f"Password salah! Cuba {ppd_pwd_expected} atau {ppd_id}")
+
+        # Table PPD
+        with st.expander("📋 Senarai 10 PPD & Password", expanded=False):
+            ppd_table = pd.DataFrame([{"ID":i+1, "KOD_PPD":KOD_DAERAH[i], "PPD":PPD_MAP[KOD_DAERAH[i]], "PASSWORD":chr(97+i), "PASSWORD_LAMA":f"12345{i+1}"} for i in range(len(KOD_DAERAH))])
+            st.dataframe(ppd_table, use_container_width=True, hide_index=True)
+
+    with tab3:
+        st.markdown("### 🏛️ Log Masuk JPN - Jabatan Pendidikan Negeri")
+        st.caption("JPN Selangor - Akses Penuh Negeri")
+        col1, col2 = st.columns(2)
+        with col1:
+            jpn_id = st.text_input("ID JPN", value="1", key="jpn_id")
+            jpn_pwd = st.text_input("Password JPN", type="password", key="jpn_pwd", placeholder="a")
+            with st.container(border=True):
+                st.code("ID: 1\nPassword: a atau 1 atau 123451\nJPN ada 1 user sahaja", language="text")
+            if st.button("🚀 Masuk JPN", use_container_width=True, type="primary", key="btn_jpn"):
+                if jpn_id=="1" and jpn_pwd.strip().lower() in ["a","1","123451","12345",""]:
+                    st.session_state.role="JPN"
+                    st.rerun()
+                else:
+                    # Allow for testing
+                    st.session_state.role="JPN"
+                    st.rerun()
+        with col2:
+            st.info("JPN boleh tengok semua PPD, semua sekolah (369), semua pusat (506), semua cadangan. Boleh export negeri.")
+
     st.markdown("---")
-    col1,col2,col3 = st.columns(3)
-    with col1:
-        st.subheader("🏫 SUP - Penyelia Sekolah")
-        with st.container(border=True):
-            kod = st.text_input("KOD SEKOLAH", value="BFT8002", key="sup_kod").upper()
-            if st.button("Masuk SUP", use_container_width=True, type="primary"):
-                info=get_sekolah(kod)
-                st.session_state.role="SUP"
-                st.session_state.kod=kod
-                st.session_state.info=info
-                st.rerun()
-            st.caption("Contoh: BFT8002, BEA1234")
-    with col2:
-        st.subheader("🏢 PPD - Pejabat Pendidikan Daerah")
-        with st.container(border=True):
-            ppd=st.selectbox("PILIH PPD", KOD_DAERAH, format_func=lambda x: f"{x} - {PPD_MAP[x]}", key="ppd_kod")
-            if st.button("Masuk PPD", use_container_width=True, type="primary"):
-                st.session_state.role="PPD"
-                st.session_state.kod=ppd
-                st.rerun()
-    with col3:
-        st.subheader("🏛️ JPN - Jabatan Pendidikan Negeri")
-        with st.container(border=True):
-            st.write("Akses penuh semua PPD & Sekolah")
-            if st.button("Masuk JPN", use_container_width=True, type="primary"):
-                st.session_state.role="JPN"
-                st.rerun()
-    st.info("💡 Tip: Lepas login SUP, kau boleh Tambah Guru, Import Excel, Buang Guru, dan Cadang Petugas untuk hantar ke PPD.")
+    st.caption("© 2026 JPN Selangor - Sistem Pelantikan Petugas Peperiksaan SPM | Formula: 1 kelas=20 calon, CEIL(calon/20)=kelas, Petugas=Kelas+9, Sekolah Perlu=Kelas+12")
     st.stop()
 
 # ================= SUP =================
