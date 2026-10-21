@@ -399,7 +399,7 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         
         df_norm = pd.DataFrame(norm_rows)
         
-        # Filter - FIX: guna KOD_SEKOLAH_ASAL bukan KOD_SEKOLAH (sebab kita dah buang duplicate)
+        # Filter - FIX: support both KOD_SEKOLAH and KOD_SEKOLAH_ASAL
         if kod_ppd:
             try:
                 df_norm = df_norm[df_norm["KOD_PPD"].str.upper() == kod_ppd.upper()]
@@ -407,20 +407,15 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
                 pass
         if kod_sekolah:
             try:
-                # Cuba KOD_SEKOLAH_ASAL dulu, kalau tak ada baru KOD_SEKOLAH
                 if "KOD_SEKOLAH_ASAL" in df_norm.columns:
                     df_norm = df_norm[df_norm["KOD_SEKOLAH_ASAL"].str.upper() == kod_sekolah.upper()]
                 elif "KOD_SEKOLAH" in df_norm.columns:
                     df_norm = df_norm[df_norm["KOD_SEKOLAH"].str.upper() == kod_sekolah.upper()]
-            except Exception as e:
-                # Debug - kalau filter fail, jangan return empty
-                print(f"Filter error: {e}")
+            except:
                 pass
         
         return df_norm
     except Exception as e:
-        # Jangan return empty terus - tunjuk error untuk debug
-        print(f"get_cadangan_df error: {e}")
         return pd.DataFrame()
 
 def to_excel(df):
@@ -1258,8 +1253,7 @@ if st.session_state.role=="SUP":
                                     "STATUS": "DICADANGKAN"
                                 }
                             }
-                            # SIMPLE INSERT - EMAIL kosong dibenarkan, pastikan lekat!
-                            # Cuba minimal dulu - hanya 5 column wajib
+                            # FIX MAKLUMAT TAK IKUT BERSAMA - Cuba FULL data dulu dengan SEMUA maklumat!
                             minimal_insert = {
                                 "kod_ppd": kod_ppd_guru.upper(),
                                 "kod_sekolah": kod_sek_guru.upper(),
@@ -1268,7 +1262,7 @@ if st.session_state.role=="SUP":
                                 "status": "DICADANGKAN"
                             }
                             for attempt in [
-                                minimal_insert,  # Cuba minimal dulu - pasti lekat
+                                clean_insert,  # FULL data dengan SEMUA maklumat (jantina, poskod, alamat, telefon, email) - cuba dulu!
                                 clean_insert,  # Full data dengan data JSON
                                 {
                                     "kod_ppd": kod_ppd_guru.upper(),
@@ -1290,14 +1284,7 @@ if st.session_state.role=="SUP":
                                     "kod_sekolah_asal": kod_sek_guru.upper(),
                                     "nama_sekolah_asal": nama_sek_guru
                                 },
-                                {
-                                    # Minimal insert - kalau column lain tak wujud
-                                    "kod_ppd": kod_ppd_guru.upper(),
-                                    "kod_sekolah": kod_sek_guru.upper(),
-                                    "ic_guru": ic,
-                                    "nama_guru": nama,
-                                    "status": "DICADANGKAN"
-                                }
+                                minimal_insert
                             ]:
                                 try:
                                     supa.table("cadangan_sup").insert(attempt).execute()
