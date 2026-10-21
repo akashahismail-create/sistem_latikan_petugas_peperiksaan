@@ -1128,7 +1128,6 @@ if st.session_state.role=="SUP":
                         st.error("Pilih sekurang-kurangnya 1 guru")
                     else:
                         st.info(f"Menyimpan {len(guru_pilih)} guru...")
-                    else:
                         ok_count=0
                         fail_msg=""
                         for ic in guru_pilih:
