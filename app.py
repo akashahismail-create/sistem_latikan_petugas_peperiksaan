@@ -1175,18 +1175,20 @@ if st.session_state.role=="SUP":
                             poskod = gr.get("POSKOD_RUMAH","")
                             alamat = gr.get("ALAMAT_RUMAH","") or gr.get("ALAMAT","")
                             telefon = gr.get("TELEFON_GURU","") or gr.get("TELEFON","")
-                            email = gr.get("EMAIL_GURU","") or gr.get("EMAIL","") or ""  # EMAIL kosong dibenarkan, tak block simpan
+                            email = str(gr.get("EMAIL_GURU","") or gr.get("EMAIL","") or "").strip()  # EMAIL kosong dibenarkan
                             pengalaman = pengalaman_input or gr.get("PENGALAMAN_SPM","") or gr.get("PENGALAMAN","")
                             kod_ppd_guru = (gr.get("KOD_PPD","") or info.get("kod_ppd","BA")).upper()  # FIX huruf kecil jadi besar
                             kod_sek_guru = gr.get("KOD_SEKOLAH","") or kod
                             nama_sek_guru = gr.get("NAMA_SEKOLAH_ASAL","") or gr.get("NAMA_SEKOLAH","") or info.get("nama_sekolah","")
                             no_pusat_asal = no_pusat_asal_input or gr.get("NO_PUSAT_ASAL","")
                             
-                            # Validasi kod_pusat - jangan guna SPM001 dummy
-                            if pusat_pilih == "SPM001" or not pusat_pilih:
-                                pusat_pilih = no_pusat_asal or info.get("kod_ppd","BA") + "001"
-                                if pusat_pilih == "SPM001":
-                                    pusat_pilih = "BA142"  # Fallback sebenar
+                            # Auto BA142 - pilihan pusat dibuang
+                            pusat_pilih = "BA142"
+                            if no_pusat_asal and no_pusat_asal.strip()!="":
+                                pusat_pilih = no_pusat_asal.strip()
+                            # Pastikan BA142 untuk BFT0003
+                            if kod.upper()=="BFT0003":
+                                pusat_pilih = "BA142"
                             
                             # FIX: EMAIL kosong dibenarkan, cadangan mesti lekat
                             kod_ppd_guru = kod_ppd_guru.upper()
@@ -1276,8 +1278,17 @@ if st.session_state.role=="SUP":
                                     "STATUS": "DICADANGKAN"
                                 }
                             }
-                            # SIMPLE INSERT - hanya guna column yang wujud dalam table, EMAIL kosong dibenarkan
+                            # SIMPLE INSERT - EMAIL kosong dibenarkan, pastikan lekat!
+                            # Cuba minimal dulu - hanya 5 column wajib
+                            minimal_insert = {
+                                "kod_ppd": kod_ppd_guru.upper(),
+                                "kod_sekolah": kod_sek_guru.upper(),
+                                "ic_guru": ic,
+                                "nama_guru": nama,
+                                "status": "DICADANGKAN"
+                            }
                             for attempt in [
+                                minimal_insert,  # Cuba minimal dulu - pasti lekat
                                 clean_insert,  # Full data dengan data JSON
                                 {
                                     "kod_ppd": kod_ppd_guru.upper(),
