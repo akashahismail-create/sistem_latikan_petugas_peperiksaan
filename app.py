@@ -1922,31 +1922,44 @@ with col_kanan:
                                 hasil_b["bil"] = bil
                                 return baru_r
                             
+                            # FIX BARU: Terus padam dari guru_master
                             buang_ok = False
                             try:
-                                buang_ok = modify_sheet(TAB_GURU, _buang_r)
-                            except:
-                                buang_ok = False
-                            
-                            if not buang_ok:
-                                # Fallback: buang terus dari guru_master
-                                try:
-                                    supa_gm, _ = get_supabase()
-                                    if supa_gm:
-                                        for ic in pilih_b:
-                                            # Padam dari guru_master ikut ic_guru dan kod_sekolah
-                                            try:
-                                                res = supa_gm.table("guru_master").select("id").eq("kod_sekolah", kod_s).eq("ic_guru", ic).execute()
-                                                if not res.data:
-                                                    res = supa_gm.table("guru_master").select("id").eq("ic_guru", ic).execute()
+                                supa_gm, _ = get_supabase()
+                                if supa_gm:
+                                    for ic in pilih_b:
+                                        try:
+                                            # Cuba padam ikut kod_sekolah + ic_guru
+                                            res = supa_gm.table("guru_master").select("id").eq("kod_sekolah", kod_s).eq("ic_guru", ic).execute()
+                                            if not res.data:
+                                                res = supa_gm.table("guru_master").select("id").eq("ic_guru", ic).execute()
+                                            if not res.data:
+                                                # Last try: search dalam data json
+                                                res_all = supa_gm.table("guru_master").select("id, ic_guru, data").limit(60000).execute()
+                                                ids_del = []
+                                                for r in res_all.data or []:
+                                                    ic_r = str(r.get("ic_guru") or (r.get("data") or {}).get("IC") or "").strip()
+                                                    if ic_r == ic or ic in ic_r or ic_r in ic:
+                                                        ks = str((r.get("data") or {}).get("KOD SEKOLAH") or r.get("kod_sekolah") or "").strip().upper()
+                                                        if ks == kod_s.strip().upper() or not ks:
+                                                            ids_del.append(r["id"])
+                                                for did in ids_del:
+                                                    supa_gm.table("guru_master").delete().eq("id", did).execute()
+                                            else:
                                                 for r in res.data or []:
                                                     supa_gm.table("guru_master").delete().eq("id", r["id"]).execute()
-                                            except Exception as e:
-                                                pass
-                                        buang_ok = True
-                                        hasil_b["bil"] = len(pilih_b)
-                                except Exception as e:
-                                    st.error(f"Gagal buang dari guru_master: {e}")
+                                        except Exception as e:
+                                            st.warning(f"Padam {ic}: {e}")
+                                    buang_ok = True
+                                    hasil_b["bil"] = len(pilih_b)
+                            except Exception as e:
+                                st.error(f"Gagal buang dari guru_master: {e}")
+                            
+                            # Juga cuba padam dari guru_sekolah kalau ada
+                            try:
+                                modify_sheet(TAB_GURU, _buang_r)
+                            except:
+                                pass
                             
                             if buang_ok:
                                 flash("success", f"✅ {hasil_b['bil']} guru dibuang daripada Senarai Guru.")
