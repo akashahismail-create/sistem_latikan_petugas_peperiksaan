@@ -1089,29 +1089,26 @@ if st.session_state.role=="SUP":
                 with col_exp2:
                     no_pusat_asal_input = st.text_input("No Pusat Asal (jika ada)", placeholder="Contoh: BA142")
                 
-                # Preview data guru yang dipilih - tunjuk yang kosong
+                # Preview data guru - EMAIL kosong DIBENARKAN, tak block simpan
                 if 'guru_pilih' in locals() and guru_pilih:
-                    st.markdown("**Preview Data Guru Dipilih (yang kosong akan dihantar kosong - sila lengkapkan di Senarai Guru):**")
+                    st.markdown("**Preview Data Guru Dipilih (EMAIL kosong dibenarkan - akan lepas simpan):**")
                     preview_rows=[]
-                    for ic_prev in guru_pilih[:3]:  # Show max 3
+                    for ic_prev in guru_pilih[:10]:
                         gr_prev = df_guru[df_guru["IC"]==ic_prev]
                         if not gr_prev.empty:
                             r = gr_prev.iloc[0]
                             preview_rows.append({
                                 "IC": ic_prev,
                                 "NAMA": r.get("NAMA GURU","")[:20],
-                                "JANTINA": r.get("JANTINA","") or "KOSONG",
-                                "POSKOD": r.get("POSKOD_RUMAH","") or "KOSONG",
-                                "ALAMAT": (r.get("ALAMAT_RUMAH","")[:20] or "KOSONG"),
-                                "TELEFON": r.get("TELEFON_GURU","") or r.get("TELEFON","") or "KOSONG",
-                                "EMAIL": r.get("EMAIL_GURU","") or "KOSONG"
+                                "JANTINA": r.get("JANTINA","") or "-",
+                                "POSKOD": r.get("POSKOD_RUMAH","") or "-",
+                                "ALAMAT": (r.get("ALAMAT_RUMAH","")[:20] or "-"),
+                                "TELEFON": r.get("TELEFON_GURU","") or r.get("TELEFON","") or "-",
+                                "EMAIL": r.get("EMAIL_GURU","") or "-"  # EMAIL kosong tunjuk -, bukan KOSONG block
                             })
                     if preview_rows:
                         st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
-                        # Check if banyak kosong
-                        kosong_count = sum(1 for row in preview_rows if "KOSONG" in str(row.values()))
-                        if kosong_count>0:
-                            st.warning(f"⚠️ Ada data guru yang KOSONG (JANTINA/POSKOD/ALAMAT/TELEFON/EMAIL). Sila pergi menu **📋 Senarai Guru > Edit** untuk lengkapkan dulu, atau data kosong akan dihantar ke PPD.")
+                        # Tak block walau email kosong
 
                 catatan = ""  # Catatan tak perlu ikut arahan user
                 submit = st.form_submit_button(f"📝 Simpan Cadangan - {len(guru_pilih) if 'guru_pilih' in locals() else 0} guru", type="primary")
@@ -1132,7 +1129,7 @@ if st.session_state.role=="SUP":
                             poskod = gr.get("POSKOD_RUMAH","")
                             alamat = gr.get("ALAMAT_RUMAH","") or gr.get("ALAMAT","")
                             telefon = gr.get("TELEFON_GURU","") or gr.get("TELEFON","")
-                            email = gr.get("EMAIL_GURU","") or gr.get("EMAIL","")
+                            email = gr.get("EMAIL_GURU","") or gr.get("EMAIL","") or ""  # EMAIL kosong dibenarkan, tak block simpan
                             pengalaman = pengalaman_input or gr.get("PENGALAMAN_SPM","") or gr.get("PENGALAMAN","")
                             kod_ppd_guru = (gr.get("KOD_PPD","") or info.get("kod_ppd","BA")).upper()  # FIX huruf kecil jadi besar
                             kod_sek_guru = gr.get("KOD_SEKOLAH","") or kod
@@ -1145,59 +1142,68 @@ if st.session_state.role=="SUP":
                                 if pusat_pilih == "SPM001":
                                     pusat_pilih = "BA142"  # Fallback sebenar
                             
-                            # Data lengkap untuk cadangan - HANYA guna KOD_SEKOLAH_ASAL & NO_PUSAT_ASAL (bukan duplicate)
-                            kod_ppd_guru = kod_ppd_guru.upper()  # Pastikan besar
+                            # FIX: EMAIL kosong dibenarkan, cadangan mesti lekat
+                            kod_ppd_guru = kod_ppd_guru.upper()
                             kod_sek_guru = kod_sek_guru.upper()
-                            full_data = {
-                                "KOD_PPD": kod_ppd_guru,
-                                "KOD_PPD_ASAL": kod_ppd_guru,
-                                "KOD_SEKOLAH_ASAL": kod_sek_guru,  # HANYA ASAL
-                                "NAMA_SEKOLAH_ASAL": nama_sek_guru,
-                                "IC_GURU": ic,
-                                "NAMA_GURU": nama,
-                                "JANTINA": jantina,
-                                "jantina": jantina,
-                                "POSKOD_RUMAH": poskod,
-                                "poskod_rumah": poskod,
-                                "ALAMAT_RUMAH": alamat,
-                                "alamat_rumah": alamat,
-                                "TELEFON_GURU": telefon,
-                                "telefon_guru": telefon,
-                                "NO_TELEFON_GURU": telefon,
-                                "EMAIL_GURU": email,
-                                "email_guru": email,
-                                "JAWATAN_CADANGAN": jawatan_clean,
-                                "jawatan_cadangan": jawatan_clean,
-                                "PENGALAMAN_SPM": pengalaman,
-                                "pengalaman_spm": pengalaman,
-                                "NO_PUSAT_ASAL": no_pusat_asal,
-                                "no_pusat_asal": no_pusat_asal,
-                                "KOD_PUSAT": pusat_pilih,
-                                "kod_pusat": pusat_pilih,
-                                "NO_PUSAT": pusat_pilih,
-                                "CATATAN": catatan,
-                                "catatan": catatan,
-                                "STATUS": "DICADANGKAN",
-                                "status": "DICADANGKAN",
-                                "TARIKH_CADANG": str(datetime.date.today()),
-                                "tarikh_cadang": str(datetime.date.today()),
-                                "JUMLAH_CALON": total_calon_alert if 'total_calon_alert' in locals() else 0,
-                                "JUMLAH_KELAS": total_kelas_alert if 'total_kelas_alert' in locals() else 0
-                            }
+                            # Auto default kalau kosong - BA142 untuk BFT0003
+                            if not no_pusat_asal or no_pusat_asal.strip()=="":
+                                no_pusat_asal = "BA142"
+                            if not kod_sek_guru or kod_sek_guru.strip()=="":
+                                kod_sek_guru = kod.upper()
+                            if not nama_sek_guru or nama_sek_guru.strip()=="":
+                                nama_sek_guru = info.get("nama_sekolah","SAM NURUL IMAN")
+                            # EMAIL kosong dibenarkan - jangan block
+                            email = email or ""
                             
-                            inserted=False
-                            # Data lengkap - HANYA guna KOD_SEKOLAH_ASAL & NO_PUSAT_ASAL (tak duplicate KOD_SEKOLAH/KOD_PUSAT)
-                            # FIX PPD huruf besar
-                            clean_insert = {
+                            # Data lengkap - SIMPLE sahaja, tak duplicate
+                            full_data = {
                                 "kod_ppd": kod_ppd_guru.upper(),
-                                "kod_sekolah": kod_sek_guru.upper(),
-                                "kod_sekolah_asal": kod_sek_guru.upper(),
+                                "kod_sekolah": kod_sek_guru,
+                                "kod_sekolah_asal": kod_sek_guru,
                                 "nama_sekolah_asal": nama_sek_guru,
                                 "ic_guru": ic,
                                 "nama_guru": nama,
-                                "jantina": jantina,
-                                "poskod_rumah": poskod,
-                                "alamat_rumah": alamat,
+                                "jantina": jantina or "L",
+                                "poskod_rumah": poskod or "0",
+                                "alamat_rumah": alamat or "-",
+                                "telefon_guru": telefon or "-",
+                                "email_guru": email,  # Kosong dibenarkan
+                                "jawatan_cadangan": jawatan_clean,
+                                "pengalaman_spm": pengalaman or "0",
+                                "no_pusat_asal": no_pusat_asal,
+                                "kod_pusat": no_pusat_asal,  # Guna NO_PUSAT_ASAL sebagai KOD_PUSAT
+                                "kod_ppd_asal": kod_ppd_guru,
+                                "status": "DICADANGKAN",
+                                "tarikh_cadang": str(datetime.date.today()),
+                                "data": {
+                                    "KOD_PPD": kod_ppd_guru,
+                                    "KOD_SEKOLAH_ASAL": kod_sek_guru,
+                                    "NAMA_SEKOLAH_ASAL": nama_sek_guru,
+                                    "IC_GURU": ic,
+                                    "NAMA_GURU": nama,
+                                    "JANTINA": jantina,
+                                    "POSKOD_RUMAH": poskod,
+                                    "ALAMAT_RUMAH": alamat,
+                                    "TELEFON_GURU": telefon,
+                                    "EMAIL_GURU": email,
+                                    "JAWATAN_CADANGAN": jawatan_clean,
+                                    "PENGALAMAN_SPM": pengalaman,
+                                    "NO_PUSAT_ASAL": no_pusat_asal,
+                                    "STATUS": "DICADANGKAN"
+                                }
+                            }
+                            
+                            inserted=False
+                            clean_insert = {
+                                "kod_ppd": kod_ppd_guru.upper(),
+                                "kod_sekolah": kod_sek_guru,
+                                "kod_sekolah_asal": kod_sek_guru,
+                                "nama_sekolah_asal": nama_sek_guru,
+                                "ic_guru": ic,
+                                "nama_guru": nama,
+                                "jantina": jantina or "L",
+                                "poskod_rumah": poskod or "0",
+                                "alamat_rumah": alamat or "-",
                                 "telefon_guru": telefon,
                                 "email_guru": email,
                                 "jawatan_cadangan": jawatan_clean,
