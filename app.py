@@ -3744,18 +3744,46 @@ CREATE POLICY "Allow all" ON guru_master FOR ALL TO public USING (true) WITH CHE
                                 st.success(f"🎉 SELESAI! {total} guru master dipindah ikut daerah & sekolah berdasarkan pusat_2026.csv")
                                 _cached_read.clear()
                                 st.markdown("---")
-                                st.subheader("📚 Langkah Seterusnya: Agih ke Sekolah")
-                                st.info("Data 60K dah ada dalam guru_master. Klik butang bawah untuk agih masuk ke table guru_sekolah_BA..BK supaya SUP nampak guru sekolah masing-masing.")
-                                if st.button("🚀 AGIH GURU MASTER KE SEKOLAH (BA..BK)", type="primary", use_container_width=True, key="agih_sekolah"):
-                                    with st.spinner("Agih 60K guru ke 10 table guru_sekolah..."):
-                                        total_agih, msg = agih_guru_master_ke_sekolah(supa)
-                                        st.success(msg)
-                                        st.balloons()
-                                        _cached_read.clear()
                 except Exception as e:
                     st.error(f"Gagal: {e}")
                     import traceback
                     st.code(traceback.format_exc())
+
+            # ========== BUTANG BARU SENTIASA ADA BAWAH MASTER 60K ==========
+            st.markdown("---")
+            st.subheader("📚 Pindah Data Ke Sekolah (Agih Guru)")
+            st.caption("Data 60K dalam guru_master dah ada? Klik terus butang bawah ni untuk agih ke sekolah tanpa perlu upload semula. SUP akan terus nampak guru (contoh BEB8653 SMJK KATHOLIK).")
+            supa2, _ = get_supabase()
+            if supa2:
+                try:
+                    res_cnt = supa2.table("guru_master").select("id", count="exact").limit(1).execute()
+                    cnt_gm = getattr(res_cnt, 'count', 0) or 0
+                    st.metric("Guru dalam guru_master", cnt_gm)
+                    # Check guru_sekolah counts
+                    from collections import Counter
+                    counts = {}
+                    for kod in ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]:
+                        try:
+                            r = supa2.table(f"guru_sekolah_{kod}").select("id", count="exact").limit(1).execute()
+                            counts[kod] = getattr(r, 'count', 0) or 0
+                        except:
+                            counts[kod] = 0
+                    st.write("Status agihan semasa guru_sekolah_BA..BK:")
+                    st.json(counts)
+                except Exception as e:
+                    st.caption(f"Info: {e}")
+                
+                if st.button("🚀 PINDAH DATA KE SEKOLAH (Agih 60K dari guru_master)", type="primary", use_container_width=True, key="btn_pindah_sekolah_persistent"):
+                    with st.spinner("Agih 60K guru dari guru_master ke 10 table guru_sekolah_BA..BK..."):
+                        total_agih, msg = agih_guru_master_ke_sekolah(supa2)
+                        st.success(msg)
+                        st.balloons()
+                        try:
+                            _cached_read.clear()
+                        except:
+                            pass
+            else:
+                st.error("Supabase tak connect")
 
         elif menu=="Backup & Restore 2026":
 
