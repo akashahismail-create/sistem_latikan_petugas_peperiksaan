@@ -478,14 +478,128 @@ elif st.session_state.role=="JPN":
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     elif menu=="🏫 Semua Sekolah":
-        st.header("Semua Sekolah Master")
+        st.header("Semua Sekolah Master (369 Sekolah)")
         try:
-            res=supa.table("sekolah_master").select("*").limit(5000).execute()
-            df=pd.DataFrame(res.data or [])
-            st.dataframe(df, use_container_width=True)
-            st.download_button("Export Sekolah", to_excel(df), file_name="sekolah_master.xlsx")
+            res=supa.table("sekolah_master").select("*", count="exact").limit(5000).execute()
+            df_count = res.count
+            res2=supa.table("sekolah_master").select("*").limit(1000).execute()
+            df=pd.DataFrame(res2.data or [])
+            st.write(f"Total dalam Supabase: **{df_count}** sekolah")
+            if not df.empty:
+                st.dataframe(df, use_container_width=True)
+                st.download_button("📥 Export Sekolah Master", to_excel(df), file_name="sekolah_master.xlsx")
+            else:
+                st.warning("sekolah_master kosong - belum push dari pusat_2026.csv. Sila import di bawah.")
         except Exception as e:
-            st.error(str(e))
+            st.error(f"sekolah_master error: {e}")
+            st.code("""
+CREATE TABLE IF NOT EXISTS sekolah_master (
+  id BIGSERIAL PRIMARY KEY,
+  kod_sekolah TEXT UNIQUE,
+  nama_sekolah TEXT,
+  kod_ppd TEXT,
+  data JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE sekolah_master ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow all" ON sekolah_master;
+CREATE POLICY "allow all" ON sekolah_master FOR ALL USING (true) WITH CHECK (true);
+            """, language="sql")
+
+        st.markdown("---")
+        st.subheader("📤 Import Sekolah Master dari Pusat & Guru")
+        st.info("File sekolah digenerate dari pusat_2026.csv (506 pusat = 369 sekolah unik) + guru 60K. Upload SEKOLAH_MASTER_FINAL_2026.xlsx untuk push masuk sekolah_master.")
+        st.download_button("📥 Download SEKOLAH_MASTER_FINAL_2026.xlsx (369 sekolah)", open("/mnt/data/SEKOLAH_MASTER_FINAL_2026.xlsx","rb").read() if __import__("os").path.exists("/mnt/data/SEKOLAH_MASTER_FINAL_2026.xlsx") else b"", "SEKOLAH_MASTER_FINAL_2026.xlsx")
+        
+        up_sek = st.file_uploader("Upload Sekolah Master Excel (KOD SEKOLAH, NAMA SEKOLAH, KOD PPD)", type=["xlsx","csv"], key="sekolah_up")
+        if up_sek:
+            try:
+                if up_sek.name.endswith(".csv"):
+                    try:
+                        df_up=pd.read_csv(up_sek)
+                    except:
+                        up_sek.seek(0)
+                        df_up=pd.read_csv(up_sek, encoding='latin1')
+                else:
+                    df_up=pd.read_excel(up_sek)
+                st.write(f"Preview {len(df_up)} sekolah:")
+                st.dataframe(df_up.head(30), use_container_width=True)
+                if st.button(f"🚀 Import {len(df_up)} Sekolah ke Supabase", type="primary", use_container_width=True):
+                    bar=st.progress(0)
+                    stat=st.empty()
+                    ok=0
+                    # Delete old first
+                    try:
+                        supa.table("sekolah_master").delete().gt("id",0).execute()
+                        st.write("Old sekolah_master cleared")
+                    except: pass
+                    BATCH=200
+                    for start in range(0, len(df_up), BATCH):
+                        end=min(start+BATCH, len(df_up))
+                        bdf=df_up.iloc[start:end]
+                        batch=[]
+                        for _, row in bdf.iterrows():
+                            try:
+                                kod = str(row.get("KOD SEKOLAH","") or row.get("kod_sekolah","") or row.get("KOD_SEKOLAH","")).strip().upper()
+                                if not kod: continue
+                                nama = str(row.get("NAMA SEKOLAH","") or row.get("nama_sekolah","") or row.get("NAMA_PUSAT","")).strip().upper()
+                                kod_ppd = str(row.get("KOD PPD","") or row.get("kod_ppd","") or row.get("PPD_CODE","") or "BH").strip().upper()
+                                batch.append({
+                                    "kod_sekolah": kod,
+                                    "nama_sekolah": nama,
+                                    "kod_ppd": kod_ppd,
+                                    "data": {k: ("" if pd.isna(v) else str(v)) for k,v in row.to_dict().items()}
+                                })
+                            except: continue
+                        if batch:
+                            try:
+                                supa.table("sekolah_master").insert(batch).execute()
+                                ok+=len(batch)
+                            except Exception as e:
+                                st.warning(f"Batch {start}-{end}: {e}")
+                        bar.progress(end/len(df_up))
+                        stat.write(f"Progress {end}/{len(df_up)} | OK {ok}")
+                    st.success(f"✅ Selesai import {ok}/{len(df_up)} sekolah!")
+                    st.balloons()
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+        st.markdown("---")
+        st.subheader("Auto Generate Sekolah dari Pusat 506")
+        if st.button("⚡ Generate Sekolah Master dari pusat_master yang sedia ada (506 pusat)", use_container_width=True):
+            try:
+                res=supa.table("pusat_master").select("*").limit(1000).execute()
+                df_p = pd.DataFrame(res.data or [])
+                if df_p.empty:
+                    st.error("pusat_master kosong, import pusat dulu")
+                else:
+                    # Extract unique kod_sekolah from pusat data
+                    sekolah_list=[]
+                    seen=set()
+                    for _, r in df_p.iterrows():
+                        d = r.get("data") or {}
+                        kod_sek = d.get("KOD_SEKOLAH","") or r.get("kod_sekolah","") or ""
+                        kod_sek = str(kod_sek).upper().strip()
+                        if not kod_sek or kod_sek in seen: continue
+                        seen.add(kod_sek)
+                        sekolah_list.append({
+                            "kod_sekolah": kod_sek,
+                            "nama_sekolah": r.get("nama_pusat","") or d.get("NAMA_PUSAT",""),
+                            "kod_ppd": r.get("kod_ppd","BH"),
+                            "data": {"KOD SEKOLAH": kod_sek, "NAMA SEKOLAH": r.get("nama_pusat",""), "KOD PPD": r.get("kod_ppd","BH")}
+                        })
+                    # Insert
+                    if sekolah_list:
+                        try:
+                            supa.table("sekolah_master").delete().gt("id",0).execute()
+                        except: pass
+                        for i in range(0, len(sekolah_list), 200):
+                            supa.table("sekolah_master").insert(sekolah_list[i:i+200]).execute()
+                        st.success(f"✅ Generated {len(sekolah_list)} sekolah dari pusat_master!")
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Error generate: {e}")
 
     elif menu=="🏫 Pusat Master":
         st.header("Pusat Master - Selangor 2026 (506 Pusat)")
