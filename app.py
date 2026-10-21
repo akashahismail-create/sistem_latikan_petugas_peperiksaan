@@ -1752,7 +1752,47 @@ with col_kanan:
             for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
                 if _p.upper() not in _pusat_g:
                     _pusat_g.append(_p.upper())
+            # FIX: cuba baca guru_sekolah_BH_2026, kalau takde baca terus dari guru_master ikut kod sekolah
             guru_roster = read_sheet(TAB_GURU)
+            if guru_roster.empty:
+                # Fallback 1: cuba guru_sekolah_BH (tanpa _2026)
+                try:
+                    guru_roster = read_sheet(f"guru_sekolah_{_kod_daerah}")
+                except:
+                    pass
+            if guru_roster.empty:
+                # Fallback 2: baca terus dari guru_master ikut kod sekolah - ini yang 60K tu
+                try:
+                    supa_fb, _ = get_supabase()
+                    if supa_fb:
+                        # Baca dari guru_master filter kod_sekolah = BFT8002 etc
+                        res_gm = supa_fb.table("guru_master").select("*").eq("kod_sekolah", kod_s).limit(2000).execute()
+                        if not res_gm.data:
+                            res_gm = supa_fb.table("guru_master").select("*").eq("kod_sekolah", kod_s.upper()).limit(2000).execute()
+                        if not res_gm.data:
+                            # Try uppercase KOD_SEKOLAH in data
+                            res_gm = supa_fb.table("guru_master").select("*").limit(60000).execute()
+                            filtered = []
+                            for r in res_gm.data or []:
+                                d = r.get("data") or {}
+                                ks = str(d.get("KOD SEKOLAH") or r.get("kod_sekolah") or "").strip().upper()
+                                if ks == kod_s.strip().upper():
+                                    filtered.append(r)
+                            res_gm.data = filtered
+                        if res_gm.data:
+                            guru_roster = _df_from_rows(res_gm.data)
+                            # Convert to format senarai_guru_sekolah expects
+                            if not guru_roster.empty:
+                                # Ensure columns LAJUR_GURU ada
+                                for col in ["KOD SEKOLAH ASAL", "NAMA SEKOLAH ASAL", "NAMA GURU", "IC", "JANTINA"]:
+                                    if col not in guru_roster.columns:
+                                        if col == "KOD SEKOLAH ASAL" and "KOD SEKOLAH" in guru_roster.columns:
+                                            guru_roster[col] = guru_roster["KOD SEKOLAH"]
+                                        elif col == "NAMA GURU" and "NAMA GURU" not in guru_roster.columns and "nama_guru" in guru_roster.columns:
+                                            guru_roster[col] = guru_roster["nama_guru"]
+                except Exception as e:
+                    st.warning(f"Fallback guru_master error: {e}")
+            
             cadangan_g = read_sheet(TAB_CADANGAN)
             senarai_g = senarai_guru_sekolah(guru_roster, cadangan_g, kod_s)
 
