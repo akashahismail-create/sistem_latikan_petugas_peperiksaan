@@ -1899,6 +1899,14 @@ with col_kanan:
                                 return df_n
                             if modify_sheet(TAB_GURU, _simpan_f):
                                 flash("success", f"✅ {_bersih_teks(nama_f)} {'ditambah' if hasil_f['baru'] else 'dikemaskini'} dalam Senarai Guru. Tick di jadual untuk jadikan cadangan.")
+                                try:
+                                    _cached_read.clear()
+                                except:
+                                    pass
+                                try:
+                                    st.cache_data.clear()
+                                except:
+                                    pass
                                 st.session_state["guru_n"] = n_g + 1
                                 st.rerun()
 
@@ -1962,7 +1970,15 @@ with col_kanan:
                                 pass
                             
                             if buang_ok:
-                                flash("success", f"✅ {hasil_b['bil']} guru dibuang daripada Senarai Guru.")
+                                try:
+                                    _cached_read.clear()
+                                except:
+                                    pass
+                                try:
+                                    st.cache_data.clear()
+                                except:
+                                    pass
+                                flash("success", f"✅ {hasil_b['bil']} guru dibuang daripada Senarai Guru (dari guru_master).")
                                 st.session_state["guru_n"] = n_g + 1
                                 st.rerun()
         elif menu=="Muat Naik / Muat Turun":
