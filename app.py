@@ -186,6 +186,20 @@ def get_guru_df(kod_sekolah):
             if not kod_ppd_val or kod_ppd_val == "":
                 kod_ppd_val = kod_sekolah[:2] if len(kod_sekolah)>=2 else "BA"
             
+            # Default untuk field yang masih kosong (EMAIL, JAWATAN, NO_PUSAT_ASAL)
+            if not email_val or email_val.strip() == "":
+                # Cuba generate dari nama atau biarkan kosong untuk SUP isi
+                email_val = ""  # Biar kosong, SUP perlu isi manual
+            if not jawatan_val or jawatan_val.strip() == "":
+                jawatan_val = "Pengawas Peperiksaan"  # Default
+            if not no_pusat_asal_val or no_pusat_asal_val.strip() == "":
+                # Default ikut kod sekolah untuk BFT0003
+                if kod_sekolah.upper() == "BFT0003":
+                    no_pusat_asal_val = "BA142"
+                else:
+                    # Ambil dari kod_ppd + 001 sebagai default
+                    no_pusat_asal_val = f"{kod_ppd_val}001" if kod_ppd_val else "BA142"
+            
             rows.append({
                 "id": r.get("id"),
                 "NAMA GURU": nama_val,
