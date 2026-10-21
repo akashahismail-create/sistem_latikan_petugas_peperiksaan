@@ -1416,7 +1416,7 @@ elif st.session_state.role=="PPD":
     st.sidebar.title(f"🏢 PPD {kod_ppd}")
     st.sidebar.caption(f"{PPD_MAP.get(kod_ppd,'')}")
 
-    menu=st.sidebar.radio("Menu PPD", ["📊 Dashboard PPD","🏫 Sekolah dalam PPD","🏫 Pusat di PPD","📋 Cadangan SUP","✅ Kelulusan","📥 Export","🚪 Log Keluar"])
+    menu=st.sidebar.radio("Menu PPD", ["📊 Dashboard PPD","🏫 Sekolah dalam PPD","🏫 Pusat di PPD","🚀 Jana Keseluruhan","📋 Cadangan SUP","✅ Kelulusan","📥 Export","🚪 Log Keluar"])
 
     if menu=="🚪 Log Keluar":
         st.session_state.clear()
@@ -1548,6 +1548,119 @@ elif st.session_state.role=="PPD":
                 c3.metric("Total Kelas", int(df_f["JUMLAH_KELAS"].sum()))
                 c4.metric("Total Perlu", int(df_f["SEKOLAH_PERLU"].sum()))
                 st.download_button(f"Export Pusat {kod_ppd}", to_excel(df_f), file_name=f"pusat_{kod_ppd}.xlsx", use_container_width=True)
+
+    elif menu=="🚀 Jana Keseluruhan":
+        st.header(f"🚀 Jana Keseluruhan - Letak Semua Petugas di Pusat Peperiksaan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,'')}")
+        st.caption("Function ni akan ambil semua cadangan dari SUP dan letak di pusat peperiksaan ikut jumlah calon. Boleh edit kalau tak sesuai.")
+        
+        # Get all pusat in this PPD
+        df_pusat_raw = get_pusat_df()
+        df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+        
+        if df_pusat_raw.empty:
+            st.warning("Tiada pusat_master - import dulu di JPN > Pusat Master")
+        elif df_cad_all.empty:
+            st.warning(f"Belum ada cadangan dari SUP untuk PPD {kod_ppd}. Sekolah perlu cadang dulu di SUP > Cadangan Lantikan.")
+        else:
+            # Build pusat list filtered by PPD
+            rows=[]
+            for _, r in df_pusat_raw.iterrows():
+                d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                if isinstance(d, str):
+                    try:
+                        import json
+                        d = json.loads(d)
+                    except:
+                        d={}
+                no_pusat = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                if not no_pusat.startswith(kod_ppd.upper()):
+                    continue
+                nama = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                j_calon = r.get("jumlah_calon") or d.get("JUMLAH_CALON") or 0
+                j_kelas = r.get("jumlah_kelas") or d.get("JUMLAH_KELAS") or 0
+                try: jc = int(float(str(j_calon) or 0))
+                except: jc=0
+                try: jk = int(float(str(j_kelas) or 0))
+                except: jk=kira_kelas_dari_calon(jc)
+                rows.append({"NO_PUSAT":no_pusat,"NAMA_PUSAT":nama,"JUMLAH_CALON":jc,"JUMLAH_KELAS":jk,"PETUGAS":kira_petugas_dari_kelas(jk)})
+            
+            df_pusat_ppd = pd.DataFrame(rows)
+            
+            if df_pusat_ppd.empty:
+                st.warning(f"Tiada pusat dengan prefix {kod_ppd} dalam pusat_master")
+            else:
+                st.success(f"Jumpa {len(df_pusat_ppd)} pusat di PPD {kod_ppd} | Total cadangan: {len(df_cad_all)} guru")
+                
+                # Show pusat with petugas needed
+                st.subheader("📍 Senarai Pusat & Keperluan Petugas")
+                st.dataframe(df_pusat_ppd.sort_values("NO_PUSAT"), use_container_width=True, hide_index=True)
+                
+                # Auto assign - simple: assign cadangan to pusat round-robin or by sekolah asal
+                st.markdown("---")
+                st.subheader("👥 Penempatan Petugas - Auto Jana")
+                
+                # Create assignment
+                assignments=[]
+                # Group cadangan by jawatan
+                df_cad_sorted = df_cad_all.sort_values("JAWATAN_CADANGAN") if "JAWATAN_CADANGAN" in df_cad_all.columns else df_cad_all
+                
+                # Simple assignment: letak semua petugas di pusat, PPD boleh edit
+                for idx, row in df_cad_sorted.iterrows():
+                    # Find best pusat - use NO_PUSAT_ASAL if exists, else first pusat
+                    asal = str(row.get("NO_PUSAT_ASAL","") or "").upper().strip()
+                    if asal and asal in df_pusat_ppd["NO_PUSAT"].values:
+                        pusat_tugas = asal
+                    else:
+                        # Assign to first pusat that still needs petugas
+                        pusat_tugas = df_pusat_ppd.iloc[idx % len(df_pusat_ppd)]["NO_PUSAT"] if len(df_pusat_ppd)>0 else "BA142"
+                    
+                    assignments.append({
+                        "id": row.get("id",""),
+                        "NAMA_GURU": row.get("NAMA_GURU",""),
+                        "IC_GURU": row.get("IC_GURU",""),
+                        "JAWATAN_CADANGAN": row.get("JAWATAN_CADANGAN",""),
+                        "KOD_SEKOLAH_ASAL": row.get("KOD_SEKOLAH_ASAL",""),
+                        "NAMA_SEKOLAH_ASAL": row.get("NAMA_SEKOLAH_ASAL",""),
+                        "NO_PUSAT_ASAL": row.get("NO_PUSAT_ASAL",""),
+                        "NO_PUSAT_TUGAS": pusat_tugas,
+                        "STATUS": row.get("STATUS","DICADANGKAN")
+                    })
+                
+                df_assign = pd.DataFrame(assignments)
+                st.dataframe(df_assign, use_container_width=True, hide_index=True)
+                
+                # Edit function - PPD boleh edit pusat tugas kalau tak sesuai
+                st.markdown("---")
+                st.subheader("✏️ Edit Penempatan (Kalau Tak Sesuai)")
+                st.caption("Pilih guru dan tukar pusat tugas, kemudian klik Update")
+                
+                if not df_assign.empty:
+                    edit_ic = st.selectbox("Pilih Guru untuk edit pusat tugas", df_assign["IC_GURU"].tolist(), format_func=lambda x: f"{x} - {df_assign[df_assign['IC_GURU']==x]['NAMA_GURU'].values[0] if not df_assign[df_assign['IC_GURU']==x].empty else x}")
+                    if edit_ic:
+                        curr = df_assign[df_assign["IC_GURU"]==edit_ic].iloc[0] if not df_assign[df_assign["IC_GURU"]==edit_ic].empty else None
+                        if curr is not None:
+                            col1,col2 = st.columns(2)
+                            with col1:
+                                st.text_input("NAMA GURU", value=curr.get("NAMA_GURU",""), disabled=True)
+                                st.text_input("JAWATAN", value=curr.get("JAWATAN_CADANGAN",""), disabled=True)
+                                st.text_input("SEKOLAH ASAL", value=curr.get("NAMA_SEKOLAH_ASAL",""), disabled=True)
+                            with col2:
+                                new_pusat = st.selectbox("Tukar Pusat Tugas (Boleh Edit)", df_pusat_ppd["NO_PUSAT"].tolist(), index=df_pusat_ppd["NO_PUSAT"].tolist().index(curr.get("NO_PUSAT_TUGAS")) if curr.get("NO_PUSAT_TUGAS") in df_pusat_ppd["NO_PUSAT"].tolist() else 0)
+                                if st.button("💾 Update Pusat Tugas", type="primary"):
+                                    try:
+                                        # Update in cadangan_sup
+                                        update_data = {"kod_pusat": new_pusat, "no_pusat_asal": new_pusat}
+                                        # Try to find id
+                                        if curr.get("id"):
+                                            supa.table("cadangan_sup").update(update_data).eq("id", curr.get("id")).execute()
+                                        else:
+                                            supa.table("cadangan_sup").update(update_data).eq("ic_guru", edit_ic).execute()
+                                        st.success(f"✅ Berjaya tukar {curr.get('NAMA_GURU')} ke pusat {new_pusat}")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Gagal update: {e}")
+                
+                st.download_button("📥 Export Penempatan Penuh", to_excel(df_assign), file_name=f"penempatan_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
 
     elif menu=="📋 Cadangan SUP":
 
