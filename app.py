@@ -488,26 +488,173 @@ elif st.session_state.role=="JPN":
             st.error(str(e))
 
     elif menu=="🏫 Pusat Master":
-        st.header("Pusat Master")
+        st.header("Pusat Master - Selangor 2026 (506 Pusat)")
         try:
-            res=supa.table("pusat_master").select("*").limit(5000).execute()
+            res=supa.table("pusat_master").select("*", count="exact").limit(5000).execute()
             df=pd.DataFrame(res.data or [])
-            st.dataframe(df, use_container_width=True)
+            st.write(f"Total Pusat Sedia Ada: **{res.count}** / 506 pusat")
+            if not df.empty:
+                # Show summary by PPD
+                if "data" in df.columns:
+                    st.dataframe(df.head(200), use_container_width=True)
+                else:
+                    st.dataframe(df, use_container_width=True)
+                st.download_button("📥 Export Pusat Master", to_excel(df), file_name="pusat_master.xlsx")
+                # Breakdown
+                try:
+                    ppd_counts = df["kod_ppd"].value_counts() if "kod_ppd" in df.columns else None
+                    if ppd_counts is not None:
+                        st.write("Breakdown PPD:")
+                        st.bar_chart(ppd_counts)
+                except: pass
+            else:
+                st.warning("pusat_master kosong - sila import pusat_2026.csv (506 pusat)")
         except Exception as e:
-            st.error(str(e))
+            st.error(f"pusat_master error: {e}")
+            st.code("""
+CREATE TABLE IF NOT EXISTS pusat_master (
+  id BIGSERIAL PRIMARY KEY,
+  kod_pusat TEXT,
+  nama_pusat TEXT,
+  kod_ppd TEXT,
+  ppd TEXT,
+  alamat TEXT,
+  bilik INT,
+  calon INT,
+  data JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE pusat_master ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow all" ON pusat_master;
+CREATE POLICY "allow all" ON pusat_master FOR ALL USING (true) WITH CHECK (true);
+            """, language="sql")
+
         st.markdown("---")
-        st.subheader("Upload Pusat Master Baru")
-        up=st.file_uploader("Upload Excel Pusat", type=["xlsx"])
-        if up:
-            df_up=pd.read_excel(up)
-            st.dataframe(df_up.head(), use_container_width=True)
-            if st.button("Import Pusat"):
-                for _, row in df_up.iterrows():
-                    try:
-                        supa.table("pusat_master").insert(row.to_dict()).execute()
-                    except Exception as e:
-                        st.warning(str(e))
-                st.success("Import selesai")
+        col1,col2 = st.columns(2)
+        with col1:
+            st.subheader("➕ Tambah Pusat Manual")
+            with st.form("tambah_pusat"):
+                kod_pusat=st.text_input("KOD PUSAT * (cth: BA001)")
+                nama_pusat=st.text_input("NAMA PUSAT *")
+                kod_ppd_pusat=st.selectbox("KOD PPD", KOD_DAERAH, format_func=lambda x: f"{x}-{PPD_MAP[x]}")
+                alamat_pusat=st.text_area("ALAMAT PUSAT")
+                bilik=st.number_input("BIL BILIK", min_value=1, value=10)
+                calon=st.number_input("BIL CALON", min_value=1, value=200)
+                submit_pusat=st.form_submit_button("💾 Simpan Pusat", type="primary", use_container_width=True)
+                if submit_pusat:
+                    if not kod_pusat or not nama_pusat:
+                        st.error("Kod & Nama Pusat wajib!")
+                    else:
+                        try:
+                            supa.table("pusat_master").insert({
+                                "kod_pusat": kod_pusat.upper(),
+                                "nama_pusat": nama_pusat.upper(),
+                                "kod_ppd": kod_ppd_pusat,
+                                "ppd": PPD_MAP.get(kod_ppd_pusat,""),
+                                "alamat": alamat_pusat,
+                                "bilik": bilik,
+                                "calon": calon,
+                                "data": {"KOD PUSAT":kod_pusat.upper(),"NAMA PUSAT":nama_pusat.upper(),"KOD PPD":kod_ppd_pusat,"ALAMAT":alamat_pusat,"BILIK":bilik,"CALON":calon}
+                            }).execute()
+                            st.success(f"✅ Pusat {kod_pusat} berjaya tambah!")
+                            st.balloons()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal: {e}")
+
+        with col2:
+            st.subheader("📤 Import Excel/CSV Pusat (Batch)")
+            st.info("Support: pusat_2026.csv (NO_PUSAT format) & Excel KOD PUSAT format | 506 pusat")
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                st.download_button("📥 Template Pusat", to_excel(pd.DataFrame([{"KOD PUSAT":"BA001","NAMA PUSAT":"SMK DATO HAMZAH","KOD PPD":"BA","ALAMAT PUSAT":"Jalan Dato Hamzah","BILIK":10,"CALON":250}])), "TEMPLATE_PUSAT.xlsx")
+            with col_t2:
+                st.download_button("📥 Sample pusat_2026.csv", open("/mnt/data/pusat_2026.csv","rb").read() if __import__("os").path.exists("/mnt/data/pusat_2026.csv") else b"", "pusat_2026_sample.csv")
+            
+            up=st.file_uploader("Upload Excel/CSV Pusat (Excel atau CSV)", type=["xlsx","csv"], key="pusat_up")
+            if up:
+                try:
+                    if up.name.endswith(".csv"):
+                        try:
+                            df_up=pd.read_csv(up)
+                        except:
+                            up.seek(0)
+                            df_up=pd.read_csv(up, encoding='latin1')
+                    else:
+                        df_up=pd.read_excel(up)
+                    st.write(f"Preview {len(df_up)} pusat:")
+                    st.dataframe(df_up.head(20), use_container_width=True)
+                    if st.button(f"🚀 Import {len(df_up)} Pusat (Batch 200)", type="primary", use_container_width=True):
+                        bar=st.progress(0)
+                        stat=st.empty()
+                        ok=0
+                        BATCH=200
+                        # PPD name to code map for CSV
+                        ppd_name_map = {"klang":"BA","kuala langat":"BB","kuala selangor":"BC","hulu langat":"BD","hulu selangor":"BE","sabak bernam":"BF","gombak":"BG","petaling perdana":"BH","sepang":"BJ","petaling utama":"BK"}
+                        for start in range(0, len(df_up), BATCH):
+                            end=min(start+BATCH, len(df_up))
+                            bdf=df_up.iloc[start:end]
+                            batch=[]
+                            for _, row in bdf.iterrows():
+                                try:
+                                    d={}
+                                    for k,v in row.to_dict().items():
+                                        d[k] = "" if pd.isna(v) else str(v)
+                                    # Support both formats: NO_PUSAT or KOD PUSAT
+                                    kod_p = d.get("NO_PUSAT","") or d.get("KOD PUSAT","") or d.get("kod_pusat","")
+                                    kod_p = kod_p.upper().strip()
+                                    if not kod_p: continue
+                                    # KOD PPD logic
+                                    kod_ppd_val = d.get("KOD PPD","") or d.get("KOD_PPD","") or d.get("PPD_CODE","")
+                                    if not kod_ppd_val:
+                                        ppd_raw = d.get("PPD","").lower()
+                                        for name,code in ppd_name_map.items():
+                                            if name in ppd_raw:
+                                                kod_ppd_val=code
+                                                break
+                                        if not kod_ppd_val:
+                                            kod_ppd_val="BH"
+                                    kod_ppd_val = kod_ppd_val.upper().strip()
+                                    nama_p = d.get("NAMA_PUSAT","") or d.get("NAMA PUSAT","") or kod_p
+                                    bilik_val = d.get("JUMLAH_KELAS","") or d.get("BILIK","") or "10"
+                                    calon_val = d.get("JUMLAH_CALON","") or d.get("CALON","") or "200"
+                                    try: bilik_int = int(float(bilik_val))
+                                    except: bilik_int = 10
+                                    try: calon_int = int(float(calon_val))
+                                    except: calon_int = 200
+                                    batch.append({
+                                        "kod_pusat": kod_p,
+                                        "nama_pusat": nama_p.upper(),
+                                        "kod_ppd": kod_ppd_val,
+                                        "ppd": d.get("PPD","") or PPD_MAP.get(kod_ppd_val,""),
+                                        "alamat": d.get("KOD_SEKOLAH","") or d.get("ALAMAT PUSAT","") or d.get("ALAMAT",""),
+                                        "bilik": bilik_int,
+                                        "calon": calon_int,
+                                        "data": d
+                                    })
+                                except: continue
+                            if batch:
+                                try:
+                                    supa.table("pusat_master").insert(batch).execute()
+                                    ok+=len(batch)
+                                except Exception as e:
+                                    st.warning(f"Batch {start}-{end}: {e}")
+                            bar.progress(end/len(df_up))
+                            stat.write(f"Progress {end}/{len(df_up)} | OK {ok}")
+                        st.success(f"✅ Selesai import {ok}/{len(df_up)} pusat! Total 506")
+                        st.balloons()
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        st.markdown("---")
+        if st.button("🗑️ Kosongkan Semua Pusat (Hati-hati!)", type="secondary"):
+            try:
+                # Supabase need delete with filter, we delete all with gt 0
+                supa.table("pusat_master").delete().gt("id",0).execute()
+                st.success("Semua pusat dipadam")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
 
     elif menu=="👨‍🏫 Guru Master":
         st.header("Guru Master Seluruh Negeri")
