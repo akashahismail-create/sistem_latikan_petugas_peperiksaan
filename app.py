@@ -399,14 +399,28 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         
         df_norm = pd.DataFrame(norm_rows)
         
-        # Filter
+        # Filter - FIX: guna KOD_SEKOLAH_ASAL bukan KOD_SEKOLAH (sebab kita dah buang duplicate)
         if kod_ppd:
-            df_norm = df_norm[df_norm["KOD_PPD"].str.upper() == kod_ppd.upper()]
+            try:
+                df_norm = df_norm[df_norm["KOD_PPD"].str.upper() == kod_ppd.upper()]
+            except:
+                pass
         if kod_sekolah:
-            df_norm = df_norm[df_norm["KOD_SEKOLAH"].str.upper() == kod_sekolah.upper()]
+            try:
+                # Cuba KOD_SEKOLAH_ASAL dulu, kalau tak ada baru KOD_SEKOLAH
+                if "KOD_SEKOLAH_ASAL" in df_norm.columns:
+                    df_norm = df_norm[df_norm["KOD_SEKOLAH_ASAL"].str.upper() == kod_sekolah.upper()]
+                elif "KOD_SEKOLAH" in df_norm.columns:
+                    df_norm = df_norm[df_norm["KOD_SEKOLAH"].str.upper() == kod_sekolah.upper()]
+            except Exception as e:
+                # Debug - kalau filter fail, jangan return empty
+                print(f"Filter error: {e}")
+                pass
         
         return df_norm
     except Exception as e:
+        # Jangan return empty terus - tunjuk error untuk debug
+        print(f"get_cadangan_df error: {e}")
         return pd.DataFrame()
 
 def to_excel(df):
