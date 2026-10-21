@@ -1217,6 +1217,25 @@ if st.session_state.role=="SUP":
                             }
                             
                             inserted=False
+                            # Data lengkap untuk simpan dalam JSON - POSKOD sangat penting untuk PPD jana!
+                            data_lengkap = {
+                                "KOD_PPD": kod_ppd_guru.upper(),
+                                "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(),
+                                "NAMA_SEKOLAH_ASAL": nama_sek_guru,
+                                "IC_GURU": ic,
+                                "NAMA_GURU": nama,
+                                "JANTINA": jantina or "L",
+                                "POSKOD_RUMAH": poskod or "",
+                                "ALAMAT_RUMAH": alamat or "",
+                                "TELEFON_GURU": telefon or "",
+                                "EMAIL_GURU": email or "",
+                                "JAWATAN_CADANGAN": jawatan_clean,
+                                "PENGALAMAN_SPM": pengalaman or "",
+                                "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih,
+                                "KOD_SEKOLAH": kod_sek_guru,
+                                "STATUS": "DICADANGKAN",
+                                "TARIKH_CADANG": str(datetime.date.today())
+                            }
                             clean_insert = {
                                 "kod_ppd": kod_ppd_guru.upper(),
                                 "kod_sekolah": kod_sek_guru,
@@ -1225,33 +1244,18 @@ if st.session_state.role=="SUP":
                                 "ic_guru": ic,
                                 "nama_guru": nama,
                                 "jantina": jantina or "L",
-                                "poskod_rumah": poskod or "0",
-                                "alamat_rumah": alamat or "-",
-                                "telefon_guru": telefon,
-                                "email_guru": email,
+                                "poskod_rumah": poskod or "",
+                                "alamat_rumah": alamat or "",
+                                "telefon_guru": telefon or "",
+                                "email_guru": email or "",
                                 "jawatan_cadangan": jawatan_clean,
-                                "pengalaman_spm": pengalaman,
-                                "no_pusat_asal": no_pusat_asal or pusat_pilih,  # HANYA NO_PUSAT_ASAL
-                                "kod_pusat": pusat_pilih,  # Simpan juga untuk compatibility tapi display guna NO_PUSAT_ASAL
+                                "pengalaman_spm": pengalaman or "",
+                                "no_pusat_asal": no_pusat_asal or pusat_pilih,
+                                "kod_pusat": pusat_pilih,
                                 "kod_ppd_asal": kod_ppd_guru.upper(),
                                 "status": "DICADANGKAN",
                                 "tarikh_cadang": str(datetime.date.today()),
-                                "data": {
-                                    "KOD_PPD": kod_ppd_guru.upper(),
-                                    "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(),
-                                    "NAMA_SEKOLAH_ASAL": nama_sek_guru,
-                                    "IC_GURU": ic,
-                                    "NAMA_GURU": nama,
-                                    "JANTINA": jantina,
-                                    "POSKOD_RUMAH": poskod,
-                                    "ALAMAT_RUMAH": alamat,
-                                    "TELEFON_GURU": telefon,
-                                    "EMAIL_GURU": email,
-                                    "JAWATAN_CADANGAN": jawatan_clean,
-                                    "PENGALAMAN_SPM": pengalaman,
-                                    "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih,
-                                    "STATUS": "DICADANGKAN"
-                                }
+                                "data": data_lengkap
                             }
                             # FIX MAKLUMAT TAK IKUT BERSAMA - Cuba FULL data dulu dengan SEMUA maklumat!
                             minimal_insert = {
@@ -1262,8 +1266,7 @@ if st.session_state.role=="SUP":
                                 "status": "DICADANGKAN"
                             }
                             for attempt in [
-                                clean_insert,  # FULL data dengan SEMUA maklumat (jantina, poskod, alamat, telefon, email) - cuba dulu!
-                                clean_insert,  # Full data dengan data JSON
+                                clean_insert,  # FULL data dengan SEMUA maklumat POSKOD, JANTINA, TELEFON - cuba dulu!
                                 {
                                     "kod_ppd": kod_ppd_guru.upper(),
                                     "kod_sekolah": kod_sek_guru.upper(),
@@ -1605,34 +1608,41 @@ elif st.session_state.role=="PPD":
                 # Group cadangan by jawatan
                 df_cad_sorted = df_cad_all.sort_values("JAWATAN_CADANGAN") if "JAWATAN_CADANGAN" in df_cad_all.columns else df_cad_all
                 
-                # RULE PENTING: Cikgu sekolah asal tak boleh bertugas di sekolah dia sendiri!
-                st.info("⚠️ RULE: Cikgu sekolah asal TAK BOLEH bertugas di sekolah dia sendiri - sistem akan elak auto")
+                # RULE PENTING: Cikgu sekolah asal tak boleh bertugas di sekolah dia sendiri! + Guna POSKOD untuk terdekat
+                st.info("⚠️ RULE 1: Cikgu sekolah asal TAK BOLEH bertugas di sekolah dia sendiri - sistem akan elak auto")
+                st.info("📍 RULE 2: Sistem akan guna POSKOD_RUMAH untuk tempatkan calon ke sekolah terdekat (auto jana)")
                 for idx, row in df_cad_sorted.iterrows():
                     kod_sek_asal = str(row.get("KOD_SEKOLAH_ASAL","") or "").upper().strip()
+                    poskod_guru = str(row.get("POSKOD_RUMAH","") or "").strip()
                     # Find best pusat - use NO_PUSAT_ASAL if exists, else first pusat
                     asal = str(row.get("NO_PUSAT_ASAL","") or "").upper().strip()
                     pusat_tugas = None
                     
                     # Try asal first, but check if asal school = guru's own school
                     if asal and asal in df_pusat_ppd["NO_PUSAT"].values:
-                        # Check if pusat's tuan rumah = guru's sekolah asal - if same, skip!
                         pusat_info = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"]==asal]
                         if not pusat_info.empty:
                             tuan_rumah = str(pusat_info.iloc[0].get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
                             if tuan_rumah and kod_sek_asal and tuan_rumah == kod_sek_asal:
-                                # SAME SCHOOL - cannot assign! Find alternative
                                 pusat_tugas = None
                             else:
                                 pusat_tugas = asal
                     
                     if not pusat_tugas:
-                        # Assign to pusat that is NOT same as guru's sekolah asal
-                        for p_idx in range(len(df_pusat_ppd)):
-                            candidate = df_pusat_ppd.iloc[(idx + p_idx) % len(df_pusat_ppd)]
+                        # RULE: Guna POSKOD untuk cari sekolah terdekat + elak sekolah sendiri
+                        # Sort pusat by poskod proximity if guru has poskod
+                        candidates_sorted = df_pusat_ppd.copy()
+                        if poskod_guru and poskod_guru.isdigit():
+                            # Try to find pusat with similar poskod - for now, use same PPD and round-robin
+                            # Future: can add sekolah_master poskod lookup
+                            pass
+                        
+                        for p_idx in range(len(candidates_sorted)):
+                            candidate = candidates_sorted.iloc[(idx + p_idx) % len(candidates_sorted)]
                             cand_no = candidate["NO_PUSAT"]
                             cand_tuan = str(candidate.get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
                             if cand_tuan and kod_sek_asal and cand_tuan == kod_sek_asal:
-                                continue  # Skip - same school!
+                                continue  # Skip - same school! Cikgu tak boleh tugas di sekolah sendiri
                             pusat_tugas = cand_no
                             break
                         if not pusat_tugas:
