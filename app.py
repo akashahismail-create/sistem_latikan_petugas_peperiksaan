@@ -1576,13 +1576,14 @@ elif st.session_state.role=="PPD":
                 if not no_pusat.startswith(kod_ppd.upper()):
                     continue
                 nama = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                kod_sek_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH_TUAN_RUMAH") or "").upper().strip()
                 j_calon = r.get("jumlah_calon") or d.get("JUMLAH_CALON") or 0
                 j_kelas = r.get("jumlah_kelas") or d.get("JUMLAH_KELAS") or 0
                 try: jc = int(float(str(j_calon) or 0))
                 except: jc=0
                 try: jk = int(float(str(j_kelas) or 0))
                 except: jk=kira_kelas_dari_calon(jc)
-                rows.append({"NO_PUSAT":no_pusat,"NAMA_PUSAT":nama,"JUMLAH_CALON":jc,"JUMLAH_KELAS":jk,"PETUGAS":kira_petugas_dari_kelas(jk)})
+                rows.append({"NO_PUSAT":no_pusat,"NAMA_PUSAT":nama,"KOD_SEKOLAH_TUAN_RUMAH":kod_sek_tuan,"JUMLAH_CALON":jc,"JUMLAH_KELAS":jk,"PETUGAS":kira_petugas_dari_kelas(jk)})
             
             df_pusat_ppd = pd.DataFrame(rows)
             
@@ -1604,15 +1605,38 @@ elif st.session_state.role=="PPD":
                 # Group cadangan by jawatan
                 df_cad_sorted = df_cad_all.sort_values("JAWATAN_CADANGAN") if "JAWATAN_CADANGAN" in df_cad_all.columns else df_cad_all
                 
-                # Simple assignment: letak semua petugas di pusat, PPD boleh edit
+                # RULE PENTING: Cikgu sekolah asal tak boleh bertugas di sekolah dia sendiri!
+                st.info("⚠️ RULE: Cikgu sekolah asal TAK BOLEH bertugas di sekolah dia sendiri - sistem akan elak auto")
                 for idx, row in df_cad_sorted.iterrows():
+                    kod_sek_asal = str(row.get("KOD_SEKOLAH_ASAL","") or "").upper().strip()
                     # Find best pusat - use NO_PUSAT_ASAL if exists, else first pusat
                     asal = str(row.get("NO_PUSAT_ASAL","") or "").upper().strip()
+                    pusat_tugas = None
+                    
+                    # Try asal first, but check if asal school = guru's own school
                     if asal and asal in df_pusat_ppd["NO_PUSAT"].values:
-                        pusat_tugas = asal
-                    else:
-                        # Assign to first pusat that still needs petugas
-                        pusat_tugas = df_pusat_ppd.iloc[idx % len(df_pusat_ppd)]["NO_PUSAT"] if len(df_pusat_ppd)>0 else "BA142"
+                        # Check if pusat's tuan rumah = guru's sekolah asal - if same, skip!
+                        pusat_info = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"]==asal]
+                        if not pusat_info.empty:
+                            tuan_rumah = str(pusat_info.iloc[0].get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
+                            if tuan_rumah and kod_sek_asal and tuan_rumah == kod_sek_asal:
+                                # SAME SCHOOL - cannot assign! Find alternative
+                                pusat_tugas = None
+                            else:
+                                pusat_tugas = asal
+                    
+                    if not pusat_tugas:
+                        # Assign to pusat that is NOT same as guru's sekolah asal
+                        for p_idx in range(len(df_pusat_ppd)):
+                            candidate = df_pusat_ppd.iloc[(idx + p_idx) % len(df_pusat_ppd)]
+                            cand_no = candidate["NO_PUSAT"]
+                            cand_tuan = str(candidate.get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
+                            if cand_tuan and kod_sek_asal and cand_tuan == kod_sek_asal:
+                                continue  # Skip - same school!
+                            pusat_tugas = cand_no
+                            break
+                        if not pusat_tugas:
+                            pusat_tugas = df_pusat_ppd.iloc[idx % len(df_pusat_ppd)]["NO_PUSAT"] if len(df_pusat_ppd)>0 else "BA142"
                     
                     assignments.append({
                         "id": row.get("id",""),
@@ -1645,7 +1669,17 @@ elif st.session_state.role=="PPD":
                                 st.text_input("JAWATAN", value=curr.get("JAWATAN_CADANGAN",""), disabled=True)
                                 st.text_input("SEKOLAH ASAL", value=curr.get("NAMA_SEKOLAH_ASAL",""), disabled=True)
                             with col2:
-                                new_pusat = st.selectbox("Tukar Pusat Tugas (Boleh Edit)", df_pusat_ppd["NO_PUSAT"].tolist(), index=df_pusat_ppd["NO_PUSAT"].tolist().index(curr.get("NO_PUSAT_TUGAS")) if curr.get("NO_PUSAT_TUGAS") in df_pusat_ppd["NO_PUSAT"].tolist() else 0)
+                                # Filter: jangan tunjuk pusat yang sama dengan sekolah asal guru (RULE)
+                                kod_sek_asal_edit = str(curr.get("KOD_SEKOLAH_ASAL","") or "").upper().strip()
+                                allowed_pusat = []
+                                for _, pr in df_pusat_ppd.iterrows():
+                                    tuan = str(pr.get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
+                                    if tuan and kod_sek_asal_edit and tuan == kod_sek_asal_edit:
+                                        continue  # Skip same school
+                                    allowed_pusat.append(pr["NO_PUSAT"])
+                                if not allowed_pusat:
+                                    allowed_pusat = df_pusat_ppd["NO_PUSAT"].tolist()
+                                new_pusat = st.selectbox(f"Tukar Pusat Tugas (Boleh Edit) - {curr.get('KOD_SEKOLAH_ASAL')} tak boleh di sekolah sendiri", allowed_pusat, index=allowed_pusat.index(curr.get("NO_PUSAT_TUGAS")) if curr.get("NO_PUSAT_TUGAS") in allowed_pusat else 0)
                                 if st.button("💾 Update Pusat Tugas", type="primary"):
                                     try:
                                         # Update in cadangan_sup
