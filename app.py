@@ -19,6 +19,40 @@ supa = get_supabase()
 KOD_DAERAH = ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]
 PPD_MAP = {"BA":"Klang","BB":"Kuala Langat","BC":"Kuala Selangor","BD":"Hulu Langat","BE":"Hulu Selangor","BF":"Sabak Bernam","BG":"Gombak","BH":"Petaling Perdana","BJ":"Sepang","BK":"Petaling Utama"}
 
+# ================= FORMULA SPM - JUMLAH CALON LOGIC =================
+import math
+def kira_kelas_dari_calon(jumlah_calon):
+    """1 kelas = 20 calon, CEIL"""
+    try:
+        c = int(float(str(jumlah_calon).replace(",","").strip() or 0))
+        if c <=0:
+            return 0
+        return math.ceil(c / 20)
+    except:
+        return 0
+
+def kira_petugas_dari_kelas(jumlah_kelas):
+    """User formula: kelas + 9 = petugas diperlukan"""
+    try:
+        return int(jumlah_kelas) + 9
+    except:
+        return 0
+
+def kira_sekolah_perlu_calonkan(jumlah_kelas):
+    """Sekolah perlu calonkan = petugas (kelas+9) + 1 KP +1 TKP +1 Penyelia = kelas+12"""
+    try:
+        petugas = kira_petugas_dari_kelas(jumlah_kelas)
+        return petugas + 3  # KP, TKP, Penyelia Kawasan
+    except:
+        return 0
+
+def kira_csv_petugas(jumlah_kelas):
+    """CSV original: kelas +6 (untuk rujukan)"""
+    try:
+        return int(jumlah_kelas) + 6
+    except:
+        return 0
+
 # ================= HELPERS - FIX RLS + MULTI COLUMN SUPPORT =================
 def safe_count(table_name):
     """Count dengan fallback kalau RLS block count exact"""
@@ -835,31 +869,52 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
         st.markdown("---")
         col1,col2 = st.columns(2)
         with col1:
-            st.subheader("➕ Tambah Pusat Manual")
+            st.subheader("➕ Tambah Pusat Manual - Auto Kira SPM")
+            st.caption("Formula: 1 kelas=20 calon, CEIL(calon/20)=kelas, petugas=kelas+9, sekolah perlu calonkan=kelas+12 (petugas+KP+TKP+Penyelia)")
             with st.form("tambah_pusat"):
                 kod_pusat=st.text_input("KOD PUSAT * (cth: BA001)")
                 nama_pusat=st.text_input("NAMA PUSAT *")
                 kod_ppd_pusat=st.selectbox("KOD PPD", KOD_DAERAH, format_func=lambda x: f"{x}-{PPD_MAP[x]}")
-                alamat_pusat=st.text_area("ALAMAT PUSAT")
-                bilik=st.number_input("BIL BILIK", min_value=1, value=10)
-                calon=st.number_input("BIL CALON", min_value=1, value=200)
-                submit_pusat=st.form_submit_button("💾 Simpan Pusat", type="primary", use_container_width=True)
+                alamat_pusat=st.text_area("ALAMAT PUSAT (KOD SEKOLAH)")
+                calon_input=st.number_input("JUMLAH CALON * (contoh 105)", min_value=1, value=100, step=1, help="1 kelas = 20 calon. Auto kira kelas & petugas")
+                # Auto calc preview
+                kelas_preview = kira_kelas_dari_calon(calon_input)
+                petugas_preview = kira_petugas_dari_kelas(kelas_preview)
+                sekolah_need_preview = kira_sekolah_perlu_calonkan(kelas_preview)
+                st.info(f"📊 Auto Kira: {calon_input} calon → **{kelas_preview} kelas** (20/kelas) → **{petugas_preview} petugas** (kelas+9) → Sekolah perlu calonkan **{sekolah_need_preview} orang** (petugas+KP+TKP+Penyelia)")
+                submit_pusat=st.form_submit_button("💾 Simpan Pusat (Auto Kira)", type="primary", use_container_width=True)
                 if submit_pusat:
                     if not kod_pusat or not nama_pusat:
                         st.error("Kod & Nama Pusat wajib!")
                     else:
                         try:
+                            kelas_calc = kira_kelas_dari_calon(calon_input)
+                            petugas_calc = kira_petugas_dari_kelas(kelas_calc)
+                            sekolah_need = kira_sekolah_perlu_calonkan(kelas_calc)
                             supa.table("pusat_master").insert({
                                 "kod_pusat": kod_pusat.upper(),
                                 "nama_pusat": nama_pusat.upper(),
                                 "kod_ppd": kod_ppd_pusat,
                                 "ppd": PPD_MAP.get(kod_ppd_pusat,""),
                                 "alamat": alamat_pusat,
-                                "bilik": bilik,
-                                "calon": calon,
-                                "data": {"KOD PUSAT":kod_pusat.upper(),"NAMA PUSAT":nama_pusat.upper(),"KOD PPD":kod_ppd_pusat,"ALAMAT":alamat_pusat,"BILIK":bilik,"CALON":calon}
+                                "bilik": kelas_calc,
+                                "calon": int(calon_input),
+                                "jumlah_calon": int(calon_input),
+                                "jumlah_kelas": kelas_calc,
+                                "petugas_needed": petugas_calc,
+                                "data": {
+                                    "NO_PUSAT":kod_pusat.upper(),
+                                    "NAMA_PUSAT":nama_pusat.upper(),
+                                    "KOD PPD":kod_ppd_pusat,
+                                    "KOD_SEKOLAH":alamat_pusat,
+                                    "JUMLAH_CALON":str(calon_input),
+                                    "JUMLAH_KELAS":str(kelas_calc),
+                                    "PETUGAS_NEEDED":str(petugas_calc),
+                                    "SEKOLAH_PERLU_CALON":str(sekolah_need),
+                                    "FORMULA":f"{calon_input} calon /20 = {kelas_calc} kelas, {kelas_calc}+9={petugas_calc} petugas, +3 KP/TKP/Penyelia = {sekolah_need} sekolah perlu calon"
+                                }
                             }).execute()
-                            st.success(f"✅ Pusat {kod_pusat} berjaya tambah!")
+                            st.success(f"✅ Pusat {kod_pusat} berjaya tambah! {calon_input} calon = {kelas_calc} kelas, {petugas_calc} petugas, sekolah perlu {sekolah_need} orang")
                             st.balloons()
                             st.rerun()
                         except Exception as e:
