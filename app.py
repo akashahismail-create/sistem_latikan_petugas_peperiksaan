@@ -399,20 +399,11 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         
         df_norm = pd.DataFrame(norm_rows)
         
-        # Filter - FIX: support both KOD_SEKOLAH and KOD_SEKOLAH_ASAL
+        # Filter
         if kod_ppd:
-            try:
-                df_norm = df_norm[df_norm["KOD_PPD"].str.upper() == kod_ppd.upper()]
-            except:
-                pass
+            df_norm = df_norm[df_norm["KOD_PPD"].str.upper() == kod_ppd.upper()]
         if kod_sekolah:
-            try:
-                if "KOD_SEKOLAH_ASAL" in df_norm.columns:
-                    df_norm = df_norm[df_norm["KOD_SEKOLAH_ASAL"].str.upper() == kod_sekolah.upper()]
-                elif "KOD_SEKOLAH" in df_norm.columns:
-                    df_norm = df_norm[df_norm["KOD_SEKOLAH"].str.upper() == kod_sekolah.upper()]
-            except:
-                pass
+            df_norm = df_norm[df_norm["KOD_SEKOLAH"].str.upper() == kod_sekolah.upper()]
         
         return df_norm
     except Exception as e:
@@ -420,65 +411,20 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
 
 def to_excel(df):
     output = BytesIO()
-    # Cuba openpyxl dulu - paling standard
     try:
-        import openpyxl
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
-        return output.getvalue()
-    except ImportError:
-        pass
-    except Exception as e:
-        pass
-    
-    # Fallback xlsxwriter
-    try:
-        import xlsxwriter
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False)
-        return output.getvalue()
-    except:
-        pass
-    
-    # Last fallback - buat CSV tapi dengan header yang betul, dan beri nama .csv bukan .xlsx
-    # Tapi untuk elak Excel error "file format not valid", kita cuba buat xlsx minimal manual
-    try:
-        # Cuba buat xlsx kosong guna openpyxl jika ada
-        import openpyxl
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        # Tulis header
-        for col_idx, col_name in enumerate(df.columns, 1):
-            ws.cell(row=1, column=col_idx, value=col_name)
-        # Tulis data
-        for r_idx, row in enumerate(df.values, 2):
-            for c_idx, val in enumerate(row, 1):
-                ws.cell(row=r_idx, column=c_idx, value=str(val) if val is not None else "")
-        wb.save(output)
-        return output.getvalue()
-    except:
-        # Ultimate fallback - CSV
+    except ModuleNotFoundError:
+        try:
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False)
+        except:
+            output = BytesIO()
+            output.write(df.to_csv(index=False).encode('utf-8'))
+    except Exception:
         output = BytesIO()
-        output.write(df.to_csv(index=False).encode('utf-8-sig'))  # UTF-8 BOM untuk Excel
-        return output.getvalue()
-
-def get_template_guru():
-    """Buat template guru yang sah - bukan CSV dengan extension xlsx"""
-    import pandas as pd
-    template_data = {
-        "NAMA GURU": ["CONTOH: ALI BIN ABU"],
-        "IC": ["900101-01-1234"],
-        "JANTINA": ["L"],
-        "POSKOD_RUMAH": ["40000"],
-        "ALAMAT_RUMAH": ["NO 1, JALAN CONTOH"],
-        "TELEFON_GURU": ["012-3456789"],
-        "EMAIL_GURU": ["ali@gmail.com"],
-        "PENGALAMAN_SPM": ["3"],
-        "KOD_SEKOLAH": ["BFT0003"],
-        "NAMA_SEKOLAH_ASAL": ["SAM NURUL IMAN"],
-        "NO_PUSAT_ASAL": ["BA142"]
-    }
-    return pd.DataFrame(template_data)
+        output.write(df.to_csv(index=False).encode('utf-8'))
+    return output.getvalue()
 
 # ================= SESSION =================
 if "role" not in st.session_state:
@@ -948,8 +894,7 @@ if st.session_state.role=="SUP":
     elif menu=="📤 Import Excel":
         st.header(f"Import Excel Guru - {kod}")
         st.info("Format Excel: NAMA GURU, IC, JANTINA, NO TELEFON GURU, EMAIL GURU, ALAMAT RUMAH, KOD SEKOLAH, KOD PPD | Untuk 60K, guna JPN > Import")
-        st.download_button("📥 Download Template Guru (Excel Sah)", to_excel(get_template_guru()), file_name="template_guru.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        st.download_button("📥 Download Template OLD", to_excel(pd.DataFrame([{"NAMA GURU":"ALI BIN ABU","IC":"900101011234","NO TELEFON GURU":"0123456789","JANTINA":"LELAKI","JAWATAN CADANGAN":"Pengawas Peperiksaan","ALAMAT RUMAH":"NO 1 JLN...","KOD SEKOLAH":kod,"KOD PPD":info.get("kod_ppd","BH")}])), "template_guru.xlsx")
+        st.download_button("📥 Download Template", to_excel(pd.DataFrame([{"NAMA GURU":"ALI BIN ABU","IC":"900101011234","NO TELEFON GURU":"0123456789","JANTINA":"LELAKI","JAWATAN CADANGAN":"Pengawas Peperiksaan","ALAMAT RUMAH":"NO 1 JLN...","KOD SEKOLAH":kod,"KOD PPD":info.get("kod_ppd","BH")}])), "template_guru.xlsx")
         uploaded = st.file_uploader("Upload Excel Guru", type=["xlsx","xls"])
         if uploaded:
             try:
@@ -1092,51 +1037,88 @@ if st.session_state.role=="SUP":
         if df_guru.empty:
             st.warning("Tiada guru untuk dicadang. Tambah guru dulu.")
         else:
+            # Check existing cadangan count by jawatan
             df_cad_existing = get_cadangan_df(kod_sekolah=kod)
+            count_kp = len(df_cad_existing[df_cad_existing.astype(str).apply(lambda x: x.str.contains("Ketua Pengawas", case=False, na=False)).any(axis=1)]) if not df_cad_existing.empty else 0
+            
+            # Correct jawatan list
             JAWATAN_BETUL = ["Ketua Pengawas (WAJIB 1)", "Timbalan Ketua Pengawas (WAJIB 1)", "Penyelia Kawasan (Optional)", "Pengawas Peperiksaan (Ikut Kelas)"]
             
-            # SIMPLE - Tak guna st.form, guna multiselect biasa + button biasa (lebih stabil)
-            st.markdown("### Pilih Guru (EMAIL kosong dibenarkan)")
-            guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan (boleh pilih ramai)", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x}", key="guru_pilih_simple")
-            
-            col_jawatan, col_exp = st.columns(2)
-            with col_jawatan:
-                jawatan_cadang = st.selectbox("Jawatan Lantikan (Betul)", JAWATAN_BETUL, key="jawatan_simple")
-                jawatan_clean = jawatan_cadang.split(" (")[0]
-            with col_exp:
-                pengalaman_input = st.text_input("Pengalaman SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun", key="pengalaman_simple")
-            
-            # Auto BA142 - pilihan pusat dibuang
-            pusat_pilih = "BA142"
-            no_pusat_asal_input = "BA142"
-            
-            # Preview
-            if guru_pilih:
-                st.markdown("**Preview Data Guru Dipilih (EMAIL kosong dibenarkan - akan lepas simpan):**")
-                preview_rows=[]
-                for ic_prev in guru_pilih[:10]:
-                    gr_prev = df_guru[df_guru["IC"]==ic_prev]
-                    if not gr_prev.empty:
-                        r = gr_prev.iloc[0]
-                        preview_rows.append({
-                            "IC": ic_prev,
-                            "NAMA": r.get("NAMA GURU","")[:20],
-                            "JANTINA": r.get("JANTINA","") or "-",
-                            "POSKOD": r.get("POSKOD_RUMAH","") or "-",
-                            "ALAMAT": (r.get("ALAMAT_RUMAH","")[:20] or "-"),
-                            "TELEFON": r.get("TELEFON_GURU","") or r.get("TELEFON","") or "-",
-                            "EMAIL": r.get("EMAIL_GURU","") or "-"
-                        })
-                if preview_rows:
-                    st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+            with st.form("cadangan"):
+                guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan (boleh pilih ramai)", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x} - {df_guru[df_guru['IC']==x]['JAWATAN CADANGAN'].values[0] if 'JAWATAN CADANGAN' in df_guru.columns else ''}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    # Get pusat untuk sekolah ini - ambil dari pusat_master ikut kod PPD
+                    try:
+                        pusat_list_sek = []
+                        if 'pusat_sek' in locals() and pusat_sek:
+                            pusat_list_sek = [p.get("NO_PUSAT","") for p in pusat_sek if p.get("NO_PUSAT")]
+                        if not pusat_list_sek:
+                            # Fallback: ambil semua pusat dalam PPD yang sama (BA=Klang dll)
+                            df_pusat_tmp = get_pusat_df()
+                            if not df_pusat_tmp.empty:
+                                temp_rows=[]
+                                for _, r in df_pusat_tmp.iterrows():
+                                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                                    if isinstance(d, str):
+                                        try:
+                                            import json
+                                            d = json.loads(d)
+                                        except:
+                                            d={}
+                                    no = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                    if no and no.startswith(info.get("kod_ppd","BA").upper()):
+                                        temp_rows.append(no)
+                                pusat_list_sek = sorted(list(set(temp_rows)))[:50]
+                        if not pusat_list_sek:
+                            pusat_list_sek = ["BA142", "BA001", "BF037", "BG001"]  # Contoh fallback
+                    except Exception as ee:
+                        pusat_list_sek = ["BA142"]
+                    pusat_pilih = "BA142"  # Auto - pilihan pusat dibuang ikut request user
+                
+                with col2:
+                    jawatan_cadang = st.selectbox("Jawatan Lantikan (Betul)", JAWATAN_BETUL)
+                    # Clean jawatan for DB
+                    jawatan_clean = jawatan_cadang.split(" (")[0]  # Remove (WAJIB...) part
+                
+                # Pengalaman SPM - SUP isi (ikut arahan user)
+                col_exp1, col_exp2 = st.columns(2)
+                with col_exp1:
+                    pengalaman_input = st.text_input("Pengalaman SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun, 5 kali")
+                with col_exp2:
+                    no_pusat_asal_input = st.text_input("No Pusat Asal (jika ada)", placeholder="Contoh: BA142")
+                
+                # Preview data guru yang dipilih - tunjuk yang kosong
+                if 'guru_pilih' in locals() and guru_pilih:
+                    st.markdown("**Preview Data Guru Dipilih (yang kosong akan dihantar kosong - sila lengkapkan di Senarai Guru):**")
+                    preview_rows=[]
+                    for ic_prev in guru_pilih[:3]:  # Show max 3
+                        gr_prev = df_guru[df_guru["IC"]==ic_prev]
+                        if not gr_prev.empty:
+                            r = gr_prev.iloc[0]
+                            preview_rows.append({
+                                "IC": ic_prev,
+                                "NAMA": r.get("NAMA GURU","")[:20],
+                                "JANTINA": r.get("JANTINA","") or "KOSONG",
+                                "POSKOD": r.get("POSKOD_RUMAH","") or "KOSONG",
+                                "ALAMAT": (r.get("ALAMAT_RUMAH","")[:20] or "KOSONG"),
+                                "TELEFON": r.get("TELEFON_GURU","") or r.get("TELEFON","") or "KOSONG",
+                                "EMAIL": r.get("EMAIL_GURU","") or "KOSONG"
+                            })
+                    if preview_rows:
+                        st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+                        # Check if banyak kosong
+                        kosong_count = sum(1 for row in preview_rows if "KOSONG" in str(row.values()))
+                        if kosong_count>0:
+                            st.warning(f"⚠️ Ada data guru yang KOSONG (JANTINA/POSKOD/ALAMAT/TELEFON/EMAIL). Sila pergi menu **📋 Senarai Guru > Edit** untuk lengkapkan dulu, atau data kosong akan dihantar ke PPD.")
 
-                catatan = ""
-                # Button biasa (bukan form_submit_button) - lebih stabil
-                if st.button(f"📝 Simpan Cadangan - {len(guru_pilih) if 'guru_pilih' in locals() and guru_pilih else 0} guru", type="primary", key="btn_simpan_simple"):
+                catatan = ""  # Catatan tak perlu ikut arahan user
+                submit = st.form_submit_button(f"📝 Simpan Cadangan - {len(guru_pilih) if 'guru_pilih' in locals() else 0} guru", type="primary")
+                if submit:
                     if not guru_pilih:
                         st.error("Pilih sekurang-kurangnya 1 guru")
                     else:
-                        st.info(f"Menyimpan {len(guru_pilih)} guru...")
                         ok_count=0
                         fail_msg=""
                         for ic in guru_pilih:
@@ -1150,57 +1132,84 @@ if st.session_state.role=="SUP":
                             poskod = gr.get("POSKOD_RUMAH","")
                             alamat = gr.get("ALAMAT_RUMAH","") or gr.get("ALAMAT","")
                             telefon = gr.get("TELEFON_GURU","") or gr.get("TELEFON","")
-                            email = str(gr.get("EMAIL_GURU","") or gr.get("EMAIL","") or "").strip()  # EMAIL kosong dibenarkan
+                            email = gr.get("EMAIL_GURU","") or gr.get("EMAIL","")
                             pengalaman = pengalaman_input or gr.get("PENGALAMAN_SPM","") or gr.get("PENGALAMAN","")
                             kod_ppd_guru = (gr.get("KOD_PPD","") or info.get("kod_ppd","BA")).upper()  # FIX huruf kecil jadi besar
                             kod_sek_guru = gr.get("KOD_SEKOLAH","") or kod
                             nama_sek_guru = gr.get("NAMA_SEKOLAH_ASAL","") or gr.get("NAMA_SEKOLAH","") or info.get("nama_sekolah","")
                             no_pusat_asal = no_pusat_asal_input or gr.get("NO_PUSAT_ASAL","")
                             
-                            # Auto BA142 - pilihan pusat dibuang
-                            pusat_pilih = "BA142"
-                            if no_pusat_asal and no_pusat_asal.strip()!="":
-                                pusat_pilih = no_pusat_asal.strip()
-                            # Pastikan BA142 untuk BFT0003
-                            if kod.upper()=="BFT0003":
-                                pusat_pilih = "BA142"
+                            # Validasi kod_pusat - jangan guna SPM001 dummy
+                            if pusat_pilih == "SPM001" or not pusat_pilih:
+                                pusat_pilih = no_pusat_asal or info.get("kod_ppd","BA") + "001"
+                                if pusat_pilih == "SPM001":
+                                    pusat_pilih = "BA142"  # Fallback sebenar
                             
-                            # FIX: EMAIL kosong dibenarkan, cadangan mesti lekat
-                            kod_ppd_guru = kod_ppd_guru.upper()
+                            # Data lengkap untuk cadangan - HANYA guna KOD_SEKOLAH_ASAL & NO_PUSAT_ASAL (bukan duplicate)
+                            kod_ppd_guru = kod_ppd_guru.upper()  # Pastikan besar
                             kod_sek_guru = kod_sek_guru.upper()
-                            # Auto default kalau kosong - BA142 untuk BFT0003
-                            if not no_pusat_asal or no_pusat_asal.strip()=="":
-                                no_pusat_asal = "BA142"
-                            if not kod_sek_guru or kod_sek_guru.strip()=="":
-                                kod_sek_guru = kod.upper()
-                            if not nama_sek_guru or nama_sek_guru.strip()=="":
-                                nama_sek_guru = info.get("nama_sekolah","SAM NURUL IMAN")
-                            # EMAIL kosong dibenarkan - jangan block
-                            email = email or ""
-                            
-                            # Data lengkap - SIMPLE sahaja, tak duplicate
                             full_data = {
+                                "KOD_PPD": kod_ppd_guru,
+                                "KOD_PPD_ASAL": kod_ppd_guru,
+                                "KOD_SEKOLAH_ASAL": kod_sek_guru,  # HANYA ASAL
+                                "NAMA_SEKOLAH_ASAL": nama_sek_guru,
+                                "IC_GURU": ic,
+                                "NAMA_GURU": nama,
+                                "JANTINA": jantina,
+                                "jantina": jantina,
+                                "POSKOD_RUMAH": poskod,
+                                "poskod_rumah": poskod,
+                                "ALAMAT_RUMAH": alamat,
+                                "alamat_rumah": alamat,
+                                "TELEFON_GURU": telefon,
+                                "telefon_guru": telefon,
+                                "NO_TELEFON_GURU": telefon,
+                                "EMAIL_GURU": email,
+                                "email_guru": email,
+                                "JAWATAN_CADANGAN": jawatan_clean,
+                                "jawatan_cadangan": jawatan_clean,
+                                "PENGALAMAN_SPM": pengalaman,
+                                "pengalaman_spm": pengalaman,
+                                "NO_PUSAT_ASAL": no_pusat_asal,
+                                "no_pusat_asal": no_pusat_asal,
+                                "KOD_PUSAT": pusat_pilih,
+                                "kod_pusat": pusat_pilih,
+                                "NO_PUSAT": pusat_pilih,
+                                "CATATAN": catatan,
+                                "catatan": catatan,
+                                "STATUS": "DICADANGKAN",
+                                "status": "DICADANGKAN",
+                                "TARIKH_CADANG": str(datetime.date.today()),
+                                "tarikh_cadang": str(datetime.date.today()),
+                                "JUMLAH_CALON": total_calon_alert if 'total_calon_alert' in locals() else 0,
+                                "JUMLAH_KELAS": total_kelas_alert if 'total_kelas_alert' in locals() else 0
+                            }
+                            
+                            inserted=False
+                            # Data lengkap - HANYA guna KOD_SEKOLAH_ASAL & NO_PUSAT_ASAL (tak duplicate KOD_SEKOLAH/KOD_PUSAT)
+                            # FIX PPD huruf besar
+                            clean_insert = {
                                 "kod_ppd": kod_ppd_guru.upper(),
-                                "kod_sekolah": kod_sek_guru,
-                                "kod_sekolah_asal": kod_sek_guru,
+                                "kod_sekolah": kod_sek_guru.upper(),
+                                "kod_sekolah_asal": kod_sek_guru.upper(),
                                 "nama_sekolah_asal": nama_sek_guru,
                                 "ic_guru": ic,
                                 "nama_guru": nama,
-                                "jantina": jantina or "L",
-                                "poskod_rumah": poskod or "0",
-                                "alamat_rumah": alamat or "-",
-                                "telefon_guru": telefon or "-",
-                                "email_guru": email,  # Kosong dibenarkan
+                                "jantina": jantina,
+                                "poskod_rumah": poskod,
+                                "alamat_rumah": alamat,
+                                "telefon_guru": telefon,
+                                "email_guru": email,
                                 "jawatan_cadangan": jawatan_clean,
-                                "pengalaman_spm": pengalaman or "0",
-                                "no_pusat_asal": no_pusat_asal,
-                                "kod_pusat": no_pusat_asal,  # Guna NO_PUSAT_ASAL sebagai KOD_PUSAT
-                                "kod_ppd_asal": kod_ppd_guru,
+                                "pengalaman_spm": pengalaman,
+                                "no_pusat_asal": no_pusat_asal or pusat_pilih,  # HANYA NO_PUSAT_ASAL
+                                "kod_pusat": pusat_pilih,  # Simpan juga untuk compatibility tapi display guna NO_PUSAT_ASAL
+                                "kod_ppd_asal": kod_ppd_guru.upper(),
                                 "status": "DICADANGKAN",
                                 "tarikh_cadang": str(datetime.date.today()),
                                 "data": {
-                                    "KOD_PPD": kod_ppd_guru,
-                                    "KOD_SEKOLAH_ASAL": kod_sek_guru,
+                                    "KOD_PPD": kod_ppd_guru.upper(),
+                                    "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(),
                                     "NAMA_SEKOLAH_ASAL": nama_sek_guru,
                                     "IC_GURU": ic,
                                     "NAMA_GURU": nama,
@@ -1211,83 +1220,49 @@ if st.session_state.role=="SUP":
                                     "EMAIL_GURU": email,
                                     "JAWATAN_CADANGAN": jawatan_clean,
                                     "PENGALAMAN_SPM": pengalaman,
-                                    "NO_PUSAT_ASAL": no_pusat_asal,
+                                    "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih,
                                     "STATUS": "DICADANGKAN"
                                 }
                             }
-                            
-                            inserted=False
-                            # Data lengkap untuk simpan dalam JSON - POSKOD sangat penting untuk PPD jana!
-                            data_lengkap = {
-                                "KOD_PPD": kod_ppd_guru.upper(),
-                                "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(),
-                                "NAMA_SEKOLAH_ASAL": nama_sek_guru,
-                                "IC_GURU": ic,
-                                "NAMA_GURU": nama,
-                                "JANTINA": jantina or "L",
-                                "POSKOD_RUMAH": poskod or "",
-                                "ALAMAT_RUMAH": alamat or "",
-                                "TELEFON_GURU": telefon or "",
-                                "EMAIL_GURU": email or "",
-                                "JAWATAN_CADANGAN": jawatan_clean,
-                                "PENGALAMAN_SPM": pengalaman or "",
-                                "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih,
-                                "KOD_SEKOLAH": kod_sek_guru,
-                                "STATUS": "DICADANGKAN",
-                                "TARIKH_CADANG": str(datetime.date.today())
-                            }
-                            clean_insert = {
-                                "kod_ppd": kod_ppd_guru.upper(),
-                                "kod_sekolah": kod_sek_guru,
-                                "kod_sekolah_asal": kod_sek_guru,
-                                "nama_sekolah_asal": nama_sek_guru,
-                                "ic_guru": ic,
-                                "nama_guru": nama,
-                                "jantina": jantina or "L",
-                                "poskod_rumah": poskod or "",
-                                "alamat_rumah": alamat or "",
-                                "telefon_guru": telefon or "",
-                                "email_guru": email or "",
-                                "jawatan_cadangan": jawatan_clean,
-                                "pengalaman_spm": pengalaman or "",
-                                "no_pusat_asal": no_pusat_asal or pusat_pilih,
-                                "kod_pusat": pusat_pilih,
-                                "kod_ppd_asal": kod_ppd_guru.upper(),
-                                "status": "DICADANGKAN",
-                                "tarikh_cadang": str(datetime.date.today()),
-                                "data": data_lengkap
-                            }
-                            # FIX MAKLUMAT TAK IKUT BERSAMA - Cuba FULL data dulu dengan SEMUA maklumat!
-                            minimal_insert = {
-                                "kod_ppd": kod_ppd_guru.upper(),
-                                "kod_sekolah": kod_sek_guru.upper(),
-                                "ic_guru": ic,
-                                "nama_guru": nama,
-                                "status": "DICADANGKAN"
-                            }
                             for attempt in [
-                                clean_insert,  # FULL data dengan SEMUA maklumat POSKOD, JANTINA, TELEFON - cuba dulu!
+                                clean_insert,
+                                {"data": full_data},
                                 {
                                     "kod_ppd": kod_ppd_guru.upper(),
                                     "kod_sekolah": kod_sek_guru.upper(),
                                     "ic_guru": ic,
                                     "nama_guru": nama,
-                                    "kod_pusat": no_pusat_asal,  # Guna NO_PUSAT_ASAL
+                                    "kod_pusat": pusat_pilih,
                                     "jawatan_cadangan": jawatan_clean,
                                     "status": "DICADANGKAN",
                                     "tarikh_cadang": str(datetime.date.today()),
-                                    "jantina": jantina or "L",
-                                    "poskod_rumah": poskod or "0",
-                                    "alamat_rumah": alamat or "-",
-                                    "telefon_guru": telefon or "-",
-                                    "email_guru": email or "",  # Kosong dibenarkan
-                                    "pengalaman_spm": pengalaman or "0",
+                                    "jantina": jantina,
+                                    "poskod_rumah": poskod,
+                                    "alamat_rumah": alamat,
+                                    "telefon_guru": telefon,
+                                    "email_guru": email,
+                                    "pengalaman_spm": pengalaman,
                                     "no_pusat_asal": no_pusat_asal,
-                                    "kod_ppd_asal": kod_ppd_guru.upper(),
-                                    "kod_sekolah_asal": kod_sek_guru.upper(),
+                                    "kod_ppd_asal": kod_ppd_guru,
+                                    "kod_sekolah_asal": kod_sek_guru,
                                     "nama_sekolah_asal": nama_sek_guru
                                 },
-                                minimal_insert
+                                {
+                                    "KOD_PPD": kod_ppd_guru,
+                                    "KOD_SEKOLAH": kod_sek_guru,
+                                    "IC_GURU": ic,
+                                    "NAMA_GURU": nama,
+                                    "KOD_PUSAT": pusat_pilih,
+                                    "JAWATAN_CADANGAN": jawatan_clean,
+                                    "JANTINA": jantina,
+                                    "POSKOD_RUMAH": poskod,
+                                    "ALAMAT_RUMAH": alamat,
+                                    "TELEFON_GURU": telefon,
+                                    "EMAIL_GURU": email,
+                                    "PENGALAMAN_SPM": pengalaman,
+                                    "NO_PUSAT_ASAL": no_pusat_asal,
+                                    "STATUS": "DICADANGKAN"
+                                }
                             ]:
                                 try:
                                     supa.table("cadangan_sup").insert(attempt).execute()
@@ -1296,20 +1271,9 @@ if st.session_state.role=="SUP":
                                     break
                                 except Exception as e:
                                     fail_msg=str(e)
-                                    # Debug: simpan error untuk tunjuk
-                                    if "duplicate" in fail_msg.lower() or "already exists" in fail_msg.lower():
-                                        # Kalau duplicate IC, update sahaja
-                                        try:
-                                            supa.table("cadangan_sup").update(attempt).eq("ic_guru", ic).eq("kod_sekolah", kod_sek_guru.upper()).execute()
-                                            inserted=True
-                                            ok_count+=1
-                                            break
-                                        except:
-                                            pass
                                     continue
                             if not inserted:
-                                st.error(f"❌ Gagal {ic} - {nama}: {fail_msg[:500]}")
-                                st.code(fail_msg[:1000])  # Tunjuk full error untuk debug
+                                st.error(f"Gagal {ic} - {nama}: {fail_msg[:400]}")
                         if ok_count>0:
                             st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih} - SEMUA maklumat lengkap!")
                             st.balloons()
@@ -1419,7 +1383,7 @@ elif st.session_state.role=="PPD":
     st.sidebar.title(f"🏢 PPD {kod_ppd}")
     st.sidebar.caption(f"{PPD_MAP.get(kod_ppd,'')}")
 
-    menu=st.sidebar.radio("Menu PPD", ["📊 Dashboard PPD","🏫 Sekolah dalam PPD","🏫 Pusat di PPD","🚀 Jana Keseluruhan","📋 Cadangan SUP","✅ Kelulusan","📥 Export","🚪 Log Keluar"])
+    menu=st.sidebar.radio("Menu PPD", ["📊 Dashboard PPD","🏫 Sekolah dalam PPD","🏫 Pusat di PPD","📋 Cadangan SUP","✅ Kelulusan","📥 Export","🚪 Log Keluar"])
 
     if menu=="🚪 Log Keluar":
         st.session_state.clear()
@@ -1551,160 +1515,6 @@ elif st.session_state.role=="PPD":
                 c3.metric("Total Kelas", int(df_f["JUMLAH_KELAS"].sum()))
                 c4.metric("Total Perlu", int(df_f["SEKOLAH_PERLU"].sum()))
                 st.download_button(f"Export Pusat {kod_ppd}", to_excel(df_f), file_name=f"pusat_{kod_ppd}.xlsx", use_container_width=True)
-
-    elif menu=="🚀 Jana Keseluruhan":
-        st.header(f"🚀 Jana Keseluruhan - Letak Semua Petugas di Pusat Peperiksaan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,'')}")
-        st.caption("Function ni akan ambil semua cadangan dari SUP dan letak di pusat peperiksaan ikut jumlah calon. Boleh edit kalau tak sesuai.")
-        
-        # Get all pusat in this PPD
-        df_pusat_raw = get_pusat_df()
-        df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
-        
-        if df_pusat_raw.empty:
-            st.warning("Tiada pusat_master - import dulu di JPN > Pusat Master")
-        elif df_cad_all.empty:
-            st.warning(f"Belum ada cadangan dari SUP untuk PPD {kod_ppd}. Sekolah perlu cadang dulu di SUP > Cadangan Lantikan.")
-        else:
-            # Build pusat list filtered by PPD
-            rows=[]
-            for _, r in df_pusat_raw.iterrows():
-                d = r.get("data") if isinstance(r.get("data"), dict) else {}
-                if isinstance(d, str):
-                    try:
-                        import json
-                        d = json.loads(d)
-                    except:
-                        d={}
-                no_pusat = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
-                if not no_pusat.startswith(kod_ppd.upper()):
-                    continue
-                nama = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
-                kod_sek_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH_TUAN_RUMAH") or "").upper().strip()
-                j_calon = r.get("jumlah_calon") or d.get("JUMLAH_CALON") or 0
-                j_kelas = r.get("jumlah_kelas") or d.get("JUMLAH_KELAS") or 0
-                try: jc = int(float(str(j_calon) or 0))
-                except: jc=0
-                try: jk = int(float(str(j_kelas) or 0))
-                except: jk=kira_kelas_dari_calon(jc)
-                rows.append({"NO_PUSAT":no_pusat,"NAMA_PUSAT":nama,"KOD_SEKOLAH_TUAN_RUMAH":kod_sek_tuan,"JUMLAH_CALON":jc,"JUMLAH_KELAS":jk,"PETUGAS":kira_petugas_dari_kelas(jk)})
-            
-            df_pusat_ppd = pd.DataFrame(rows)
-            
-            if df_pusat_ppd.empty:
-                st.warning(f"Tiada pusat dengan prefix {kod_ppd} dalam pusat_master")
-            else:
-                st.success(f"Jumpa {len(df_pusat_ppd)} pusat di PPD {kod_ppd} | Total cadangan: {len(df_cad_all)} guru")
-                
-                # Show pusat with petugas needed
-                st.subheader("📍 Senarai Pusat & Keperluan Petugas")
-                st.dataframe(df_pusat_ppd.sort_values("NO_PUSAT"), use_container_width=True, hide_index=True)
-                
-                # Auto assign - simple: assign cadangan to pusat round-robin or by sekolah asal
-                st.markdown("---")
-                st.subheader("👥 Penempatan Petugas - Auto Jana")
-                
-                # Create assignment
-                assignments=[]
-                # Group cadangan by jawatan
-                df_cad_sorted = df_cad_all.sort_values("JAWATAN_CADANGAN") if "JAWATAN_CADANGAN" in df_cad_all.columns else df_cad_all
-                
-                # RULE PENTING: Cikgu sekolah asal tak boleh bertugas di sekolah dia sendiri! + Guna POSKOD untuk terdekat
-                st.info("⚠️ RULE 1: Cikgu sekolah asal TAK BOLEH bertugas di sekolah dia sendiri - sistem akan elak auto")
-                st.info("📍 RULE 2: Sistem akan guna POSKOD_RUMAH untuk tempatkan calon ke sekolah terdekat (auto jana)")
-                for idx, row in df_cad_sorted.iterrows():
-                    kod_sek_asal = str(row.get("KOD_SEKOLAH_ASAL","") or "").upper().strip()
-                    poskod_guru = str(row.get("POSKOD_RUMAH","") or "").strip()
-                    # Find best pusat - use NO_PUSAT_ASAL if exists, else first pusat
-                    asal = str(row.get("NO_PUSAT_ASAL","") or "").upper().strip()
-                    pusat_tugas = None
-                    
-                    # Try asal first, but check if asal school = guru's own school
-                    if asal and asal in df_pusat_ppd["NO_PUSAT"].values:
-                        pusat_info = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"]==asal]
-                        if not pusat_info.empty:
-                            tuan_rumah = str(pusat_info.iloc[0].get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
-                            if tuan_rumah and kod_sek_asal and tuan_rumah == kod_sek_asal:
-                                pusat_tugas = None
-                            else:
-                                pusat_tugas = asal
-                    
-                    if not pusat_tugas:
-                        # RULE: Guna POSKOD untuk cari sekolah terdekat + elak sekolah sendiri
-                        # Sort pusat by poskod proximity if guru has poskod
-                        candidates_sorted = df_pusat_ppd.copy()
-                        if poskod_guru and poskod_guru.isdigit():
-                            # Try to find pusat with similar poskod - for now, use same PPD and round-robin
-                            # Future: can add sekolah_master poskod lookup
-                            pass
-                        
-                        for p_idx in range(len(candidates_sorted)):
-                            candidate = candidates_sorted.iloc[(idx + p_idx) % len(candidates_sorted)]
-                            cand_no = candidate["NO_PUSAT"]
-                            cand_tuan = str(candidate.get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
-                            if cand_tuan and kod_sek_asal and cand_tuan == kod_sek_asal:
-                                continue  # Skip - same school! Cikgu tak boleh tugas di sekolah sendiri
-                            pusat_tugas = cand_no
-                            break
-                        if not pusat_tugas:
-                            pusat_tugas = df_pusat_ppd.iloc[idx % len(df_pusat_ppd)]["NO_PUSAT"] if len(df_pusat_ppd)>0 else "BA142"
-                    
-                    assignments.append({
-                        "id": row.get("id",""),
-                        "NAMA_GURU": row.get("NAMA_GURU",""),
-                        "IC_GURU": row.get("IC_GURU",""),
-                        "JAWATAN_CADANGAN": row.get("JAWATAN_CADANGAN",""),
-                        "KOD_SEKOLAH_ASAL": row.get("KOD_SEKOLAH_ASAL",""),
-                        "NAMA_SEKOLAH_ASAL": row.get("NAMA_SEKOLAH_ASAL",""),
-                        "NO_PUSAT_ASAL": row.get("NO_PUSAT_ASAL",""),
-                        "NO_PUSAT_TUGAS": pusat_tugas,
-                        "STATUS": row.get("STATUS","DICADANGKAN")
-                    })
-                
-                df_assign = pd.DataFrame(assignments)
-                st.dataframe(df_assign, use_container_width=True, hide_index=True)
-                
-                # Edit function - PPD boleh edit pusat tugas kalau tak sesuai
-                st.markdown("---")
-                st.subheader("✏️ Edit Penempatan (Kalau Tak Sesuai)")
-                st.caption("Pilih guru dan tukar pusat tugas, kemudian klik Update")
-                
-                if not df_assign.empty:
-                    edit_ic = st.selectbox("Pilih Guru untuk edit pusat tugas", df_assign["IC_GURU"].tolist(), format_func=lambda x: f"{x} - {df_assign[df_assign['IC_GURU']==x]['NAMA_GURU'].values[0] if not df_assign[df_assign['IC_GURU']==x].empty else x}")
-                    if edit_ic:
-                        curr = df_assign[df_assign["IC_GURU"]==edit_ic].iloc[0] if not df_assign[df_assign["IC_GURU"]==edit_ic].empty else None
-                        if curr is not None:
-                            col1,col2 = st.columns(2)
-                            with col1:
-                                st.text_input("NAMA GURU", value=curr.get("NAMA_GURU",""), disabled=True)
-                                st.text_input("JAWATAN", value=curr.get("JAWATAN_CADANGAN",""), disabled=True)
-                                st.text_input("SEKOLAH ASAL", value=curr.get("NAMA_SEKOLAH_ASAL",""), disabled=True)
-                            with col2:
-                                # Filter: jangan tunjuk pusat yang sama dengan sekolah asal guru (RULE)
-                                kod_sek_asal_edit = str(curr.get("KOD_SEKOLAH_ASAL","") or "").upper().strip()
-                                allowed_pusat = []
-                                for _, pr in df_pusat_ppd.iterrows():
-                                    tuan = str(pr.get("KOD_SEKOLAH_TUAN_RUMAH","") or "").upper().strip()
-                                    if tuan and kod_sek_asal_edit and tuan == kod_sek_asal_edit:
-                                        continue  # Skip same school
-                                    allowed_pusat.append(pr["NO_PUSAT"])
-                                if not allowed_pusat:
-                                    allowed_pusat = df_pusat_ppd["NO_PUSAT"].tolist()
-                                new_pusat = st.selectbox(f"Tukar Pusat Tugas (Boleh Edit) - {curr.get('KOD_SEKOLAH_ASAL')} tak boleh di sekolah sendiri", allowed_pusat, index=allowed_pusat.index(curr.get("NO_PUSAT_TUGAS")) if curr.get("NO_PUSAT_TUGAS") in allowed_pusat else 0)
-                                if st.button("💾 Update Pusat Tugas", type="primary"):
-                                    try:
-                                        # Update in cadangan_sup
-                                        update_data = {"kod_pusat": new_pusat, "no_pusat_asal": new_pusat}
-                                        # Try to find id
-                                        if curr.get("id"):
-                                            supa.table("cadangan_sup").update(update_data).eq("id", curr.get("id")).execute()
-                                        else:
-                                            supa.table("cadangan_sup").update(update_data).eq("ic_guru", edit_ic).execute()
-                                        st.success(f"✅ Berjaya tukar {curr.get('NAMA_GURU')} ke pusat {new_pusat}")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Gagal update: {e}")
-                
-                st.download_button("📥 Export Penempatan Penuh", to_excel(df_assign), file_name=f"penempatan_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
 
     elif menu=="📋 Cadangan SUP":
 
