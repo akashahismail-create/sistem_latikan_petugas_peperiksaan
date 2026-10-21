@@ -62,9 +62,24 @@ def _df_from_rows(rows):
         if isinstance(r, dict):
             if "data" in r and isinstance(r["data"], dict) and r["data"]:
                 d=r["data"].copy()
+                # Copy root kod_ppd/kod_sekolah to data for filter compatibility
+                for k in ["kod_ppd","kod_sekolah","KOD_PPD","KOD_SEKOLAH","nama_guru","ic_guru"]:
+                    if k in r and r[k]:
+                        d[k]=r[k]
+                        d[k.upper()]=r[k]
+                        if k.lower()=="kod_ppd":
+                            d["KOD PPD"]=r[k]
+                            d["KOD_PPD"]=r[k]
+                        if k.lower()=="kod_sekolah":
+                            d["KOD SEKOLAH"]=r[k]
+                            d["KOD_SEKOLAH"]=r[k]
                 out.append(d)
             else:
                 r2={k:v for k,v in r.items() if k not in ["id","created_at","data"]}
+                for k in ["kod_ppd","kod_sekolah","KOD_PPD","KOD_SEKOLAH"]:
+                    if k in r and r[k]:
+                        r2[k]=r[k]
+                        r2[k.upper()]=r[k]
                 out.append(r2)
     return pd.DataFrame(out)
 
@@ -3694,7 +3709,7 @@ CREATE POLICY "Allow all" ON guru_master FOR ALL TO public USING (true) WITH CHE
                                 for _, row in df.iterrows():
                                     rd=row.to_dict()
                                     clean={k: ("" if pd.isna(v) else str(v)) for k,v in rd.items()}
-                                    batch.append({"KOD_PPD": ppd, "data": clean})
+                                    batch.append({"kod_ppd": ppd, "KOD_PPD": ppd, "data": clean})
                                 for i in range(0, len(batch), 100):
                                     supa.table("cadangan_sup").insert(batch[i:i+100]).execute()
                                 total+=len(batch)
