@@ -616,40 +616,149 @@ if st.session_state.role=="SUP":
             st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
 
     elif menu=="📋 Senarai Guru":
-        st.header(f"Senarai Guru - {kod}")
+        st.header(f"Senarai Guru - {kod} - Lengkap")
         if df_guru.empty:
             st.info("guru_master kosong untuk sekolah ini. Sila Tambah Guru atau Import Excel.")
-            st.write(f"Total dalam sistem: {supa.table('guru_master').select('id', count='exact').execute().count} records")
         else:
-            st.success(f"Ada {len(df_guru)} guru di {kod}")
-            st.dataframe(df_guru[["NAMA GURU","IC","TELEFON","JAWATAN CADANGAN","ALAMAT"]], use_container_width=True, hide_index=True)
-            st.download_button("📥 Export Excel", to_excel(df_guru), file_name=f"guru_{kod}.xlsx", use_container_width=True)
+            st.success(f"Ada {len(df_guru)} guru di {kod} - Data lengkap diperlukan untuk cadangan")
+            # Show all columns
+            cols_to_show = [c for c in ["NAMA GURU","IC","JANTINA","POSKOD_RUMAH","ALAMAT_RUMAH","TELEFON_GURU","EMAIL_GURU","JAWATAN CADANGAN","PENGALAMAN_SPM","KOD_SEKOLAH_ASAL","NAMA_SEKOLAH_ASAL","NO_PUSAT_ASAL"] if c in df_guru.columns]
+            if cols_to_show:
+                st.dataframe(df_guru[cols_to_show], use_container_width=True, hide_index=True)
+                # Highlight yang kosong
+                kosong = df_guru[df_guru["JANTINA"].isin(["", "KOSONG"]) | df_guru["POSKOD_RUMAH"].isin(["", "KOSONG"]) | df_guru["TELEFON_GURU"].isin(["", "KOSONG"])]
+                if not kosong.empty:
+                    st.warning(f"⚠️ Ada {len(kosong)} guru dengan data KOSONG (JANTINA/POSKOD/ALAMAT/TELEFON/EMAIL). Sila edit di bawah.")
+            st.download_button("📥 Export Excel Lengkap", to_excel(df_guru), file_name=f"guru_{kod}_lengkap.xlsx", use_container_width=True)
+            
+            st.markdown("---")
+            st.subheader("✏️ Edit Data Guru (Lengkapkan yang kosong)")
+            edit_ic = st.selectbox("Pilih IC guru untuk edit", df_guru["IC"].tolist(), format_func=lambda x: f"{x} - {df_guru[df_guru['IC']==x]['NAMA GURU'].values[0] if not df_guru[df_guru['IC']==x].empty else x}")
+            if edit_ic:
+                guru_edit = df_guru[df_guru["IC"]==edit_ic].iloc[0] if not df_guru[df_guru["IC"]==edit_ic].empty else None
+                if guru_edit is not None:
+                    with st.form(f"edit_{edit_ic}"):
+                        c1,c2 = st.columns(2)
+                        with c1:
+                            e_nama = st.text_input("NAMA GURU", value=guru_edit.get("NAMA GURU",""))
+                            e_ic = st.text_input("IC", value=edit_ic, disabled=True)
+                            e_jantina = st.selectbox("JANTINA", ["LELAKI","PEREMPUAN"], index=0 if guru_edit.get("JANTINA","")=="LELAKI" else 1)
+                            e_poskod = st.text_input("POSKOD RUMAH", value=guru_edit.get("POSKOD_RUMAH",""))
+                            e_alamat = st.text_area("ALAMAT RUMAH", value=guru_edit.get("ALAMAT_RUMAH",""))
+                        with c2:
+                            e_tel = st.text_input("TELEFON GURU", value=guru_edit.get("TELEFON_GURU","") or guru_edit.get("TELEFON",""))
+                            e_email = st.text_input("EMAIL GURU", value=guru_edit.get("EMAIL_GURU",""))
+                            e_jawatan = st.selectbox("JAWATAN CADANGAN", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"], index=0)
+                            e_pengalaman = st.text_input("PENGALAMAN SPM", value=guru_edit.get("PENGALAMAN_SPM",""))
+                            e_no_pusat = st.text_input("NO PUSAT ASAL", value=guru_edit.get("NO_PUSAT_ASAL",""))
+                        if st.form_submit_button("💾 Update Guru", type="primary"):
+                            # Update in guru_master
+                            try:
+                                # Find id
+                                res = supa.table("guru_master").select("id,data").eq("ic_guru", edit_ic).eq("kod_sekolah", kod).execute()
+                                if not res.data:
+                                    res = supa.table("guru_master").select("id,data").eq("ic_guru", edit_ic).execute()
+                                for row in res.data or []:
+                                    old_data = row.get("data") or {}
+                                    if isinstance(old_data, str):
+                                        try:
+                                            import json
+                                            old_data = json.loads(old_data)
+                                        except:
+                                            old_data={}
+                                    new_data = {**old_data, **{
+                                        "NAMA GURU": e_nama.upper(),
+                                        "IC": edit_ic,
+                                        "JANTINA": e_jantina,
+                                        "POSKOD_RUMAH": e_poskod,
+                                        "ALAMAT_RUMAH": e_alamat,
+                                        "TELEFON_GURU": e_tel,
+                                        "EMAIL_GURU": e_email,
+                                        "JAWATAN_CADANGAN": e_jawatan,
+                                        "PENGALAMAN_SPM": e_pengalaman,
+                                        "NO_PUSAT_ASAL": e_no_pusat,
+                                        "KOD_SEKOLAH": kod,
+                                        "KOD_PPD": info.get("kod_ppd","BH"),
+                                        "NAMA_SEKOLAH_ASAL": info.get("nama_sekolah",""),
+                                        "KOD_SEKOLAH_ASAL": kod
+                                    }}
+                                    supa.table("guru_master").update({"nama_guru": e_nama.upper(), "ic_guru": edit_ic, "data": new_data}).eq("id", row["id"]).execute()
+                                st.success(f"✅ {e_nama} berjaya update!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gagal update: {e}")
 
     elif menu=="➕ Tambah Guru":
-        st.header(f"Tambah Guru - {kod}")
+        st.header(f"Tambah Guru - {kod} - Lengkap Semua Maklumat")
         with st.form("tambah_guru", clear_on_submit=True):
             col1,col2 = st.columns(2)
             with col1:
-                nama=st.text_input("NAMA GURU *")
-                ic=st.text_input("NO IC * (12 digit)")
-                tel=st.text_input("NO TELEFON *")
-                jantina=st.selectbox("JANTINA", ["LELAKI","PEREMPUAN"])
+                nama=st.text_input("NAMA GURU * (Wajib)")
+                ic=st.text_input("NO IC * (12 digit, Wajib)")
+                jantina=st.selectbox("JANTINA *", ["LELAKI","PEREMPUAN"])
+                poskod=st.text_input("POSKOD RUMAH *")
+                alamat=st.text_area("ALAMAT RUMAH * (Wajib)")
             with col2:
+                tel=st.text_input("NO TELEFON GURU * (Wajib)")
+                email=st.text_input("EMAIL GURU")
                 jaw=st.selectbox("JAWATAN CADANGAN (Betul)", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"])
-                alamat=st.text_area("ALAMAT RUMAH")
-                pengalaman=st.text_input("PENGALAMAN (Tahun)")
-            submit=st.form_submit_button("💾 Simpan Guru", use_container_width=True, type="primary")
+                pengalaman=st.text_input("PENGALAMAN SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun")
+                no_pusat_asal=st.text_input("NO PUSAT ASAL", placeholder="Contoh: BA142")
+            submit=st.form_submit_button("💾 Simpan Guru Lengkap", use_container_width=True, type="primary")
             if submit:
-                if not nama or not ic or not tel:
-                    st.error("Nama, IC, Telefon wajib isi!")
+                if not nama or not ic or not tel or not alamat:
+                    st.error("Nama, IC, Telefon, Alamat wajib isi!")
                 else:
-                    data={"NAMA GURU":nama.upper(),"IC":ic,"NO TELEFON GURU":tel,"JANTINA":jantina,"JAWATAN CADANGAN":jaw,"ALAMAT RUMAH":alamat,"PENGALAMAN":pengalaman,"KOD SEKOLAH":kod, "TARIKH DAFTAR": str(datetime.date.today())}
+                    data={
+                        "NAMA GURU":nama.upper(),
+                        "IC":ic,
+                        "JANTINA":jantina,
+                        "POSKOD_RUMAH":poskod,
+                        "ALAMAT_RUMAH":alamat,
+                        "NO TELEFON GURU":tel,
+                        "TELEFON_GURU":tel,
+                        "EMAIL_GURU":email,
+                        "JAWATAN_CADANGAN":jaw,
+                        "JAWATAN CADANGAN":jaw,
+                        "PENGALAMAN_SPM":pengalaman,
+                        "PENGALAMAN":pengalaman,
+                        "NO_PUSAT_ASAL":no_pusat_asal,
+                        "KOD_SEKOLAH":kod,
+                        "KOD_SEKOLAH_ASAL":kod,
+                        "NAMA_SEKOLAH_ASAL":info.get("nama_sekolah",""),
+                        "KOD_PPD":info.get("kod_ppd","BH"),
+                        "KOD_PPD_ASAL":info.get("kod_ppd","BH"),
+                        "TARIKH DAFTAR": str(datetime.date.today())
+                    }
                     try:
-                        supa.table("guru_master").insert({"kod_ppd":info.get("kod_ppd","BH").lower(),"kod_sekolah":kod,"nama_guru":nama.upper(),"ic_guru":ic,"data":data}).execute()
-                        st.success(f"✅ {nama.upper()} berjaya tambah ke {kod}!")
+                        supa.table("guru_master").insert({
+                            "kod_ppd":info.get("kod_ppd","BH").lower(),
+                            "kod_sekolah":kod,
+                            "nama_guru":nama.upper(),
+                            "ic_guru":ic,
+                            "jantina":jantina,
+                            "poskod_rumah":poskod,
+                            "alamat_rumah":alamat,
+                            "telefon_guru":tel,
+                            "email_guru":email,
+                            "jawatan_cadangan":jaw,
+                            "pengalaman_spm":pengalaman,
+                            "no_pusat_asal":no_pusat_asal,
+                            "kod_ppd_asal":info.get("kod_ppd","BH"),
+                            "kod_sekolah_asal":kod,
+                            "nama_sekolah_asal":info.get("nama_sekolah",""),
+                            "data":data
+                        }).execute()
+                        st.success(f"✅ {nama.upper()} berjaya tambah ke {kod} dengan data lengkap!")
                         st.balloons()
                     except Exception as e:
-                        st.error(f"Gagal: {e}")
+                        # Fallback minimal
+                        try:
+                            supa.table("guru_master").insert({"kod_ppd":info.get("kod_ppd","BH").lower(),"kod_sekolah":kod,"nama_guru":nama.upper(),"ic_guru":ic,"data":data}).execute()
+                            st.success(f"✅ {nama.upper()} berjaya tambah (fallback)!")
+                            st.balloons()
+                        except Exception as e2:
+                            st.error(f"Gagal: {e2}")
 
     elif menu=="📤 Import Excel":
         st.header(f"Import Excel Guru - {kod}")
@@ -842,7 +951,38 @@ if st.session_state.role=="SUP":
                     # Clean jawatan for DB
                     jawatan_clean = jawatan_cadang.split(" (")[0]  # Remove (WAJIB...) part
                 
-                catatan = st.text_area("Catatan (optional)")
+                # Pengalaman SPM - SUP isi (ikut arahan user)
+                col_exp1, col_exp2 = st.columns(2)
+                with col_exp1:
+                    pengalaman_input = st.text_input("Pengalaman SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun, 5 kali")
+                with col_exp2:
+                    no_pusat_asal_input = st.text_input("No Pusat Asal (jika ada)", placeholder="Contoh: BA142")
+                
+                # Preview data guru yang dipilih - tunjuk yang kosong
+                if 'guru_pilih' in locals() and guru_pilih:
+                    st.markdown("**Preview Data Guru Dipilih (yang kosong akan dihantar kosong - sila lengkapkan di Senarai Guru):**")
+                    preview_rows=[]
+                    for ic_prev in guru_pilih[:3]:  # Show max 3
+                        gr_prev = df_guru[df_guru["IC"]==ic_prev]
+                        if not gr_prev.empty:
+                            r = gr_prev.iloc[0]
+                            preview_rows.append({
+                                "IC": ic_prev,
+                                "NAMA": r.get("NAMA GURU","")[:20],
+                                "JANTINA": r.get("JANTINA","") or "KOSONG",
+                                "POSKOD": r.get("POSKOD_RUMAH","") or "KOSONG",
+                                "ALAMAT": (r.get("ALAMAT_RUMAH","")[:20] or "KOSONG"),
+                                "TELEFON": r.get("TELEFON_GURU","") or r.get("TELEFON","") or "KOSONG",
+                                "EMAIL": r.get("EMAIL_GURU","") or "KOSONG"
+                            })
+                    if preview_rows:
+                        st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+                        # Check if banyak kosong
+                        kosong_count = sum(1 for row in preview_rows if "KOSONG" in str(row.values()))
+                        if kosong_count>0:
+                            st.warning(f"⚠️ Ada data guru yang KOSONG (JANTINA/POSKOD/ALAMAT/TELEFON/EMAIL). Sila pergi menu **📋 Senarai Guru > Edit** untuk lengkapkan dulu, atau data kosong akan dihantar ke PPD.")
+
+                catatan = ""  # Catatan tak perlu ikut arahan user
                 submit = st.form_submit_button(f"📝 Simpan Cadangan - {len(guru_pilih) if 'guru_pilih' in locals() else 0} guru", type="primary")
                 if submit:
                     if not guru_pilih:
@@ -862,11 +1002,17 @@ if st.session_state.role=="SUP":
                             alamat = gr.get("ALAMAT_RUMAH","") or gr.get("ALAMAT","")
                             telefon = gr.get("TELEFON_GURU","") or gr.get("TELEFON","")
                             email = gr.get("EMAIL_GURU","") or gr.get("EMAIL","")
-                            pengalaman = gr.get("PENGALAMAN_SPM","") or gr.get("PENGALAMAN","")
+                            pengalaman = pengalaman_input or gr.get("PENGALAMAN_SPM","") or gr.get("PENGALAMAN","")
                             kod_ppd_guru = gr.get("KOD_PPD","") or info.get("kod_ppd","BH")
                             kod_sek_guru = gr.get("KOD_SEKOLAH","") or kod
                             nama_sek_guru = gr.get("NAMA_SEKOLAH_ASAL","") or gr.get("NAMA_SEKOLAH","") or info.get("nama_sekolah","")
-                            no_pusat_asal = gr.get("NO_PUSAT_ASAL","")
+                            no_pusat_asal = no_pusat_asal_input or gr.get("NO_PUSAT_ASAL","")
+                            
+                            # Validasi kod_pusat - jangan guna SPM001 dummy
+                            if pusat_pilih == "SPM001" or not pusat_pilih:
+                                pusat_pilih = no_pusat_asal or info.get("kod_ppd","BA") + "001"
+                                if pusat_pilih == "SPM001":
+                                    pusat_pilih = "BA142"  # Fallback sebenar
                             
                             # Data lengkap untuk cadangan - semua maklumat dipenuhi
                             full_data = {
