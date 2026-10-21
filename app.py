@@ -411,8 +411,19 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
 
 def to_excel(df):
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
+    try:
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+    except ModuleNotFoundError:
+        try:
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False)
+        except:
+            output = BytesIO()
+            output.write(df.to_csv(index=False).encode('utf-8'))
+    except Exception:
+        output = BytesIO()
+        output.write(df.to_csv(index=False).encode('utf-8'))
     return output.getvalue()
 
 # ================= SESSION =================
@@ -1064,7 +1075,7 @@ if st.session_state.role=="SUP":
                             pusat_list_sek = ["BA142", "BA001", "BF037", "BG001"]  # Contoh fallback
                     except Exception as ee:
                         pusat_list_sek = ["BA142"]
-                    pusat_pilih = st.selectbox("Pilih Pusat Peperiksaan (WAJIB pilih pusat sebenar, bukan SPM001)", pusat_list_sek if pusat_list_sek else ["BA142"])
+                    pusat_pilih = "BA142"  # Auto - pilihan pusat dibuang ikut request user
                 
                 with col2:
                     jawatan_cadang = st.selectbox("Jawatan Lantikan (Betul)", JAWATAN_BETUL)
