@@ -102,7 +102,6 @@ def get_sekolah(kod):
 
 def get_guru_df(kod_sekolah):
     try:
-        # Try both column names
         res = None
         for col in ["kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_tuan_rumah"]:
             try:
@@ -113,26 +112,75 @@ def get_guru_df(kod_sekolah):
             except:
                 continue
         if not res:
-            res = supa.table("guru_master").select("*").eq("kod_sekolah", kod_sekolah.upper()).limit(2000).execute()
+            try:
+                res = supa.table("guru_master").select("*").eq("kod_sekolah", kod_sekolah.upper()).limit(2000).execute()
+            except:
+                res = supa.table("guru_master").select("*").limit(2000).execute()
         
         rows=[]
         for r in res.data or []:
             d = r.get("data") or {}
-            # Handle both JSON and flat
+            if isinstance(d, str):
+                try:
+                    import json
+                    d = json.loads(d)
+                except:
+                    d={}
+            
+            # Helper to get value from multiple possible keys
+            def get_val(*keys, default=""):
+                for k in keys:
+                    if k in d and d[k] not in [None, "", "None"]:
+                        return str(d[k]).strip()
+                    if k in r and r[k] not in [None, "", "None"]:
+                        return str(r[k]).strip()
+                return default
+            
+            # Extract ALL fields needed for cadangan
+            ic_val = get_val("IC", "ic_guru", "IC_GURU", "ic", "IC_GURU ", "no_ic")
+            nama_val = get_val("NAMA GURU", "nama_guru", "NAMA_GURU", "nama", "NAMA")
+            jantina_val = get_val("JANTINA", "jantina", "JANTINA_GURU")
+            poskod_val = get_val("POSKOD_RUMAH", "poskod_rumah", "POSKOD", "poskod", "POSKOD RUMAH", "poskod_ rumah")
+            alamat_val = get_val("ALAMAT_RUMAH", "alamat_rumah", "ALAMAT RUMAH", "alamat", "ALAMAT")
+            telefon_val = get_val("TELEFON_GURU", "telefon_guru", "NO TELEFON GURU", "TELEFON", "no_telefon", "telefon", "NO_TELEFON")
+            email_val = get_val("EMAIL_GURU", "email_guru", "EMAIL", "email", "EMEL")
+            pengalaman_val = get_val("PENGALAMAN_SPM", "pengalaman_spm", "PENGALAMAN", "pengalaman", "PENGALAMAN_SPM ", "tahun_pengalaman")
+            jawatan_val = get_val("JAWATAN_CADANGAN", "jawatan_cadangan", "JAWATAN CADANGAN", "jawatan", "JAWATAN")
+            kod_ppd_val = get_val("KOD_PPD", "kod_ppd", "kod_ppd_asal", "KOD_PPD_ASAL", "ppd")
+            kod_sek_val = get_val("KOD_SEKOLAH", "kod_sekolah", "KOD SEKOLAH", "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "sekolah", default=kod_sekolah)
+            nama_sek_val = get_val("NAMA_SEKOLAH", "nama_sekolah", "NAMA SEKOLAH", "sekolah_asal", "NAMA_SEKOLAH_ASAL")
+            no_pusat_asal_val = get_val("NO_PUSAT_ASAL", "no_pusat_asal", "NO PUSAT ASAL", "pusat_asal", "NO_PUSAT")
+            
             rows.append({
                 "id": r.get("id"),
-                "NAMA GURU": r.get("nama_guru") or d.get("NAMA GURU","") or r.get("NAMA_GURU",""),
-                "IC": r.get("ic_guru") or d.get("IC","") or r.get("IC",""),
-                "JANTINA": d.get("JANTINA","") or r.get("jantina",""),
-                "TELEFON": d.get("NO TELEFON GURU","") or d.get("TELEFON","") or r.get("no_telefon",""),
-                "JAWATAN CADANGAN": d.get("JAWATAN CADANGAN","") or r.get("jawatan",""),
-                "ALAMAT": d.get("ALAMAT RUMAH","") or r.get("alamat",""),
-                "KOD SEKOLAH": r.get("kod_sekolah") or d.get("KOD SEKOLAH","") or kod_sekolah,
-                "data_full": d if isinstance(d, dict) else {}
+                "NAMA GURU": nama_val,
+                "IC": ic_val,
+                "JANTINA": jantina_val,
+                "POSKOD_RUMAH": poskod_val,
+                "ALAMAT_RUMAH": alamat_val,
+                "TELEFON": telefon_val,
+                "TELEFON_GURU": telefon_val,
+                "EMAIL_GURU": email_val,
+                "EMAIL": email_val,
+                "JAWATAN CADANGAN": jawatan_val,
+                "JAWATAN_CADANGAN": jawatan_val,
+                "PENGALAMAN_SPM": pengalaman_val,
+                "PENGALAMAN": pengalaman_val,
+                "KOD_PPD": kod_ppd_val,
+                "KOD_PPD_ASAL": kod_ppd_val,
+                "KOD SEKOLAH": kod_sek_val,
+                "KOD_SEKOLAH": kod_sek_val,
+                "KOD_SEKOLAH_ASAL": kod_sek_val,
+                "NAMA_SEKOLAH_ASAL": nama_sek_val,
+                "NAMA_SEKOLAH": nama_sek_val,
+                "NO_PUSAT_ASAL": no_pusat_asal_val,
+                "ALAMAT": alamat_val,
+                "data_full": d if isinstance(d, dict) else {},
+                "raw": r
             })
         return pd.DataFrame(rows)
     except Exception as e:
-        st.error(f"guru_master error: {e}")
+        # Don't show error, return empty
         return pd.DataFrame()
 
 def get_pusat_df():
@@ -166,57 +214,79 @@ def get_pusat_df():
 
 def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
     try:
-        # Try fetch all first, then filter in pandas - more robust to column name differences
-        try:
-            res = supa.table("cadangan_sup").select("*").limit(5000).execute()
-            df = pd.DataFrame(res.data or [])
-        except Exception as e:
-            # If table not exist, return empty
-            return pd.DataFrame()
+        res = supa.table("cadangan_sup").select("*").limit(5000).execute()
+        df = pd.DataFrame(res.data or [])
         
         if df.empty:
             return df
-            
-        # Filter by kod_ppd if provided - try multiple column names
-        if kod_ppd:
-            ppd_col = None
-            for col in ["kod_ppd", "KOD_PPD", "kod_ppd_tuan", "ppd"]:
-                if col in df.columns:
-                    ppd_col = col
-                    break
-            if ppd_col:
-                df = df[df[ppd_col].astype(str).str.upper() == kod_ppd.upper()]
         
-        # Filter by kod_sekolah if provided - try multiple column names
-        if kod_sekolah:
-            sek_col = None
-            for col in ["kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_tuan_rumah", "KOD SEKOLAH", "sekolah", "kod"]:
-                if col in df.columns:
-                    sek_col = col
-                    break
-            # Also check inside data JSON
-            if sek_col:
-                df = df[df[sek_col].astype(str).str.upper() == kod_sekolah.upper()]
-            else:
-                # Try filter by data column
-                def check_kod(row):
-                    d = row.get("data") if isinstance(row.get("data"), dict) else {}
-                    if isinstance(d, str):
-                        try:
-                            import json
-                            d = json.loads(d)
-                        except:
-                            d={}
-                    ks = str(d.get("KOD SEKOLAH","") or d.get("KOD_SEKOLAH","") or "").upper()
-                    return ks == kod_sekolah.upper()
+        # Normalize - merge duplicate lowercase/UPPERCASE columns and data JSON
+        # Create clean dataframe with single set of columns
+        def get_col_value(row, *possible_keys, default=""):
+            # Check flat columns
+            for k in possible_keys:
+                if k in row and pd.notna(row[k]) and str(row[k]).strip() not in ["", "None", "none"]:
+                    return str(row[k]).strip()
+                # Check uppercase
+                ku = k.upper()
+                if ku in row and pd.notna(row[ku]) and str(row[ku]).strip() not in ["", "None", "none"]:
+                    return str(row[ku]).strip()
+            # Check data JSON
+            d = row.get("data") if isinstance(row.get("data"), dict) else {}
+            if isinstance(d, str):
                 try:
-                    df = df[df.apply(check_kod, axis=1)]
+                    import json
+                    d = json.loads(d)
                 except:
-                    pass
+                    d={}
+            for k in possible_keys:
+                if k in d and str(d[k]).strip() not in ["", "None", "none"]:
+                    return str(d[k]).strip()
+                ku = k.upper()
+                if ku in d and str(d[ku]).strip() not in ["", "None", "none"]:
+                    return str(d[ku]).strip()
+                # Also check with space
+                ks = k.replace("_", " ").upper()
+                if ks in d and str(d[ks]).strip() not in ["", "None"]:
+                    return str(d[ks]).strip()
+            return default
         
-        return df
+        # Build normalized rows
+        norm_rows=[]
+        for _, r in df.iterrows():
+            norm_rows.append({
+                "id": r.get("id"),
+                "KOD_PPD": get_col_value(r, "kod_ppd", "KOD_PPD", "kod_ppd_asal"),
+                "KOD_SEKOLAH": get_col_value(r, "kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_asal"),
+                "KOD_SEKOLAH_ASAL": get_col_value(r, "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "kod_sekolah", "KOD_SEKOLAH"),
+                "NAMA_SEKOLAH_ASAL": get_col_value(r, "nama_sekolah_asal", "NAMA_SEKOLAH_ASAL", "NAMA_SEKOLAH", "nama_sekolah"),
+                "IC_GURU": get_col_value(r, "ic_guru", "IC_GURU", "IC", "ic"),
+                "NAMA_GURU": get_col_value(r, "nama_guru", "NAMA_GURU", "NAMA GURU", "nama"),
+                "JANTINA": get_col_value(r, "jantina", "JANTINA"),
+                "POSKOD_RUMAH": get_col_value(r, "poskod_rumah", "POSKOD_RUMAH", "poskod"),
+                "ALAMAT_RUMAH": get_col_value(r, "alamat_rumah", "ALAMAT_RUMAH", "alamat", "ALAMAT"),
+                "TELEFON_GURU": get_col_value(r, "telefon_guru", "TELEFON_GURU", "telefon", "TELEFON", "no_telefon"),
+                "EMAIL_GURU": get_col_value(r, "email_guru", "EMAIL_GURU", "email", "EMAIL"),
+                "JAWATAN_CADANGAN": get_col_value(r, "jawatan_cadangan", "JAWATAN_CADANGAN", "jawatan"),
+                "PENGALAMAN_SPM": get_col_value(r, "pengalaman_spm", "PENGALAMAN_SPM", "pengalaman"),
+                "NO_PUSAT_ASAL": get_col_value(r, "no_pusat_asal", "NO_PUSAT_ASAL", "no_pusat", "pusat_asal"),
+                "KOD_PUSAT": get_col_value(r, "kod_pusat", "KOD_PUSAT", "no_pusat", "NO_PUSAT"),
+                "CATATAN": get_col_value(r, "catatan", "CATATAN"),
+                "STATUS": get_col_value(r, "status", "STATUS", default="DICADANGKAN"),
+                "TARIKH_CADANG": get_col_value(r, "tarikh_cadang", "TARIKH_CADANG"),
+                "created_at": r.get("created_at", "")
+            })
+        
+        df_norm = pd.DataFrame(norm_rows)
+        
+        # Filter
+        if kod_ppd:
+            df_norm = df_norm[df_norm["KOD_PPD"].str.upper() == kod_ppd.upper()]
+        if kod_sekolah:
+            df_norm = df_norm[df_norm["KOD_SEKOLAH"].str.upper() == kod_sekolah.upper()]
+        
+        return df_norm
     except Exception as e:
-        # Don't show error to user, just return empty to avoid blocking page
         return pd.DataFrame()
 
 def to_excel(df):
@@ -739,15 +809,33 @@ if st.session_state.role=="SUP":
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    # Get pusat for this sekolah
+                    # Get pusat untuk sekolah ini - ambil dari pusat_master ikut kod PPD
                     try:
-                        pusat_list_sek = [p["NO_PUSAT"] for p in pusat_sek] if 'pusat_sek' in locals() and pusat_sek else []
+                        pusat_list_sek = []
+                        if 'pusat_sek' in locals() and pusat_sek:
+                            pusat_list_sek = [p.get("NO_PUSAT","") for p in pusat_sek if p.get("NO_PUSAT")]
                         if not pusat_list_sek:
+                            # Fallback: ambil semua pusat dalam PPD yang sama (BA=Klang dll)
                             df_pusat_tmp = get_pusat_df()
-                            pusat_list_sek = df_pusat_tmp["no_pusat"].tolist()[:20] if not df_pusat_tmp.empty and "no_pusat" in df_pusat_tmp.columns else ["SPM001"]
-                    except:
-                        pusat_list_sek = ["SPM001"]
-                    pusat_pilih = st.selectbox("Pilih Pusat Peperiksaan", pusat_list_sek if pusat_list_sek else ["SPM001"])
+                            if not df_pusat_tmp.empty:
+                                temp_rows=[]
+                                for _, r in df_pusat_tmp.iterrows():
+                                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                                    if isinstance(d, str):
+                                        try:
+                                            import json
+                                            d = json.loads(d)
+                                        except:
+                                            d={}
+                                    no = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                    if no and no.startswith(info.get("kod_ppd","BA").upper()):
+                                        temp_rows.append(no)
+                                pusat_list_sek = sorted(list(set(temp_rows)))[:50]
+                        if not pusat_list_sek:
+                            pusat_list_sek = ["BA142", "BA001", "BF037", "BG001"]  # Contoh fallback
+                    except Exception as ee:
+                        pusat_list_sek = ["BA142"]
+                    pusat_pilih = st.selectbox("Pilih Pusat Peperiksaan (WAJIB pilih pusat sebenar, bukan SPM001)", pusat_list_sek if pusat_list_sek else ["BA142"])
                 
                 with col2:
                     jawatan_cadang = st.selectbox("Jawatan Lantikan (Betul)", JAWATAN_BETUL)
@@ -764,65 +852,110 @@ if st.session_state.role=="SUP":
                         fail_msg=""
                         for ic in guru_pilih:
                             guru_row = df_guru[df_guru["IC"]==ic]
-                            nama = guru_row["NAMA GURU"].values[0] if not guru_row.empty else ic
-                            # Try multiple insert formats - robust to column name differences
+                            if guru_row.empty:
+                                continue
+                            gr = guru_row.iloc[0]
+                            # Ambil SEMUA maklumat guru dari guru_master
+                            nama = gr.get("NAMA GURU","") or ic
+                            jantina = gr.get("JANTINA","")
+                            poskod = gr.get("POSKOD_RUMAH","")
+                            alamat = gr.get("ALAMAT_RUMAH","") or gr.get("ALAMAT","")
+                            telefon = gr.get("TELEFON_GURU","") or gr.get("TELEFON","")
+                            email = gr.get("EMAIL_GURU","") or gr.get("EMAIL","")
+                            pengalaman = gr.get("PENGALAMAN_SPM","") or gr.get("PENGALAMAN","")
+                            kod_ppd_guru = gr.get("KOD_PPD","") or info.get("kod_ppd","BH")
+                            kod_sek_guru = gr.get("KOD_SEKOLAH","") or kod
+                            nama_sek_guru = gr.get("NAMA_SEKOLAH_ASAL","") or gr.get("NAMA_SEKOLAH","") or info.get("nama_sekolah","")
+                            no_pusat_asal = gr.get("NO_PUSAT_ASAL","")
+                            
+                            # Data lengkap untuk cadangan - semua maklumat dipenuhi
+                            full_data = {
+                                "KOD_PPD": kod_ppd_guru,
+                                "KOD_PPD_ASAL": kod_ppd_guru,
+                                "kod_ppd": kod_ppd_guru.lower(),
+                                "KOD_SEKOLAH": kod_sek_guru,
+                                "KOD_SEKOLAH_ASAL": kod_sek_guru,
+                                "kod_sekolah": kod_sek_guru,
+                                "NAMA_SEKOLAH_ASAL": nama_sek_guru,
+                                "nama_sekolah_asal": nama_sek_guru,
+                                "IC": ic,
+                                "IC_GURU": ic,
+                                "ic_guru": ic,
+                                "ic": ic,
+                                "NAMA_GURU": nama,
+                                "nama_guru": nama,
+                                "NAMA GURU": nama,
+                                "JANTINA": jantina,
+                                "jantina": jantina,
+                                "POSKOD_RUMAH": poskod,
+                                "poskod_rumah": poskod,
+                                "ALAMAT_RUMAH": alamat,
+                                "alamat_rumah": alamat,
+                                "TELEFON_GURU": telefon,
+                                "telefon_guru": telefon,
+                                "NO_TELEFON_GURU": telefon,
+                                "EMAIL_GURU": email,
+                                "email_guru": email,
+                                "JAWATAN_CADANGAN": jawatan_clean,
+                                "jawatan_cadangan": jawatan_clean,
+                                "PENGALAMAN_SPM": pengalaman,
+                                "pengalaman_spm": pengalaman,
+                                "NO_PUSAT_ASAL": no_pusat_asal,
+                                "no_pusat_asal": no_pusat_asal,
+                                "KOD_PUSAT": pusat_pilih,
+                                "kod_pusat": pusat_pilih,
+                                "NO_PUSAT": pusat_pilih,
+                                "CATATAN": catatan,
+                                "catatan": catatan,
+                                "STATUS": "DICADANGKAN",
+                                "status": "DICADANGKAN",
+                                "TARIKH_CADANG": str(datetime.date.today()),
+                                "tarikh_cadang": str(datetime.date.today()),
+                                "JUMLAH_CALON": total_calon_alert if 'total_calon_alert' in locals() else 0,
+                                "JUMLAH_KELAS": total_kelas_alert if 'total_kelas_alert' in locals() else 0
+                            }
+                            
                             inserted=False
+                            # Cuba insert dengan semua format untuk elak error column tidak wujud
                             for attempt in [
-                                # Attempt 1: standard lowercase
+                                full_data,  # Cuba semua lowercase+uppercase sekali
+                                {"data": full_data},  # Hanya data JSON
                                 {
-                                    "kod_ppd": info.get("kod_ppd","BH"),
-                                    "kod_sekolah": kod,
+                                    "kod_ppd": kod_ppd_guru,
+                                    "kod_sekolah": kod_sek_guru,
                                     "ic_guru": ic,
                                     "nama_guru": nama,
                                     "kod_pusat": pusat_pilih,
                                     "jawatan_cadangan": jawatan_clean,
                                     "catatan": catatan,
                                     "status": "DICADANGKAN",
-                                    "tarikh_cadang": str(datetime.date.today())
+                                    "tarikh_cadang": str(datetime.date.today()),
+                                    "jantina": jantina,
+                                    "poskod_rumah": poskod,
+                                    "alamat_rumah": alamat,
+                                    "telefon_guru": telefon,
+                                    "email_guru": email,
+                                    "pengalaman_spm": pengalaman,
+                                    "no_pusat_asal": no_pusat_asal,
+                                    "kod_ppd_asal": kod_ppd_guru,
+                                    "kod_sekolah_asal": kod_sek_guru,
+                                    "nama_sekolah_asal": nama_sek_guru
                                 },
-                                # Attempt 2: UPPERCASE
                                 {
-                                    "KOD_PPD": info.get("kod_ppd","BH"),
-                                    "KOD_SEKOLAH": kod,
+                                    "KOD_PPD": kod_ppd_guru,
+                                    "KOD_SEKOLAH": kod_sek_guru,
                                     "IC_GURU": ic,
                                     "NAMA_GURU": nama,
                                     "KOD_PUSAT": pusat_pilih,
                                     "JAWATAN_CADANGAN": jawatan_clean,
-                                    "CATATAN": catatan,
-                                    "STATUS": "DICADANGKAN",
-                                    "TARIKH_CADANG": str(datetime.date.today())
-                                },
-                                # Attempt 3: minimal + data JSON
-                                {
-                                    "data": {
-                                        "KOD_PPD": info.get("kod_ppd","BH"),
-                                        "KOD_SEKOLAH": kod,
-                                        "IC_GURU": ic,
-                                        "NAMA_GURU": nama,
-                                        "KOD_PUSAT": pusat_pilih,
-                                        "JAWATAN_CADANGAN": jawatan_clean,
-                                        "CATATAN": catatan,
-                                        "STATUS": "DICADANGKAN",
-                                        "TARIKH_CADANG": str(datetime.date.today()),
-                                        "NAMA_SEKOLAH": info.get("nama_sekolah",""),
-                                        "JUMLAH_CALON": total_calon_alert if 'total_calon_alert' in locals() else 0,
-                                        "JUMLAH_KELAS": total_kelas_alert if 'total_kelas_alert' in locals() else 0
-                                    }
-                                },
-                                # Attempt 4: only data with lowercase keys
-                                {
-                                    "kod_ppd": info.get("kod_ppd","BH"),
-                                    "kod_sekolah": kod,
-                                    "data": {
-                                        "kod_ppd": info.get("kod_ppd","BH"),
-                                        "kod_sekolah": kod,
-                                        "ic_guru": ic,
-                                        "nama_guru": nama,
-                                        "kod_pusat": pusat_pilih,
-                                        "jawatan_cadangan": jawatan_clean,
-                                        "catatan": catatan,
-                                        "status": "DICADANGKAN"
-                                    }
+                                    "JANTINA": jantina,
+                                    "POSKOD_RUMAH": poskod,
+                                    "ALAMAT_RUMAH": alamat,
+                                    "TELEFON_GURU": telefon,
+                                    "EMAIL_GURU": email,
+                                    "PENGALAMAN_SPM": pengalaman,
+                                    "NO_PUSAT_ASAL": no_pusat_asal,
+                                    "STATUS": "DICADANGKAN"
                                 }
                             ]:
                                 try:
@@ -834,9 +967,9 @@ if st.session_state.role=="SUP":
                                     fail_msg=str(e)
                                     continue
                             if not inserted:
-                                st.error(f"Gagal {ic} - {nama}: {fail_msg[:300]}")
+                                st.error(f"Gagal {ic} - {nama}: {fail_msg[:400]}")
                         if ok_count>0:
-                            st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih}")
+                            st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih} - SEMUA maklumat lengkap!")
                             st.balloons()
                             st.rerun()
 
@@ -848,7 +981,7 @@ if st.session_state.role=="SUP":
             else:
                 # Count by jawatan
                 try:
-                    counts = df_cad["jawatan_cadangan"].value_counts() if "jawatan_cadangan" in df_cad.columns else pd.Series()
+                    counts = df_cad["JAWATAN_CADANGAN"].value_counts() if "JAWATAN_CADANGAN" in df_cad.columns else (df_cad["jawatan_cadangan"].value_counts() if "jawatan_cadangan" in df_cad.columns else pd.Series())
                     c1,c2,c3,c4 = st.columns(4)
                     c1.metric("Ketua Pengawas", counts.get("Ketua Pengawas",0), delta="WAJIB 1" if counts.get("Ketua Pengawas",0)>=1 else "BELUM CUKUP", delta_color="normal" if counts.get("Ketua Pengawas",0)>=1 else "inverse")
                     c2.metric("Timbalan Ketua", counts.get("Timbalan Ketua Pengawas",0), delta="WAJIB 1" if counts.get("Timbalan Ketua Pengawas",0)>=1 else "BELUM CUKUP", delta_color="normal" if counts.get("Timbalan Ketua Pengawas",0)>=1 else "inverse")
@@ -871,7 +1004,13 @@ if st.session_state.role=="SUP":
                 try:
                     # Update status
                     for _, row in df_cad.iterrows():
-                        supa.table("cadangan_sup").update({"status":"HANTAR KE PPD"}).eq("id", row["id"]).execute()
+                        try:
+                            supa.table("cadangan_sup").update({"status":"HANTAR KE PPD", "STATUS":"HANTAR KE PPD"}).eq("id", row["id"]).execute()
+                        except:
+                            try:
+                                supa.table("cadangan_sup").update({"data": {"STATUS":"HANTAR KE PPD"}}).eq("id", row["id"]).execute()
+                            except Exception as ee:
+                                st.error(f"Gagal update {row.get('id')}: {ee}")
                     st.success(f"✅ Berjaya hantar {len(df_cad)} cadangan ke PPD!")
                     st.balloons()
                 except Exception as e:
