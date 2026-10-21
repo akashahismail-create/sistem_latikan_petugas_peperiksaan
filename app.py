@@ -117,6 +117,18 @@ def get_guru_df(kod_sekolah):
             except:
                 res = supa.table("guru_master").select("*").limit(2000).execute()
         
+        # Pre-fetch sekolah_master map for nama sekolah
+        sekolah_map_guru = {}
+        try:
+            res_sek = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah").limit(2000).execute()
+            for s in res_sek.data or []:
+                k = (s.get("kod_sekolah") or s.get("KOD_SEKOLAH") or "").upper()
+                n = s.get("nama_sekolah") or s.get("NAMA_SEKOLAH") or ""
+                if k:
+                    sekolah_map_guru[k] = n
+        except:
+            pass
+        
         rows=[]
         for r in res.data or []:
             d = r.get("data") or {}
@@ -127,29 +139,52 @@ def get_guru_df(kod_sekolah):
                 except:
                     d={}
             
-            # Helper to get value from multiple possible keys
+            # Helper to get value from multiple possible keys - check data JSON + flat columns
             def get_val(*keys, default=""):
                 for k in keys:
-                    if k in d and d[k] not in [None, "", "None"]:
-                        return str(d[k]).strip()
+                    # Check data JSON first (priority)
+                    if k in d and d[k] not in [None, "", "None", "null", "N/A", "-"]:
+                        v = str(d[k]).strip()
+                        if v and v.lower() not in ["none", "null", "nan", ""]:
+                            return v
+                    # Check uppercase in data
+                    ku = k.upper()
+                    if ku in d and d[ku] not in [None, "", "None"]:
+                        v = str(d[ku]).strip()
+                        if v and v.lower() not in ["none", "null", "nan", ""]:
+                            return v
+                    # Check flat column
                     if k in r and r[k] not in [None, "", "None"]:
-                        return str(r[k]).strip()
+                        v = str(r[k]).strip()
+                        if v and v.lower() not in ["none", "null", "nan", ""]:
+                            return v
+                    # Check uppercase flat
+                    if ku in r and r[ku] not in [None, "", "None"]:
+                        v = str(r[ku]).strip()
+                        if v and v.lower() not in ["none", "null", "nan", ""]:
+                            return v
                 return default
             
             # Extract ALL fields needed for cadangan
-            ic_val = get_val("IC", "ic_guru", "IC_GURU", "ic", "IC_GURU ", "no_ic")
-            nama_val = get_val("NAMA GURU", "nama_guru", "NAMA_GURU", "nama", "NAMA")
-            jantina_val = get_val("JANTINA", "jantina", "JANTINA_GURU")
-            poskod_val = get_val("POSKOD_RUMAH", "poskod_rumah", "POSKOD", "poskod", "POSKOD RUMAH", "poskod_ rumah")
-            alamat_val = get_val("ALAMAT_RUMAH", "alamat_rumah", "ALAMAT RUMAH", "alamat", "ALAMAT")
-            telefon_val = get_val("TELEFON_GURU", "telefon_guru", "NO TELEFON GURU", "TELEFON", "no_telefon", "telefon", "NO_TELEFON")
-            email_val = get_val("EMAIL_GURU", "email_guru", "EMAIL", "email", "EMEL")
-            pengalaman_val = get_val("PENGALAMAN_SPM", "pengalaman_spm", "PENGALAMAN", "pengalaman", "PENGALAMAN_SPM ", "tahun_pengalaman")
+            ic_val = get_val("IC", "ic_guru", "IC_GURU", "ic", "IC_GURU ", "no_ic", "NO_KP", "NO KP")
+            nama_val = get_val("NAMA GURU", "nama_guru", "NAMA_GURU", "nama", "NAMA", "NAMA_GURU ")
+            jantina_val = get_val("JANTINA", "jantina", "JANTINA_GURU", "Jantina", "SEX")
+            poskod_val = get_val("POSKOD_RUMAH", "poskod_rumah", "POSKOD", "poskod", "POSKOD RUMAH", "poskod_ rumah", "POSKOD ", "PostCode")
+            alamat_val = get_val("ALAMAT_RUMAH", "alamat_rumah", "ALAMAT RUMAH", "alamat", "ALAMAT", "ALAMAT_RUMAH ", "Alamat Rumah")
+            telefon_val = get_val("TELEFON_GURU", "telefon_guru", "NO TELEFON GURU", "TELEFON", "no_telefon", "telefon", "NO_TELEFON", "NO_TEL", "HP", "TEL")
+            email_val = get_val("EMAIL_GURU", "email_guru", "EMAIL", "email", "EMEL", "E-MAIL", "Email")
+            pengalaman_val = get_val("PENGALAMAN_SPM", "pengalaman_spm", "PENGALAMAN", "pengalaman", "PENGALAMAN_SPM ", "tahun_pengalaman", "PENGALAMAN SPM", "Experience")
             jawatan_val = get_val("JAWATAN_CADANGAN", "jawatan_cadangan", "JAWATAN CADANGAN", "jawatan", "JAWATAN")
-            kod_ppd_val = get_val("KOD_PPD", "kod_ppd", "kod_ppd_asal", "KOD_PPD_ASAL", "ppd")
-            kod_sek_val = get_val("KOD_SEKOLAH", "kod_sekolah", "KOD SEKOLAH", "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "sekolah", default=kod_sekolah)
-            nama_sek_val = get_val("NAMA_SEKOLAH", "nama_sekolah", "NAMA SEKOLAH", "sekolah_asal", "NAMA_SEKOLAH_ASAL")
-            no_pusat_asal_val = get_val("NO_PUSAT_ASAL", "no_pusat_asal", "NO PUSAT ASAL", "pusat_asal", "NO_PUSAT")
+            kod_ppd_val = get_val("KOD_PPD", "kod_ppd", "kod_ppd_asal", "KOD_PPD_ASAL", "ppd", "PPD")
+            kod_sek_val = get_val("KOD_SEKOLAH", "kod_sekolah", "KOD SEKOLAH", "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "sekolah", "SEKOLAH", default=kod_sekolah)
+            nama_sek_val = get_val("NAMA_SEKOLAH", "nama_sekolah", "NAMA SEKOLAH", "sekolah_asal", "NAMA_SEKOLAH_ASAL", "NAMA SEKOLAH ASAL", "Nama Sekolah")
+            no_pusat_asal_val = get_val("NO_PUSAT_ASAL", "no_pusat_asal", "NO PUSAT ASAL", "pusat_asal", "NO_PUSAT", "NO PUSAT", "PUSAT")
+            
+            # Jika nama_sekolah_asal masih kosong, ambil dari sekolah_master map
+            if not nama_sek_val or nama_sek_val == "" or nama_sek_val == kod_sek_val:
+                nama_sek_val = sekolah_map_guru.get(kod_sek_val.upper(), "") or sekolah_map_guru.get(kod_sekolah.upper(), "") or kod_sek_val
+            if not kod_ppd_val or kod_ppd_val == "":
+                kod_ppd_val = kod_sekolah[:2] if len(kod_sekolah)>=2 else "BA"
             
             rows.append({
                 "id": r.get("id"),
@@ -252,26 +287,44 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
             return default
         
         # Build normalized rows
+                # Pre-fetch sekolah_master for nama sekolah
+        sekolah_map = {}
+        try:
+            res_sek = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah").limit(2000).execute()
+            for s in res_sek.data or []:
+                k = (s.get("kod_sekolah") or "").upper()
+                n = s.get("nama_sekolah") or s.get("NAMA_SEKOLAH") or ""
+                if k:
+                    sekolah_map[k] = n
+        except:
+            pass
+        
         norm_rows=[]
         for _, r in df.iterrows():
+            kod_sek = get_col_value(r, "kod_sekolah", "KOD_SEKOLAH")
+            kod_sek_asal = get_col_value(r, "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "kod_sekolah")
+            nama_sek_asal = get_col_value(r, "nama_sekolah_asal", "NAMA_SEKOLAH_ASAL", "NAMA_SEKOLAH")
+            # Jika nama sekolah asal kosong, ambil dari sekolah_map atau kod
+            if not nama_sek_asal or nama_sek_asal.strip() == "":
+                nama_sek_asal = sekolah_map.get(kod_sek_asal.upper(), "") or sekolah_map.get(kod_sek.upper(), "") or kod_sek_asal or kod_sek
+            
             norm_rows.append({
                 "id": r.get("id"),
-                "KOD_PPD": get_col_value(r, "kod_ppd", "KOD_PPD", "kod_ppd_asal"),
-                "KOD_SEKOLAH": get_col_value(r, "kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_asal"),
-                "KOD_SEKOLAH_ASAL": get_col_value(r, "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "kod_sekolah", "KOD_SEKOLAH"),
-                "NAMA_SEKOLAH_ASAL": get_col_value(r, "nama_sekolah_asal", "NAMA_SEKOLAH_ASAL", "NAMA_SEKOLAH", "nama_sekolah"),
-                "IC_GURU": get_col_value(r, "ic_guru", "IC_GURU", "IC", "ic"),
-                "NAMA_GURU": get_col_value(r, "nama_guru", "NAMA_GURU", "NAMA GURU", "nama"),
+                "KOD_PPD": get_col_value(r, "kod_ppd", "KOD_PPD") or (kod_sek[:2] if len(kod_sek)>=2 else "BA"),
+                "KOD_SEKOLAH": kod_sek,
+                "KOD_SEKOLAH_ASAL": kod_sek_asal or kod_sek,
+                "NAMA_SEKOLAH_ASAL": nama_sek_asal,
+                "IC_GURU": get_col_value(r, "ic_guru", "IC_GURU", "IC"),
+                "NAMA_GURU": get_col_value(r, "nama_guru", "NAMA_GURU", "NAMA GURU"),
                 "JANTINA": get_col_value(r, "jantina", "JANTINA"),
-                "POSKOD_RUMAH": get_col_value(r, "poskod_rumah", "POSKOD_RUMAH", "poskod"),
-                "ALAMAT_RUMAH": get_col_value(r, "alamat_rumah", "ALAMAT_RUMAH", "alamat", "ALAMAT"),
-                "TELEFON_GURU": get_col_value(r, "telefon_guru", "TELEFON_GURU", "telefon", "TELEFON", "no_telefon"),
-                "EMAIL_GURU": get_col_value(r, "email_guru", "EMAIL_GURU", "email", "EMAIL"),
-                "JAWATAN_CADANGAN": get_col_value(r, "jawatan_cadangan", "JAWATAN_CADANGAN", "jawatan"),
-                "PENGALAMAN_SPM": get_col_value(r, "pengalaman_spm", "PENGALAMAN_SPM", "pengalaman"),
-                "NO_PUSAT_ASAL": get_col_value(r, "no_pusat_asal", "NO_PUSAT_ASAL", "no_pusat", "pusat_asal"),
-                "KOD_PUSAT": get_col_value(r, "kod_pusat", "KOD_PUSAT", "no_pusat", "NO_PUSAT"),
-                "CATATAN": get_col_value(r, "catatan", "CATATAN"),
+                "POSKOD_RUMAH": get_col_value(r, "poskod_rumah", "POSKOD_RUMAH", "POSKOD"),
+                "ALAMAT_RUMAH": get_col_value(r, "alamat_rumah", "ALAMAT_RUMAH", "ALAMAT"),
+                "TELEFON_GURU": get_col_value(r, "telefon_guru", "TELEFON_GURU", "TELEFON", "NO_TELEFON_GURU"),
+                "EMAIL_GURU": get_col_value(r, "email_guru", "EMAIL_GURU", "EMAIL"),
+                "JAWATAN_CADANGAN": get_col_value(r, "jawatan_cadangan", "JAWATAN_CADANGAN"),
+                "PENGALAMAN_SPM": get_col_value(r, "pengalaman_spm", "PENGALAMAN_SPM", "PENGALAMAN"),
+                "NO_PUSAT_ASAL": get_col_value(r, "no_pusat_asal", "NO_PUSAT_ASAL", "NO_PUSAT"),
+                "KOD_PUSAT": get_col_value(r, "kod_pusat", "KOD_PUSAT", "NO_PUSAT"),
                 "STATUS": get_col_value(r, "status", "STATUS", default="DICADANGKAN"),
                 "TARIKH_CADANG": get_col_value(r, "tarikh_cadang", "TARIKH_CADANG"),
                 "created_at": r.get("created_at", "")
