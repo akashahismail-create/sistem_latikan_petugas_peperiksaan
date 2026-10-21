@@ -62,7 +62,7 @@ def _df_from_rows(rows):
         if isinstance(r, dict):
             if "data" in r and isinstance(r["data"], dict) and r["data"]:
                 d=r["data"].copy()
-                # Copy root kod_ppd/kod_sekolah to data for filter compatibility
+                # Copy root lowercase to data
                 for k in ["kod_ppd","kod_sekolah","KOD_PPD","KOD_SEKOLAH","nama_guru","ic_guru"]:
                     if k in r and r[k]:
                         d[k]=r[k]
@@ -664,6 +664,89 @@ def tab_tahun(base, tahun=None):
             tahun = 2026
     return f"{base}_{tahun}"
 
+
+def agih_guru_master_ke_sekolah(supa):
+    """Ambil 60K dari guru_master dan agih ke guru_sekolah_BA..BK"""
+    try:
+        # Baca semua guru_master
+        semua_rows = []
+        mula = 0
+        while True:
+            res = supa.table("guru_master").select("*").range(mula, mula+999).execute()
+            baris = res.data or []
+            if not baris:
+                break
+            semua_rows.extend(baris)
+            if len(baris) < 1000:
+                break
+            mula += 1000
+        
+        if not semua_rows:
+            return 0, "guru_master kosong"
+        
+        # Group by kod_ppd
+        from collections import defaultdict
+        by_ppd = defaultdict(list)
+        for r in semua_rows:
+            kod_ppd = (r.get("kod_ppd") or r.get("KOD_PPD") or "").strip().upper()
+            if not kod_ppd:
+                # Try from data json
+                data = r.get("data") or {}
+                kod_ppd = str(data.get("KOD PPD") or data.get("KOD_PPD") or data.get("kod_ppd") or "").strip().upper()[:2]
+            if not kod_ppd or len(kod_ppd)!=2:
+                continue
+            by_ppd[kod_ppd].append(r)
+        
+        total_inserted = 0
+        for ppd_code, rows in by_ppd.items():
+            if ppd_code not in ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]:
+                continue
+            table_name = f"guru_sekolah_{ppd_code}"
+            # Padam lama dulu untuk ppd ni
+            try:
+                for _ in range(100):
+                    res = supa.table(table_name).select("id").limit(1000).execute()
+                    if not res.data:
+                        break
+                    ids = [x["id"] for x in res.data]
+                    supa.table(table_name).delete().in_("id", ids).execute()
+            except Exception as e:
+                # Table belum wujud, create
+                pass
+            
+            # Convert to format guru_sekolah expects
+            batch=[]
+            for r in rows:
+                data = r.get("data") or {}
+                # Build clean record for guru_sekolah table
+                # guru_sekolah expects KOD SEKOLAH ASAL, NAMA SEKOLAH ASAL, NAMA GURU, etc
+                rec = {
+                    "KOD SEKOLAH ASAL": str(data.get("KOD SEKOLAH") or r.get("kod_sekolah") or r.get("KOD_SEKOLAH") or ""),
+                    "NAMA SEKOLAH ASAL": str(data.get("NAMA SEKOLAH") or ""),
+                    "NAMA GURU": str(data.get("NAMA GURU") or r.get("nama_guru") or ""),
+                    "IC": str(data.get("IC") or r.get("ic_guru") or ""),
+                    "JANTINA": str(data.get("JANTINA") or ""),
+                    "POSKOD RUMAH": str(data.get("POSKOD RUMAH") or ""),
+                    "ALAMAT RUMAH": str(data.get("ALAMAT RUMAH") or ""),
+                    "NO TELEFON GURU": str(data.get("NO TELEFON GURU") or ""),
+                    "EMAIL GURU": str(data.get("EMAIL GURU") or ""),
+                    "PENGALAMAN SPM": str(data.get("PENGALAMAN SPM") or "0"),
+                    "GRED": str(data.get("GRED") or ""),
+                    "JAWATAN HAKIKI": str(data.get("JAWATAN HAKIKI") or ""),
+                    "KOD PPD": ppd_code,
+                    "KOD SEKOLAH": str(data.get("KOD SEKOLAH") or r.get("kod_sekolah") or ""),
+                }
+                batch.append({"KOD_PPD": ppd_code, "data": rec})
+            
+            # Insert batch 100
+            for i in range(0, len(batch), 100):
+                supa.table(table_name).insert(batch[i:i+100]).execute()
+            total_inserted += len(batch)
+        
+        return total_inserted, f"Berjaya agih {total_inserted} guru ke 10 table guru_sekolah_BA..BK"
+    except Exception as e:
+        import traceback
+        return 0, "Error agih: " + str(e)
 
 def read_semua_daerah(base, tahun=None):
     """Gabung data 10 daerah ikut tahun (untuk JPN sahaja)."""
@@ -3660,6 +3743,15 @@ CREATE POLICY "Allow all" ON guru_master FOR ALL TO public USING (true) WITH CHE
                                 st.balloons()
                                 st.success(f"🎉 SELESAI! {total} guru master dipindah ikut daerah & sekolah berdasarkan pusat_2026.csv")
                                 _cached_read.clear()
+                                st.markdown("---")
+                                st.subheader("📚 Langkah Seterusnya: Agih ke Sekolah")
+                                st.info("Data 60K dah ada dalam guru_master. Klik butang bawah untuk agih masuk ke table guru_sekolah_BA..BK supaya SUP nampak guru sekolah masing-masing.")
+                                if st.button("🚀 AGIH GURU MASTER KE SEKOLAH (BA..BK)", type="primary", use_container_width=True, key="agih_sekolah"):
+                                    with st.spinner("Agih 60K guru ke 10 table guru_sekolah..."):
+                                        total_agih, msg = agih_guru_master_ke_sekolah(supa)
+                                        st.success(msg)
+                                        st.balloons()
+                                        _cached_read.clear()
                 except Exception as e:
                     st.error(f"Gagal: {e}")
                     import traceback
@@ -3709,7 +3801,7 @@ CREATE POLICY "Allow all" ON guru_master FOR ALL TO public USING (true) WITH CHE
                                 for _, row in df.iterrows():
                                     rd=row.to_dict()
                                     clean={k: ("" if pd.isna(v) else str(v)) for k,v in rd.items()}
-                                    batch.append({"kod_ppd": ppd, "KOD_PPD": ppd, "data": clean})
+                                    batch.append({"KOD_PPD": ppd, "data": clean})
                                 for i in range(0, len(batch), 100):
                                     supa.table("cadangan_sup").insert(batch[i:i+100]).execute()
                                 total+=len(batch)
