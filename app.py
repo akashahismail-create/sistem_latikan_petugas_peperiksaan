@@ -166,19 +166,57 @@ def get_pusat_df():
 
 def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
     try:
-        q = supa.table("cadangan_sup").select("*")
+        # Try fetch all first, then filter in pandas - more robust to column name differences
+        try:
+            res = supa.table("cadangan_sup").select("*").limit(5000).execute()
+            df = pd.DataFrame(res.data or [])
+        except Exception as e:
+            # If table not exist, return empty
+            return pd.DataFrame()
+        
+        if df.empty:
+            return df
+            
+        # Filter by kod_ppd if provided - try multiple column names
         if kod_ppd:
-            # Try both upper lower
-            try:
-                q = q.eq("kod_ppd", kod_ppd)
-            except:
-                q = q.eq("KOD_PPD", kod_ppd)
+            ppd_col = None
+            for col in ["kod_ppd", "KOD_PPD", "kod_ppd_tuan", "ppd"]:
+                if col in df.columns:
+                    ppd_col = col
+                    break
+            if ppd_col:
+                df = df[df[ppd_col].astype(str).str.upper() == kod_ppd.upper()]
+        
+        # Filter by kod_sekolah if provided - try multiple column names
         if kod_sekolah:
-            q = q.eq("kod_sekolah", kod_sekolah.upper())
-        res = q.limit(5000).execute()
-        return pd.DataFrame(res.data or [])
+            sek_col = None
+            for col in ["kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_tuan_rumah", "KOD SEKOLAH", "sekolah", "kod"]:
+                if col in df.columns:
+                    sek_col = col
+                    break
+            # Also check inside data JSON
+            if sek_col:
+                df = df[df[sek_col].astype(str).str.upper() == kod_sekolah.upper()]
+            else:
+                # Try filter by data column
+                def check_kod(row):
+                    d = row.get("data") if isinstance(row.get("data"), dict) else {}
+                    if isinstance(d, str):
+                        try:
+                            import json
+                            d = json.loads(d)
+                        except:
+                            d={}
+                    ks = str(d.get("KOD SEKOLAH","") or d.get("KOD_SEKOLAH","") or "").upper()
+                    return ks == kod_sekolah.upper()
+                try:
+                    df = df[df.apply(check_kod, axis=1)]
+                except:
+                    pass
+        
+        return df
     except Exception as e:
-        st.error(f"cadangan_sup error: {e}")
+        # Don't show error to user, just return empty to avoid blocking page
         return pd.DataFrame()
 
 def to_excel(df):
@@ -755,11 +793,16 @@ if st.session_state.role=="SUP":
                     if not guru_pilih:
                         st.error("Pilih sekurang-kurangnya 1 guru")
                     else:
+                        ok_count=0
+                        fail_msg=""
                         for ic in guru_pilih:
                             guru_row = df_guru[df_guru["IC"]==ic]
                             nama = guru_row["NAMA GURU"].values[0] if not guru_row.empty else ic
-                            try:
-                                supa.table("cadangan_sup").insert({
+                            # Try multiple insert formats - robust to column name differences
+                            inserted=False
+                            for attempt in [
+                                # Attempt 1: standard lowercase
+                                {
                                     "kod_ppd": info.get("kod_ppd","BH"),
                                     "kod_sekolah": kod,
                                     "ic_guru": ic,
@@ -769,11 +812,66 @@ if st.session_state.role=="SUP":
                                     "catatan": catatan,
                                     "status": "DICADANGKAN",
                                     "tarikh_cadang": str(datetime.date.today())
-                                }).execute()
-                            except Exception as e:
-                                st.error(f"Gagal {ic}: {e}")
-                        st.success(f"✅ Berjaya cadang {len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih}")
-                        st.balloons()
+                                },
+                                # Attempt 2: UPPERCASE
+                                {
+                                    "KOD_PPD": info.get("kod_ppd","BH"),
+                                    "KOD_SEKOLAH": kod,
+                                    "IC_GURU": ic,
+                                    "NAMA_GURU": nama,
+                                    "KOD_PUSAT": pusat_pilih,
+                                    "JAWATAN_CADANGAN": jawatan_clean,
+                                    "CATATAN": catatan,
+                                    "STATUS": "DICADANGKAN",
+                                    "TARIKH_CADANG": str(datetime.date.today())
+                                },
+                                # Attempt 3: minimal + data JSON
+                                {
+                                    "data": {
+                                        "KOD_PPD": info.get("kod_ppd","BH"),
+                                        "KOD_SEKOLAH": kod,
+                                        "IC_GURU": ic,
+                                        "NAMA_GURU": nama,
+                                        "KOD_PUSAT": pusat_pilih,
+                                        "JAWATAN_CADANGAN": jawatan_clean,
+                                        "CATATAN": catatan,
+                                        "STATUS": "DICADANGKAN",
+                                        "TARIKH_CADANG": str(datetime.date.today()),
+                                        "NAMA_SEKOLAH": info.get("nama_sekolah",""),
+                                        "JUMLAH_CALON": total_calon_alert if 'total_calon_alert' in locals() else 0,
+                                        "JUMLAH_KELAS": total_kelas_alert if 'total_kelas_alert' in locals() else 0
+                                    }
+                                },
+                                # Attempt 4: only data with lowercase keys
+                                {
+                                    "kod_ppd": info.get("kod_ppd","BH"),
+                                    "kod_sekolah": kod,
+                                    "data": {
+                                        "kod_ppd": info.get("kod_ppd","BH"),
+                                        "kod_sekolah": kod,
+                                        "ic_guru": ic,
+                                        "nama_guru": nama,
+                                        "kod_pusat": pusat_pilih,
+                                        "jawatan_cadangan": jawatan_clean,
+                                        "catatan": catatan,
+                                        "status": "DICADANGKAN"
+                                    }
+                                }
+                            ]:
+                                try:
+                                    supa.table("cadangan_sup").insert(attempt).execute()
+                                    inserted=True
+                                    ok_count+=1
+                                    break
+                                except Exception as e:
+                                    fail_msg=str(e)
+                                    continue
+                            if not inserted:
+                                st.error(f"Gagal {ic} - {nama}: {fail_msg[:300]}")
+                        if ok_count>0:
+                            st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih}")
+                            st.balloons()
+                            st.rerun()
 
             st.markdown("---")
             st.subheader(f"Senarai Cadangan Sekolah Ini - Perlu {total_need_simple if 'total_need_simple' in locals() else 18} orang")
