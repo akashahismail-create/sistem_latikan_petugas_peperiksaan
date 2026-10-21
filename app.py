@@ -1083,84 +1083,51 @@ if st.session_state.role=="SUP":
         if df_guru.empty:
             st.warning("Tiada guru untuk dicadang. Tambah guru dulu.")
         else:
-            # Check existing cadangan count by jawatan
             df_cad_existing = get_cadangan_df(kod_sekolah=kod)
-            count_kp = len(df_cad_existing[df_cad_existing.astype(str).apply(lambda x: x.str.contains("Ketua Pengawas", case=False, na=False)).any(axis=1)]) if not df_cad_existing.empty else 0
-            
-            # Correct jawatan list
             JAWATAN_BETUL = ["Ketua Pengawas (WAJIB 1)", "Timbalan Ketua Pengawas (WAJIB 1)", "Penyelia Kawasan (Optional)", "Pengawas Peperiksaan (Ikut Kelas)"]
             
-            with st.form("cadangan"):
-                guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan (boleh pilih ramai)", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x} - {df_guru[df_guru['IC']==x]['JAWATAN CADANGAN'].values[0] if 'JAWATAN CADANGAN' in df_guru.columns else ''}")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    # Get pusat untuk sekolah ini - ambil dari pusat_master ikut kod PPD
-                    try:
-                        pusat_list_sek = []
-                        if 'pusat_sek' in locals() and pusat_sek:
-                            pusat_list_sek = [p.get("NO_PUSAT","") for p in pusat_sek if p.get("NO_PUSAT")]
-                        if not pusat_list_sek:
-                            # Fallback: ambil semua pusat dalam PPD yang sama (BA=Klang dll)
-                            df_pusat_tmp = get_pusat_df()
-                            if not df_pusat_tmp.empty:
-                                temp_rows=[]
-                                for _, r in df_pusat_tmp.iterrows():
-                                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
-                                    if isinstance(d, str):
-                                        try:
-                                            import json
-                                            d = json.loads(d)
-                                        except:
-                                            d={}
-                                    no = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
-                                    if no and no.startswith(info.get("kod_ppd","BA").upper()):
-                                        temp_rows.append(no)
-                                pusat_list_sek = sorted(list(set(temp_rows)))[:50]
-                        if not pusat_list_sek:
-                            pusat_list_sek = ["BA142", "BA001", "BF037", "BG001"]  # Contoh fallback
-                    except Exception as ee:
-                        pusat_list_sek = ["BA142"]
-                    pusat_pilih = "BA142"  # Auto - pilihan pusat dibuang ikut request user
-                
-                with col2:
-                    jawatan_cadang = st.selectbox("Jawatan Lantikan (Betul)", JAWATAN_BETUL)
-                    # Clean jawatan for DB
-                    jawatan_clean = jawatan_cadang.split(" (")[0]  # Remove (WAJIB...) part
-                
-                # Pengalaman SPM - SUP isi (ikut arahan user)
-                col_exp1, col_exp2 = st.columns(2)
-                with col_exp1:
-                    pengalaman_input = st.text_input("Pengalaman SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun, 5 kali")
-                with col_exp2:
-                    no_pusat_asal_input = st.text_input("No Pusat Asal (jika ada)", placeholder="Contoh: BA142")
-                
-                # Preview data guru - EMAIL kosong DIBENARKAN, tak block simpan
-                if 'guru_pilih' in locals() and guru_pilih:
-                    st.markdown("**Preview Data Guru Dipilih (EMAIL kosong dibenarkan - akan lepas simpan):**")
-                    preview_rows=[]
-                    for ic_prev in guru_pilih[:10]:
-                        gr_prev = df_guru[df_guru["IC"]==ic_prev]
-                        if not gr_prev.empty:
-                            r = gr_prev.iloc[0]
-                            preview_rows.append({
-                                "IC": ic_prev,
-                                "NAMA": r.get("NAMA GURU","")[:20],
-                                "JANTINA": r.get("JANTINA","") or "-",
-                                "POSKOD": r.get("POSKOD_RUMAH","") or "-",
-                                "ALAMAT": (r.get("ALAMAT_RUMAH","")[:20] or "-"),
-                                "TELEFON": r.get("TELEFON_GURU","") or r.get("TELEFON","") or "-",
-                                "EMAIL": r.get("EMAIL_GURU","") or "-"  # EMAIL kosong tunjuk -, bukan KOSONG block
-                            })
-                    if preview_rows:
-                        st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
-                        # Tak block walau email kosong
+            # SIMPLE - Tak guna st.form, guna multiselect biasa + button biasa (lebih stabil)
+            st.markdown("### Pilih Guru (EMAIL kosong dibenarkan)")
+            guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan (boleh pilih ramai)", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x}", key="guru_pilih_simple")
+            
+            col_jawatan, col_exp = st.columns(2)
+            with col_jawatan:
+                jawatan_cadang = st.selectbox("Jawatan Lantikan (Betul)", JAWATAN_BETUL, key="jawatan_simple")
+                jawatan_clean = jawatan_cadang.split(" (")[0]
+            with col_exp:
+                pengalaman_input = st.text_input("Pengalaman SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun", key="pengalaman_simple")
+            
+            # Auto BA142 - pilihan pusat dibuang
+            pusat_pilih = "BA142"
+            no_pusat_asal_input = "BA142"
+            
+            # Preview
+            if guru_pilih:
+                st.markdown("**Preview Data Guru Dipilih (EMAIL kosong dibenarkan - akan lepas simpan):**")
+                preview_rows=[]
+                for ic_prev in guru_pilih[:10]:
+                    gr_prev = df_guru[df_guru["IC"]==ic_prev]
+                    if not gr_prev.empty:
+                        r = gr_prev.iloc[0]
+                        preview_rows.append({
+                            "IC": ic_prev,
+                            "NAMA": r.get("NAMA GURU","")[:20],
+                            "JANTINA": r.get("JANTINA","") or "-",
+                            "POSKOD": r.get("POSKOD_RUMAH","") or "-",
+                            "ALAMAT": (r.get("ALAMAT_RUMAH","")[:20] or "-"),
+                            "TELEFON": r.get("TELEFON_GURU","") or r.get("TELEFON","") or "-",
+                            "EMAIL": r.get("EMAIL_GURU","") or "-"
+                        })
+                if preview_rows:
+                    st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
 
-                catatan = ""  # Catatan tak perlu ikut arahan user
-                submit = st.form_submit_button(f"📝 Simpan Cadangan - {len(guru_pilih) if 'guru_pilih' in locals() else 0} guru", type="primary")
-                if submit:
+                catatan = ""
+                # Button biasa (bukan form_submit_button) - lebih stabil
+                if st.button(f"📝 Simpan Cadangan - {len(guru_pilih) if 'guru_pilih' in locals() and guru_pilih else 0} guru", type="primary", key="btn_simpan_simple"):
                     if not guru_pilih:
                         st.error("Pilih sekurang-kurangnya 1 guru")
+                    else:
+                        st.info(f"Menyimpan {len(guru_pilih)} guru...")
                     else:
                         ok_count=0
                         fail_msg=""
