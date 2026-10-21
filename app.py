@@ -230,7 +230,22 @@ def get_pusat_df():
 
 def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
     try:
-        res = supa.table("cadangan_sup").select("*").limit(5000).execute()
+        # FIX: Filter di DB supaya data baru terus nampak, elak limit 5000
+        try:
+            if kod_sekolah:
+                res = supa.table("cadangan_sup").select("*").eq("kod_sekolah", kod_sekolah.upper()).limit(5000).execute()
+                if not res.data:
+                    res = supa.table("cadangan_sup").select("*").eq("kod_sekolah_asal", kod_sekolah.upper()).limit(5000).execute()
+                if not res.data:
+                    res = supa.table("cadangan_sup").select("*").limit(5000).execute()
+            elif kod_ppd:
+                res = supa.table("cadangan_sup").select("*").eq("kod_ppd", kod_ppd.upper()).limit(5000).execute()
+                if not res.data:
+                    res = supa.table("cadangan_sup").select("*").limit(5000).execute()
+            else:
+                res = supa.table("cadangan_sup").select("*").limit(5000).execute()
+        except:
+            res = supa.table("cadangan_sup").select("*").limit(5000).execute()
         df = pd.DataFrame(res.data or [])
         if df.empty:
             return df
@@ -980,7 +995,13 @@ if st.session_state.role == "SUP":
                 st.dataframe(df_cad[display_cols], use_container_width=True)
             else:
                 st.dataframe(df_cad, use_container_width=True)
-            st.info(f"Ada {len(df_cad)} cadangan akan dihantar ke PPD {info.get('kod_ppd', 'BA')} - {PPD_MAP.get(info.get('kod_ppd', 'BA'), '')}")
+            st.info(f"Ada {len(df_cad)} cadangan akan dihantar ke PPD {info.get('kod_ppd', 'BA')} - {PPD_MAP.get(info.get('kod_ppd', 'BA'), '')} - Semua ada POSKOD & ALAMAT lengkap!")
+            # Show if any missing poskod
+            missing_poskod = df_cad[df_cad["POSKOD_RUMAH"].astype(str).str.strip()==""] if "POSKOD_RUMAH" in df_cad.columns else pd.DataFrame()
+            if not missing_poskod.empty:
+                st.warning(f"⚠️ Ada {len(missing_poskod)} cadangan tanpa POSKOD - PPD tak boleh jana terdekat! Sila edit di Senarai Guru")
+            else:
+                st.success(f"✅ Semua {len(df_cad)} cadangan ada POSKOD & ALAMAT lengkap - PPD boleh jana ikut terdekat!")
             col_hantar, col_batal, col_reset = st.columns(3)
             with col_hantar:
                 if st.button("📤 Hantar Semua ke PPD", type="primary", use_container_width=True):
@@ -1043,7 +1064,7 @@ elif st.session_state.role == "PPD":
     kod_ppd = st.session_state.kod
     st.sidebar.title(f"🏢 PPD {kod_ppd}")
     st.sidebar.caption(f"{PPD_MAP.get(kod_ppd, '')}")
-    menu = st.sidebar.radio("Menu PPD", ["📊 Dashboard PPD", "🏫 Sekolah dalam PPD", "🏫 Pusat di PPD", "🚀 Jana Keseluruhan", " Cadangan SUP", "✅ Kelulusan", "📥 Export", "🚪 Log Keluar"])
+    menu = st.sidebar.radio("Menu PPD", ["📊 Dashboard PPD", "🏫 Sekolah dalam PPD", "🏫 Pusat di PPD", "🚀 Jana Keseluruhan", "📋 Cadangan SUP", "✅ Kelulusan", "📥 Export", "🚪 Log Keluar"])
     if menu == "🚪 Log Keluar":
         st.session_state.clear()
         st.rerun()
@@ -1274,7 +1295,7 @@ elif st.session_state.role == "PPD":
                                         st.error(f"Gagal update: {e}")
                 st.download_button("📥 Export Penempatan Penuh", to_excel(df_assign), file_name=f"penempatan_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
 
-    elif menu == " Cadangan SUP":
+    elif menu == "📋 Cadangan SUP":
         st.header(f"Cadangan dari SUP - PPD {kod_ppd}")
         df_cad = get_cadangan_df(kod_ppd=kod_ppd)
         if df_cad.empty:
@@ -1712,7 +1733,22 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                 nama = d.get("NAMA GURU", "").upper().strip()
                                 if not nama or nama == "NAN":
                                     continue
-                                batch.append({"kod_ppd": d.get("KOD PPD", "").lower().strip(), "kod_sekolah": d.get("KOD SEKOLAH", "").upper().strip(), "nama_guru": nama, "ic_guru": d.get("IC", ""), "data": d})
+                                batch.append({
+                                    "kod_ppd": d.get("KOD PPD", "").lower().strip(),
+                                    "kod_sekolah": d.get("KOD SEKOLAH", "").upper().strip(),
+                                    "nama_guru": nama,
+                                    "ic_guru": d.get("IC", ""),
+                                    "jantina": d.get("JANTINA",""),
+                                    "poskod_rumah": d.get("POSKOD RUMAH","") or d.get("POSKOD_RUMAH",""),
+                                    "alamat_rumah": d.get("ALAMAT RUMAH","") or d.get("ALAMAT_RUMAH",""),
+                                    "telefon_guru": d.get("NO TELEFON GURU","") or d.get("TELEFON_GURU",""),
+                                    "email_guru": d.get("EMAIL GURU","") or d.get("EMAIL_GURU",""),
+                                    "pengalaman_spm": d.get("PENGALAMAN SPM","") or d.get("PENGALAMAN_SPM",""),
+                                    "kod_sekolah_asal": d.get("KOD SEKOLAH","").upper().strip(),
+                                    "nama_sekolah_asal": d.get("NAMA SEKOLAH",""),
+                                    "no_pusat_asal": "BA142",
+                                    "data": d
+                                })
                             except:
                                 continue
                         if batch:
