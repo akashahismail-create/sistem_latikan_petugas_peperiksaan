@@ -401,6 +401,87 @@ if st.session_state.role=="SUP":
 
     if menu=="📊 Dashboard":
         st.header(f"Dashboard SUP - {kod} {info.get('nama_sekolah','')}")
+        
+        # KIRA KEPERLUAN PENGAWAS BERDASARKAN PUSAT SEKOLAH INI
+        try:
+            df_pusat_all = get_pusat_df()
+            # Cari pusat dimana kod_sekolah_tuan_rumah = kod sekolah ini
+            pusat_sekolah = []
+            for _, r in df_pusat_all.iterrows():
+                d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                if isinstance(d, str):
+                    try:
+                        import json
+                        d = json.loads(d)
+                    except:
+                        d={}
+                ks = r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or d.get("KOD SEKOLAH") or ""
+                if ks.upper().strip() == kod.upper().strip():
+                    # Kira calon
+                    calon = r.get("jumlah_calon") or r.get("calon") or d.get("JUMLAH_CALON") or 0
+                    try: calon_i = int(float(str(calon) or 0))
+                    except: calon_i=0
+                    kelas = kira_kelas_dari_calon(calon_i)
+                    petugas_k9 = kira_petugas_dari_kelas(kelas)
+                    sekolah_perlu = kira_sekolah_perlu_calonkan(kelas)
+                    pusat_sekolah.append({
+                        "NO_PUSAT": r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "",
+                        "NAMA_PUSAT": r.get("nama_pusat") or d.get("NAMA_PUSAT") or "",
+                        "CALON": calon_i,
+                        "KELAS": kelas,
+                        "PETUGAS_K9": petugas_k9,
+                        "SEKOLAH_PERLU": sekolah_perlu
+                    })
+        except:
+            pusat_sekolah = []
+
+        # ALERT WAJIB
+        if pusat_sekolah:
+            total_calon = sum([p["CALON"] for p in pusat_sekolah])
+            total_kelas = sum([p["KELAS"] for p in pusat_sekolah])
+            total_petugas = sum([p["PETUGAS_K9"] for p in pusat_sekolah])
+            total_perlu = sum([p["SEKOLAH_PERLU"] for p in pusat_sekolah])
+            
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding:20px; border-radius:12px; border-left:6px solid #1565c0; margin-bottom:20px;">
+                <h3 style="margin:0; color:#0d47a1;">⚠️ KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
+                <p style="margin:8px 0; font-size:16px;">
+                    Sekolah anda ada <b>{len(pusat_sekolah)} pusat</b> | <b>{total_calon} calon</b> | <b>{total_kelas} kelas</b> (1 kelas=20 calon)<br>
+                    Formula: Kelas = CEIL(Calon/20), Petugas = Kelas+9, Sekolah Perlu = Kelas+12 (Petugas+KP+TKP+Penyelia)
+                </p>
+                <div style="display:flex; gap:15px; margin-top:12px; flex-wrap:wrap;">
+                    <div style="background:white; padding:12px 18px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                        <div style="font-size:13px; color:#666;">JUMLAH KELAS</div>
+                        <div style="font-size:24px; font-weight:800; color:#1565c0;">{total_kelas}</div>
+                        <div style="font-size:12px;">{total_calon} calon /20</div>
+                    </div>
+                    <div style="background:white; padding:12px 18px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                        <div style="font-size:13px; color:#666;">PETUGAS DIPERLUKAN</div>
+                        <div style="font-size:24px; font-weight:800; color:#e65100;">{total_petugas}</div>
+                        <div style="font-size:12px;">Kelas+9</div>
+                    </div>
+                    <div style="background:#ffebee; padding:12px 18px; border-radius:8px; border:2px solid #c62828; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                        <div style="font-size:13px; color:#c62828; font-weight:700;">SEKOLAH WAJIB CALONKAN</div>
+                        <div style="font-size:28px; font-weight:800; color:#c62828;">{total_perlu} ORANG</div>
+                        <div style="font-size:12px;">Kelas+12 (Petugas+KP+TKP+Penyelia)</div>
+                    </div>
+                </div>
+                <div style="margin-top:15px; background:#fff3e0; padding:12px; border-radius:8px;">
+                    <b>📌 Pecahan Wajib:</b> 
+                    <span style="background:#c62828; color:white; padding:3px 8px; border-radius:12px; margin:0 3px;">Ketua Pengawas 1 orang (WAJIB)</span>
+                    <span style="background:#ef6c00; color:white; padding:3px 8px; border-radius:12px; margin:0 3px;">Timbalan Ketua 1 orang (WAJIB)</span>
+                    <span style="background:#2e7d32; color:white; padding:3px 8px; border-radius:12px; margin:0 3px;">Penyelia Kawasan 1 orang (Optional)</span>
+                    <span style="background:#1565c0; color:white; padding:3px 8px; border-radius:12px; margin:0 3px;">Pengawas Peperiksaan {total_kelas} orang</span>
+                    <span style="background:#6a1b9a; color:white; padding:3px 8px; border-radius:12px; margin:0 3px;">Extra/Reserve {total_petugas - total_kelas} orang</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Table pusat
+            st.dataframe(pd.DataFrame(pusat_sekolah), use_container_width=True, hide_index=True)
+        else:
+            st.info(f"Tiada pusat dijumpai untuk sekolah {kod}. Hubungi PPD untuk semak pusat sekolah anda. Formula: 105 calon = 6 kelas (20/kelas) = 15 petugas (kelas+9) = 18 sekolah perlu (kelas+12).")
+
         c1,c2,c3,c4 = st.columns(4)
         with c1:
             st.metric("Jumlah Guru", len(df_guru))
@@ -411,11 +492,7 @@ if st.session_state.role=="SUP":
             except:
                 st.metric("Total Guru Selangor", "-")
         with c3:
-            try:
-                pusat = get_pusat_df()
-                st.metric("Pusat Peperiksaan", len(pusat))
-            except:
-                st.metric("Pusat", "-")
+            st.metric("Pusat Sekolah Ini", len(pusat_sekolah) if 'pusat_sekolah' in locals() else 0)
         with c4:
             try:
                 cad = get_cadangan_df(kod_sekolah=kod)
@@ -449,7 +526,7 @@ if st.session_state.role=="SUP":
                 tel=st.text_input("NO TELEFON *")
                 jantina=st.selectbox("JANTINA", ["LELAKI","PEREMPUAN"])
             with col2:
-                jaw=st.selectbox("JAWATAN CADANGAN", ["Pengawas Peperiksaan","Ketua Pengawas","Pengawas Bertugas","Pembantu Peperiksaan"])
+                jaw=st.selectbox("JAWATAN CADANGAN (Betul)", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"])
                 alamat=st.text_area("ALAMAT RUMAH")
                 pengalaman=st.text_input("PENGALAMAN (Tahun)")
             submit=st.form_submit_button("💾 Simpan Guru", use_container_width=True, type="primary")
@@ -587,18 +664,93 @@ if st.session_state.role=="SUP":
                 st.metric("Total Kelas PPD", int(df_f["JUMLAH_KELAS"].sum()))
 
     elif menu=="📝 Cadangan Lantikan":
-        st.header(f"Cadangan Lantikan - {kod}")
+        st.header(f"Cadangan Lantikan - {kod} - {info.get('nama_sekolah','')}")
+
+        # KIRA KEPERLUAN UNTUK ALERT
+        try:
+            df_pusat_all2 = get_pusat_df()
+            pusat_sek = []
+            for _, r in df_pusat_all2.iterrows():
+                d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                if isinstance(d, str):
+                    try:
+                        import json
+                        d = json.loads(d)
+                    except:
+                        d={}
+                ks = r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or d.get("KOD SEKOLAH") or ""
+                if ks.upper().strip() == kod.upper().strip():
+                    calon = r.get("jumlah_calon") or r.get("calon") or d.get("JUMLAH_CALON") or 0
+                    try: calon_i = int(float(str(calon) or 0))
+                    except: calon_i=0
+                    kelas = kira_kelas_dari_calon(calon_i)
+                    pusat_sek.append({"calon":calon_i, "kelas":kelas})
+            total_kelas_alert = sum([p["kelas"] for p in pusat_sek]) if pusat_sek else 0
+            total_calon_alert = sum([p["calon"] for p in pusat_sek]) if pusat_sek else 0
+            need_kp = 1
+            need_tkp = 1
+            need_penyelia = 1
+            need_pengawas = total_kelas_alert
+            total_need = need_kp + need_tkp + need_penyelia + need_pengawas + (total_kelas_alert - need_pengawas + 6 if total_kelas_alert>0 else 0)  # Simplified: kelas+12
+            total_need_simple = kira_sekolah_perlu_calonkan(total_kelas_alert) if total_kelas_alert>0 else 18
+            
+            if pusat_sek:
+                st.markdown(f"""
+                <div style="background:#fff8e1; padding:15px; border-radius:10px; border-left:5px solid #ff8f00; margin-bottom:20px;">
+                    <h4 style="margin:0; color:#e65100;">📢 KEPERLUAN WAJIB SEKOLAH ANDA - {kod}</h4>
+                    <p style="margin:5px 0;">Pusat: {len(pusat_sek)} | Calon: {total_calon_alert} | Kelas: {total_kelas_alert} (1 kelas=20 calon)</p>
+                    <p style="margin:5px 0; font-size:15px;">
+                        <b style="color:#c62828;">WAJIB:</b> Ketua Pengawas 1 orang + Timbalan Ketua 1 orang<br>
+                        <b style="color:#2e7d32;">OPTIONAL:</b> Penyelia Kawasan 1 orang<br>
+                        <b style="color:#1565c0;">Pengawas Peperiksaan: {total_kelas_alert} orang</b> (ikut jumlah kelas)<br>
+                        <b>Total Sekolah Perlu Calonkan: {total_need_simple} orang</b> (Formula: {total_calon_alert} calon /20 = {total_kelas_alert} kelas, {total_kelas_alert}+9={total_kelas_alert+9} petugas, +3 KP/TKP/Penyelia = {total_need_simple})
+                    </p>
+                    <div style="margin-top:10px;">
+                        <span style="background:#c62828; color:white; padding:4px 10px; border-radius:15px; margin:2px; display:inline-block;">Ketua Pengawas: 1 WAJIB</span>
+                        <span style="background:#ef6c00; color:white; padding:4px 10px; border-radius:15px; margin:2px; display:inline-block;">Timbalan Ketua: 1 WAJIB</span>
+                        <span style="background:#2e7d32; color:white; padding:4px 10px; border-radius:15px; margin:2px; display:inline-block;">Penyelia Kawasan: 1 Optional</span>
+                        <span style="background:#1565c0; color:white; padding:4px 10px; border-radius:15px; margin:2px; display:inline-block;">Pengawas Peperiksaan: {total_kelas_alert} orang</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info(f"Tiada pusat untuk {kod}. Contoh: 105 calon = 6 kelas = Ketua 1 + Timbalan 1 + Penyelia 1 (optional) + Pengawas 6 = 9 wajib, total 18 dengan extra.")
+        except:
+            total_kelas_alert = 6
+            total_need_simple = 18
+
         if df_guru.empty:
             st.warning("Tiada guru untuk dicadang. Tambah guru dulu.")
         else:
-            df_pusat = get_pusat_df()
-            pusat_list = df_pusat["kod_pusat"].tolist() if not df_pusat.empty and "kod_pusat" in df_pusat.columns else ["SPM001","SPM002"]
+            # Check existing cadangan count by jawatan
+            df_cad_existing = get_cadangan_df(kod_sekolah=kod)
+            count_kp = len(df_cad_existing[df_cad_existing.astype(str).apply(lambda x: x.str.contains("Ketua Pengawas", case=False, na=False)).any(axis=1)]) if not df_cad_existing.empty else 0
+            
+            # Correct jawatan list
+            JAWATAN_BETUL = ["Ketua Pengawas (WAJIB 1)", "Timbalan Ketua Pengawas (WAJIB 1)", "Penyelia Kawasan (Optional)", "Pengawas Peperiksaan (Ikut Kelas)"]
+            
             with st.form("cadangan"):
-                guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x}")
-                pusat_pilih = st.selectbox("Pilih Pusat Peperiksaan", pusat_list)
-                jawatan_cadang = st.selectbox("Jawatan Lantikan", ["Pengawas Peperiksaan","Ketua Pengawas","Pengawas Bertugas"])
-                catatan = st.text_area("Catatan")
-                submit = st.form_submit_button("📝 Simpan Cadangan", type="primary")
+                guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan (boleh pilih ramai)", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x} - {df_guru[df_guru['IC']==x]['JAWATAN CADANGAN'].values[0] if 'JAWATAN CADANGAN' in df_guru.columns else ''}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    # Get pusat for this sekolah
+                    try:
+                        pusat_list_sek = [p["NO_PUSAT"] for p in pusat_sek] if 'pusat_sek' in locals() and pusat_sek else []
+                        if not pusat_list_sek:
+                            df_pusat_tmp = get_pusat_df()
+                            pusat_list_sek = df_pusat_tmp["no_pusat"].tolist()[:20] if not df_pusat_tmp.empty and "no_pusat" in df_pusat_tmp.columns else ["SPM001"]
+                    except:
+                        pusat_list_sek = ["SPM001"]
+                    pusat_pilih = st.selectbox("Pilih Pusat Peperiksaan", pusat_list_sek if pusat_list_sek else ["SPM001"])
+                
+                with col2:
+                    jawatan_cadang = st.selectbox("Jawatan Lantikan (Betul)", JAWATAN_BETUL)
+                    # Clean jawatan for DB
+                    jawatan_clean = jawatan_cadang.split(" (")[0]  # Remove (WAJIB...) part
+                
+                catatan = st.text_area("Catatan (optional)")
+                submit = st.form_submit_button(f"📝 Simpan Cadangan - {len(guru_pilih) if 'guru_pilih' in locals() else 0} guru", type="primary")
                 if submit:
                     if not guru_pilih:
                         st.error("Pilih sekurang-kurangnya 1 guru")
@@ -613,22 +765,32 @@ if st.session_state.role=="SUP":
                                     "ic_guru": ic,
                                     "nama_guru": nama,
                                     "kod_pusat": pusat_pilih,
-                                    "jawatan_cadangan": jawatan_cadang,
+                                    "jawatan_cadangan": jawatan_clean,
                                     "catatan": catatan,
                                     "status": "DICADANGKAN",
                                     "tarikh_cadang": str(datetime.date.today())
                                 }).execute()
                             except Exception as e:
                                 st.error(f"Gagal {ic}: {e}")
-                        st.success(f"✅ Berjaya cadang {len(guru_pilih)} guru ke pusat {pusat_pilih}")
+                        st.success(f"✅ Berjaya cadang {len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih}")
                         st.balloons()
 
             st.markdown("---")
-            st.subheader("Senarai Cadangan Sekolah Ini")
+            st.subheader(f"Senarai Cadangan Sekolah Ini - Perlu {total_need_simple if 'total_need_simple' in locals() else 18} orang")
             df_cad = get_cadangan_df(kod_sekolah=kod)
             if df_cad.empty:
                 st.info("Belum ada cadangan")
             else:
+                # Count by jawatan
+                try:
+                    counts = df_cad["jawatan_cadangan"].value_counts() if "jawatan_cadangan" in df_cad.columns else pd.Series()
+                    c1,c2,c3,c4 = st.columns(4)
+                    c1.metric("Ketua Pengawas", counts.get("Ketua Pengawas",0), delta="WAJIB 1" if counts.get("Ketua Pengawas",0)>=1 else "BELUM CUKUP", delta_color="normal" if counts.get("Ketua Pengawas",0)>=1 else "inverse")
+                    c2.metric("Timbalan Ketua", counts.get("Timbalan Ketua Pengawas",0), delta="WAJIB 1" if counts.get("Timbalan Ketua Pengawas",0)>=1 else "BELUM CUKUP", delta_color="normal" if counts.get("Timbalan Ketua Pengawas",0)>=1 else "inverse")
+                    c3.metric("Penyelia Kawasan", counts.get("Penyelia Kawasan",0))
+                    c4.metric("Pengawas Peperiksaan", counts.get("Pengawas Peperiksaan",0), delta=f"Perlu {total_kelas_alert if 'total_kelas_alert' in locals() else 6}")
+                except:
+                    pass
                 st.dataframe(df_cad, use_container_width=True)
                 st.download_button("📥 Export Cadangan", to_excel(df_cad), file_name=f"cadangan_{kod}.xlsx")
 
