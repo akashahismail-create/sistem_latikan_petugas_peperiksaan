@@ -1921,7 +1921,34 @@ with col_kanan:
                                 baru_r, bil = buang_guru_roster(dfr, kod_s, pilih_b, ic_cad_b)
                                 hasil_b["bil"] = bil
                                 return baru_r
-                            if modify_sheet(TAB_GURU, _buang_r):
+                            
+                            buang_ok = False
+                            try:
+                                buang_ok = modify_sheet(TAB_GURU, _buang_r)
+                            except:
+                                buang_ok = False
+                            
+                            if not buang_ok:
+                                # Fallback: buang terus dari guru_master
+                                try:
+                                    supa_gm, _ = get_supabase()
+                                    if supa_gm:
+                                        for ic in pilih_b:
+                                            # Padam dari guru_master ikut ic_guru dan kod_sekolah
+                                            try:
+                                                res = supa_gm.table("guru_master").select("id").eq("kod_sekolah", kod_s).eq("ic_guru", ic).execute()
+                                                if not res.data:
+                                                    res = supa_gm.table("guru_master").select("id").eq("ic_guru", ic).execute()
+                                                for r in res.data or []:
+                                                    supa_gm.table("guru_master").delete().eq("id", r["id"]).execute()
+                                            except Exception as e:
+                                                pass
+                                        buang_ok = True
+                                        hasil_b["bil"] = len(pilih_b)
+                                except Exception as e:
+                                    st.error(f"Gagal buang dari guru_master: {e}")
+                            
+                            if buang_ok:
                                 flash("success", f"✅ {hasil_b['bil']} guru dibuang daripada Senarai Guru.")
                                 st.session_state["guru_n"] = n_g + 1
                                 st.rerun()
