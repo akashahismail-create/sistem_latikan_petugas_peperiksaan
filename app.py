@@ -200,29 +200,63 @@ if st.session_state.role=="SUP":
 
     elif menu=="📤 Import Excel":
         st.header(f"Import Excel Guru - {kod}")
-        st.info("Format Excel: Lajur NAMA GURU, IC, NO TELEFON GURU, JANTINA, JAWATAN CADANGAN, ALAMAT RUMAH")
-        st.download_button("📥 Download Template", to_excel(pd.DataFrame([{"NAMA GURU":"ALI BIN ABU","IC":"900101011234","NO TELEFON GURU":"0123456789","JANTINA":"LELAKI","JAWATAN CADANGAN":"Pengawas Peperiksaan","ALAMAT RUMAH":"NO 1 JLN..."}])), "template_guru.xlsx")
+        st.info("Format Excel: NAMA GURU, IC, JANTINA, NO TELEFON GURU, EMAIL GURU, ALAMAT RUMAH, KOD SEKOLAH, KOD PPD | Untuk 60K, guna JPN > Import")
+        st.download_button("📥 Download Template", to_excel(pd.DataFrame([{"NAMA GURU":"ALI BIN ABU","IC":"900101011234","NO TELEFON GURU":"0123456789","JANTINA":"LELAKI","JAWATAN CADANGAN":"Pengawas Peperiksaan","ALAMAT RUMAH":"NO 1 JLN...","KOD SEKOLAH":kod,"KOD PPD":info.get("kod_ppd","BH")}])), "template_guru.xlsx")
         uploaded = st.file_uploader("Upload Excel Guru", type=["xlsx","xls"])
         if uploaded:
             try:
                 df_up = pd.read_excel(uploaded)
-                st.write(f"Preview {len(df_up)} baris:")
+                st.write(f"Preview {len(df_up)} baris (60K akan ambil masa):")
                 st.dataframe(df_up.head(20), use_container_width=True)
-                if st.button(f"Import {len(df_up)} guru ke {kod}", type="primary"):
+                batch_size = 500 if len(df_up) > 1000 else 1
+                if st.button(f"Import {len(df_up)} guru (Batch {batch_size})", type="primary"):
                     bar = st.progress(0)
+                    status = st.empty()
                     ok=0
-                    for i, row in df_up.iterrows():
-                        try:
-                            nama=str(row.get("NAMA GURU","")).upper()
-                            ic=str(row.get("IC",""))
-                            if not nama or nama=="NAN": continue
-                            d = {k:str(v) for k,v in row.items()}
-                            d["KOD SEKOLAH"]=kod
-                            supa.table("guru_master").insert({"kod_ppd":info.get("kod_ppd","BH").lower(),"kod_sekolah":kod,"nama_guru":nama,"ic_guru":ic,"data":d}).execute()
-                            ok+=1
-                        except Exception as e:
-                            st.warning(f"Baris {i}: {e}")
-                        bar.progress((i+1)/len(df_up))
+                    # Batch mode for large file
+                    if batch_size > 1:
+                        for start in range(0, len(df_up), batch_size):
+                            end = min(start+batch_size, len(df_up))
+                            batch_df = df_up.iloc[start:end]
+                            batch=[]
+                            for _, row in batch_df.iterrows():
+                                try:
+                                    d={}
+                                    for k,v in row.to_dict().items():
+                                        d[k] = "" if pd.isna(v) else str(v)
+                                    nama = d.get("NAMA GURU","").upper().strip()
+                                    if not nama or nama=="NAN": continue
+                                    kod_sek = d.get("KOD SEKOLAH", kod).upper().strip() or kod
+                                    kod_ppd_val = d.get("KOD PPD", info.get("kod_ppd","BH")).lower().strip() or info.get("kod_ppd","BH").lower()
+                                    batch.append({
+                                        "kod_ppd": kod_ppd_val,
+                                        "kod_sekolah": kod_sek,
+                                        "nama_guru": nama,
+                                        "ic_guru": d.get("IC",""),
+                                        "data": d
+                                    })
+                                except: continue
+                            if batch:
+                                try:
+                                    supa.table("guru_master").insert(batch).execute()
+                                    ok+=len(batch)
+                                except Exception as e:
+                                    st.warning(f"Batch {start}-{end} error: {e}")
+                            bar.progress(end/len(df_up))
+                            status.write(f"Progress: {end}/{len(df_up)} | OK: {ok}")
+                    else:
+                        for i, row in df_up.iterrows():
+                            try:
+                                nama=str(row.get("NAMA GURU","")).upper()
+                                ic=str(row.get("IC",""))
+                                if not nama or nama=="NAN": continue
+                                d = {k: ("" if pd.isna(v) else str(v)) for k,v in row.to_dict().items()}
+                                d["KOD SEKOLAH"]=kod
+                                supa.table("guru_master").insert({"kod_ppd":info.get("kod_ppd","BH").lower(),"kod_sekolah":kod,"nama_guru":nama,"ic_guru":ic,"data":d}).execute()
+                                ok+=1
+                            except Exception as e:
+                                st.warning(f"Baris {i}: {e}")
+                            bar.progress((i+1)/len(df_up))
                     st.success(f"✅ Berjaya import {ok}/{len(df_up)} guru!")
                     st.balloons()
             except Exception as e:
@@ -477,12 +511,60 @@ elif st.session_state.role=="JPN":
 
     elif menu=="👨‍🏫 Guru Master":
         st.header("Guru Master Seluruh Negeri")
+        st.subheader("📤 Import MASTER 60K Guru Selangor")
+        st.info("Upload file MASTER-GURU-SELANGOR-2026.xlsx (60K) di sini untuk restore balik data yang hilang. Guna batch 500 untuk laju.")
+        up_master = st.file_uploader("Upload MASTER 60K Excel", type=["xlsx"], key="master60k")
+        if up_master:
+            try:
+                df_m = pd.read_excel(up_master, sheet_name=0)
+                st.write(f"File ada {len(df_m)} baris. Column: {list(df_m.columns)}")
+                st.dataframe(df_m.head(10), use_container_width=True)
+                if st.button(f"🚀 Import {len(df_m)} Guru ke Supabase (Batch 500)", type="primary", use_container_width=True):
+                    bar = st.progress(0)
+                    stat = st.empty()
+                    ok=0
+                    BATCH=500
+                    for start in range(0, len(df_m), BATCH):
+                        end = min(start+BATCH, len(df_m))
+                        bdf = df_m.iloc[start:end]
+                        batch=[]
+                        for _, row in bdf.iterrows():
+                            try:
+                                d={}
+                                for k,v in row.to_dict().items():
+                                    d[k] = "" if pd.isna(v) else str(v)
+                                nama = d.get("NAMA GURU","").upper().strip()
+                                if not nama or nama=="NAN": continue
+                                batch.append({
+                                    "kod_ppd": d.get("KOD PPD","").lower().strip(),
+                                    "kod_sekolah": d.get("KOD SEKOLAH","").upper().strip(),
+                                    "nama_guru": nama,
+                                    "ic_guru": d.get("IC",""),
+                                    "data": d
+                                })
+                            except: continue
+                        if batch:
+                            try:
+                                supa.table("guru_master").insert(batch).execute()
+                                ok+=len(batch)
+                            except Exception as e:
+                                st.error(f"Batch {start}-{end} error: {e}")
+                        bar.progress(end/len(df_m))
+                        stat.write(f"Imported {end}/{len(df_m)} | OK {ok}")
+                    st.success(f"✅ Selesai import {ok}/{len(df_m)} guru!")
+                    st.balloons()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+        st.markdown("---")
+        st.subheader("Data Sedia Ada")
         try:
-            res=supa.table("guru_master").select("*").limit(5000).execute()
+            res=supa.table("guru_master").select("*", count="exact").limit(5000).execute()
             df=pd.DataFrame(res.data or [])
-            st.dataframe(df, use_container_width=True)
+            st.write(f"Total dalam Supabase: {res.count} records")
             if not df.empty:
-                st.download_button("Export Guru Master", to_excel(df), file_name="guru_master_full.xlsx")
+                st.dataframe(df.head(100), use_container_width=True)
+                st.download_button("Export Guru Master (5000)", to_excel(df), file_name="guru_master_full.xlsx")
         except Exception as e:
             st.error(str(e))
 
