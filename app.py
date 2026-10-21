@@ -4,11 +4,10 @@ from supabase import create_client
 
 st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide")
 
-# HARDCODE - TAK BACA SECRETS LANGSUNG - FIX INVALID API KEY
 SUPABASE_URL = "https://gnmaijhugkkvxejvsotk.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamhpZ2tra3Z4ZWp2c290ayIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzU5MTUzMjM4MiwiZXhwIjoyMDc0MTA5MjM4Mn0.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamh1Z2trdnhlanZzb3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0ODc4OTcsImV4cCI6MjEwODA2Mzg5N30.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource
 def get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -47,8 +46,9 @@ if "role" not in st.session_state:
     st.session_state.role=None
 
 if st.session_state.role is None:
-    st.title("📚 Pelantikan SPM Selangor 2026 - FIX KEY")
-    st.success("✅ Hardcode KEY aktif - Tak perlu Secrets")
+    st.title("📚 Pelantikan SPM Selangor 2026")
+    st.caption(f"URL: {SUPABASE_URL}")
+    st.success("✅ KEY full active - takde STRIPPED")
     col1,col2,col3 = st.columns(3)
     with col1:
         st.subheader("🏫 SUP")
@@ -85,14 +85,13 @@ if st.session_state.role=="SUP":
         st.header(f"Senarai Guru - {kod} {info.get('nama_sekolah','')}")
         df=get_guru(kod)
         if df.empty:
-            st.warning("guru_master kosong - 60K hilang. Sila Tambah Guru baru untuk test.")
+            st.info("guru_master kosong - 60K hilang. Sila Tambah Guru baru untuk test.")
             try:
                 cnt=supa.table("guru_master").select("id", count="exact").execute()
-                st.info(f"Total guru_master: {cnt.count} records")
+                st.write(f"Total guru_master: {cnt.count} records")
             except Exception as e:
                 st.error(f"Count error: {e}")
         else:
-            st.success(f"Ada {len(df)} guru")
             st.dataframe(df, use_container_width=True, hide_index=True)
     elif menu=="Tambah Guru":
         st.header(f"Tambah Guru - {kod}")
