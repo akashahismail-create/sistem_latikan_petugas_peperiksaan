@@ -166,57 +166,19 @@ def get_pusat_df():
 
 def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
     try:
-        # Try fetch all first, then filter in pandas - more robust to column name differences
-        try:
-            res = supa.table("cadangan_sup").select("*").limit(5000).execute()
-            df = pd.DataFrame(res.data or [])
-        except Exception as e:
-            # If table not exist, return empty
-            return pd.DataFrame()
-        
-        if df.empty:
-            return df
-            
-        # Filter by kod_ppd if provided - try multiple column names
+        q = supa.table("cadangan_sup").select("*")
         if kod_ppd:
-            ppd_col = None
-            for col in ["kod_ppd", "KOD_PPD", "kod_ppd_tuan", "ppd"]:
-                if col in df.columns:
-                    ppd_col = col
-                    break
-            if ppd_col:
-                df = df[df[ppd_col].astype(str).str.upper() == kod_ppd.upper()]
-        
-        # Filter by kod_sekolah if provided - try multiple column names
+            # Try both upper lower
+            try:
+                q = q.eq("kod_ppd", kod_ppd)
+            except:
+                q = q.eq("KOD_PPD", kod_ppd)
         if kod_sekolah:
-            sek_col = None
-            for col in ["kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_tuan_rumah", "KOD SEKOLAH", "sekolah", "kod"]:
-                if col in df.columns:
-                    sek_col = col
-                    break
-            # Also check inside data JSON
-            if sek_col:
-                df = df[df[sek_col].astype(str).str.upper() == kod_sekolah.upper()]
-            else:
-                # Try filter by data column
-                def check_kod(row):
-                    d = row.get("data") if isinstance(row.get("data"), dict) else {}
-                    if isinstance(d, str):
-                        try:
-                            import json
-                            d = json.loads(d)
-                        except:
-                            d={}
-                    ks = str(d.get("KOD SEKOLAH","") or d.get("KOD_SEKOLAH","") or "").upper()
-                    return ks == kod_sekolah.upper()
-                try:
-                    df = df[df.apply(check_kod, axis=1)]
-                except:
-                    pass
-        
-        return df
+            q = q.eq("kod_sekolah", kod_sekolah.upper())
+        res = q.limit(5000).execute()
+        return pd.DataFrame(res.data or [])
     except Exception as e:
-        # Don't show error to user, just return empty to avoid blocking page
+        st.error(f"cadangan_sup error: {e}")
         return pd.DataFrame()
 
 def to_excel(df):
@@ -279,7 +241,7 @@ if st.session_state.role is None:
 
     with tab1:
         st.markdown("### 🏫 Log Masuk SUP - Penyelia Sekolah")
-        st.caption("Pilih Daerah → Pilih Sekolah → Masuk Password. Password ikut sekolah (ID 1-369). Untuk testing, password dipaparkan di bawah.")
+        st.caption("Pilih Daerah → Pilih Sekolah → Masuk Password. ")
         
         col_a, col_b = st.columns(2)
         with col_a:
@@ -296,7 +258,7 @@ if st.session_state.role is None:
             
             if df_filtered.empty:
                 st.warning(f"Tiada sekolah untuk {pilih_ppd_code} - cuba load atau taip manual")
-                sekolah_manual = st.text_input("KOD SEKOLAH (Manual)", value="BFT8002", key="sup_kod_manual").upper()
+                sekolah_manual = st.text_input("KOD SEKOLAH (Manual)", value="", key="sup_kod_manual").upper()
                 pilih_sekolah_kod = sekolah_manual
                 pilih_sekolah_nama = f"SEKOLAH {sekolah_manual}"
                 sup_id = 1
@@ -323,26 +285,17 @@ if st.session_state.role is None:
             st.markdown(f"**Sekolah Dipilih:** `{pilih_sekolah_kod}` - {pilih_sekolah_nama}")
             st.markdown(f"**ID Sekolah:** {sup_id} | **PPD:** {pilih_ppd_code} - {PPD_MAP.get(pilih_ppd_code,'')}")
             
-            # Show password for testing
-            with st.container(border=True):
-                st.markdown("🔑 **Password Untuk Testing (Paparan Sementara)**")
-                if not df_filtered.empty and 'sup_password_expected' in locals():
-                    st.code(f"ID: {sup_id}\nPassword Baru: {sup_password_expected}\nPassword Lama Style: {sup_password_lama} / 12345{sup_id}\nContoh: Taip {sup_password_expected} atau {sup_password_lama}", language="text")
-                else:
-                    st.code(f"Password: {sup_id} atau 12345{sup_id}", language="text")
-            
-            pwd_input = st.text_input("3️⃣ Masuk Password", type="password", key="sup_pwd", placeholder=f"Contoh: {sup_password_expected if 'sup_password_expected' in locals() else '1'}")
+            pwd_input = st.text_input("3️⃣ Masuk Password", type="password", key="sup_pwd", placeholder="Masukkan password")
             
             if st.button("🚀 Masuk SUP Sekolah", use_container_width=True, type="primary", key="btn_sup"):
                 # Check password - accept ID or 12345+ID or just ID
                 valid_pw = [str(sup_id), f"12345{sup_id}", f"12345{ sup_id }".replace(" ",""), sup_password_expected if 'sup_password_expected' in locals() else str(sup_id)]
                 if not df_sekolah_all.empty and 'sup_password_lama' in locals():
                     valid_pw.append(sup_password_lama)
-                # Also accept plain "1", "a", etc for backward compat
-                if pwd_input.strip() in valid_pw or pwd_input.strip() == "12345" or pwd_input.strip().lower() == "a" or pwd_input.strip() == "":
-                    # For testing, allow empty as well to ease test
-                    if pwd_input.strip() == "" and not st.checkbox("Benarkan login tanpa password untuk testing?", key="allow_empty"):
-                        st.error(f"Password salah! Cuba {sup_password_expected} atau {sup_password_lama}")
+                # Password sekolah yang sah sahaja (kosong TIDAK diterima)
+                if pwd_input.strip() in valid_pw or pwd_input.strip() == "12345" or pwd_input.strip().lower() == "a":
+                    if not pilih_sekolah_kod.strip():
+                        st.error("Sila isi kod sekolah.")
                     else:
                         info=get_sekolah(pilih_sekolah_kod)
                         # Override with selected
@@ -355,23 +308,16 @@ if st.session_state.role is None:
                         st.session_state.sup_id=sup_id
                         st.rerun()
                 else:
-                    st.error(f"Password salah! Sepatutnya: {sup_password_expected} atau {sup_password_lama}. Kau taip: {pwd_input}")
+                    st.error("Password salah!")
 
-        # Show full list for testing
-        with st.expander(f"📋 Lihat Senarai 369 Sekolah & Password (Untuk Testing - {len(df_sekolah_all)} sekolah)", expanded=False):
-            if not df_sekolah_all.empty:
-                st.dataframe(df_sekolah_all[["ID","KOD_SEKOLAH","NAMA_SEKOLAH","KOD_PPD","PPD","PASSWORD","PASSWORD_LAMA"]], use_container_width=True, height=400)
-                st.download_button("📥 Download Senarai Password Sekolah", to_excel(df_sekolah_all), file_name="SENARAI_PASSWORD_369_SEKOLAH.xlsx")
-            else:
-                st.warning("Gagal load sekolah_master - check RLS")
 
     with tab2:
         st.markdown("### 🏢 Log Masuk PPD - Pejabat Pendidikan Daerah")
-        st.caption("10 PPD Selangor | ID 1-10 | Password a-j (ikut turutan)")
+        st.caption("10 PPD Selangor | Pilih PPD dan masuk password")
         
         col1, col2 = st.columns(2)
         with col1:
-            ppd_labels = [f"{i+1}. {KOD_DAERAH[i]} - {PPD_MAP[KOD_DAERAH[i]]} (ID:{i+1} Pwd:{chr(97+i)})" for i in range(len(KOD_DAERAH))]
+            ppd_labels = [f"{i+1}. {KOD_DAERAH[i]} - {PPD_MAP[KOD_DAERAH[i]]}" for i in range(len(KOD_DAERAH))]
             pilih_ppd_full = st.selectbox("Pilih PPD", options=ppd_labels, key="ppd_full")
             # Extract code
             ppd_code = pilih_ppd_full.split(" - ")[0].split(". ")[1] if ". " in pilih_ppd_full else KOD_DAERAH[0]
@@ -379,24 +325,17 @@ if st.session_state.role is None:
             ppd_pwd_expected = chr(96+ppd_id)  # a-j
         
         with col2:
-            with st.container(border=True):
-                st.markdown("🔑 **Password PPD Untuk Testing**")
-                st.code(f"ID PPD: {ppd_id}\nPPD: {ppd_code} - {PPD_MAP.get(ppd_code,'')}\nPassword: {ppd_pwd_expected} atau {ppd_id} atau 12345{ppd_id}", language="text")
-            ppd_pwd = st.text_input("Masuk Password PPD", type="password", key="ppd_pwd", placeholder=f"Contoh: {ppd_pwd_expected}")
+            ppd_pwd = st.text_input("Masuk Password PPD", type="password", key="ppd_pwd", placeholder="Masukkan password PPD")
             if st.button("🚀 Masuk PPD", use_container_width=True, type="primary", key="btn_ppd"):
                 valid = [ppd_pwd_expected, str(ppd_id), f"12345{ppd_id}", chr(96+ppd_id).upper(), ppd_code.lower(), "a","b","c","d","e","f","g","h","i","j"]
-                if ppd_pwd.strip().lower() in [v.lower() for v in valid] or ppd_pwd.strip() == "":
+                if ppd_pwd.strip().lower() in [v.lower() for v in valid]:
                     st.session_state.role="PPD"
                     st.session_state.kod=ppd_code
                     st.session_state.ppd_id=ppd_id
                     st.rerun()
                 else:
-                    st.error(f"Password salah! Cuba {ppd_pwd_expected} atau {ppd_id}")
+                    st.error("Password salah!")
 
-        # Table PPD
-        with st.expander("📋 Senarai 10 PPD & Password", expanded=False):
-            ppd_table = pd.DataFrame([{"ID":i+1, "KOD_PPD":KOD_DAERAH[i], "PPD":PPD_MAP[KOD_DAERAH[i]], "PASSWORD":chr(97+i), "PASSWORD_LAMA":f"12345{i+1}"} for i in range(len(KOD_DAERAH))])
-            st.dataframe(ppd_table, use_container_width=True, hide_index=True)
 
     with tab3:
         st.markdown("### 🏛️ Log Masuk JPN - Jabatan Pendidikan Negeri")
@@ -404,17 +343,13 @@ if st.session_state.role is None:
         col1, col2 = st.columns(2)
         with col1:
             jpn_id = st.text_input("ID JPN", value="1", key="jpn_id")
-            jpn_pwd = st.text_input("Password JPN", type="password", key="jpn_pwd", placeholder="a")
-            with st.container(border=True):
-                st.code("ID: 1\nPassword: a atau 1 atau 123451\nJPN ada 1 user sahaja", language="text")
+            jpn_pwd = st.text_input("Password JPN", type="password", key="jpn_pwd", placeholder="Masukkan password")
             if st.button("🚀 Masuk JPN", use_container_width=True, type="primary", key="btn_jpn"):
-                if jpn_id=="1" and jpn_pwd.strip().lower() in ["a","1","123451","12345",""]:
+                if jpn_id=="1" and jpn_pwd.strip().lower() in ["a","1","123451","12345"]:
                     st.session_state.role="JPN"
                     st.rerun()
                 else:
-                    # Allow for testing
-                    st.session_state.role="JPN"
-                    st.rerun()
+                    st.error("ID atau password salah!")
         with col2:
             st.info("JPN boleh tengok semua PPD, semua sekolah (369), semua pusat (506), semua cadangan. Boleh export negeri.")
 
@@ -793,16 +728,11 @@ if st.session_state.role=="SUP":
                     if not guru_pilih:
                         st.error("Pilih sekurang-kurangnya 1 guru")
                     else:
-                        ok_count=0
-                        fail_msg=""
                         for ic in guru_pilih:
                             guru_row = df_guru[df_guru["IC"]==ic]
                             nama = guru_row["NAMA GURU"].values[0] if not guru_row.empty else ic
-                            # Try multiple insert formats - robust to column name differences
-                            inserted=False
-                            for attempt in [
-                                # Attempt 1: standard lowercase
-                                {
+                            try:
+                                supa.table("cadangan_sup").insert({
                                     "kod_ppd": info.get("kod_ppd","BH"),
                                     "kod_sekolah": kod,
                                     "ic_guru": ic,
@@ -812,66 +742,11 @@ if st.session_state.role=="SUP":
                                     "catatan": catatan,
                                     "status": "DICADANGKAN",
                                     "tarikh_cadang": str(datetime.date.today())
-                                },
-                                # Attempt 2: UPPERCASE
-                                {
-                                    "KOD_PPD": info.get("kod_ppd","BH"),
-                                    "KOD_SEKOLAH": kod,
-                                    "IC_GURU": ic,
-                                    "NAMA_GURU": nama,
-                                    "KOD_PUSAT": pusat_pilih,
-                                    "JAWATAN_CADANGAN": jawatan_clean,
-                                    "CATATAN": catatan,
-                                    "STATUS": "DICADANGKAN",
-                                    "TARIKH_CADANG": str(datetime.date.today())
-                                },
-                                # Attempt 3: minimal + data JSON
-                                {
-                                    "data": {
-                                        "KOD_PPD": info.get("kod_ppd","BH"),
-                                        "KOD_SEKOLAH": kod,
-                                        "IC_GURU": ic,
-                                        "NAMA_GURU": nama,
-                                        "KOD_PUSAT": pusat_pilih,
-                                        "JAWATAN_CADANGAN": jawatan_clean,
-                                        "CATATAN": catatan,
-                                        "STATUS": "DICADANGKAN",
-                                        "TARIKH_CADANG": str(datetime.date.today()),
-                                        "NAMA_SEKOLAH": info.get("nama_sekolah",""),
-                                        "JUMLAH_CALON": total_calon_alert if 'total_calon_alert' in locals() else 0,
-                                        "JUMLAH_KELAS": total_kelas_alert if 'total_kelas_alert' in locals() else 0
-                                    }
-                                },
-                                # Attempt 4: only data with lowercase keys
-                                {
-                                    "kod_ppd": info.get("kod_ppd","BH"),
-                                    "kod_sekolah": kod,
-                                    "data": {
-                                        "kod_ppd": info.get("kod_ppd","BH"),
-                                        "kod_sekolah": kod,
-                                        "ic_guru": ic,
-                                        "nama_guru": nama,
-                                        "kod_pusat": pusat_pilih,
-                                        "jawatan_cadangan": jawatan_clean,
-                                        "catatan": catatan,
-                                        "status": "DICADANGKAN"
-                                    }
-                                }
-                            ]:
-                                try:
-                                    supa.table("cadangan_sup").insert(attempt).execute()
-                                    inserted=True
-                                    ok_count+=1
-                                    break
-                                except Exception as e:
-                                    fail_msg=str(e)
-                                    continue
-                            if not inserted:
-                                st.error(f"Gagal {ic} - {nama}: {fail_msg[:300]}")
-                        if ok_count>0:
-                            st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih}")
-                            st.balloons()
-                            st.rerun()
+                                }).execute()
+                            except Exception as e:
+                                st.error(f"Gagal {ic}: {e}")
+                        st.success(f"✅ Berjaya cadang {len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih}")
+                        st.balloons()
 
             st.markdown("---")
             st.subheader(f"Senarai Cadangan Sekolah Ini - Perlu {total_need_simple if 'total_need_simple' in locals() else 18} orang")
@@ -1440,7 +1315,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
         if up_master:
             try:
                 df_m = pd.read_excel(up_master, sheet_name=0)
-                st.write(f"File ada {len(df_m)} baris. Column: {list(df_m.columns)}")
+                st.write(f"File ada {len(df_m)} baris.")
                 st.dataframe(df_m.head(10), use_container_width=True)
                 if st.button(f"🚀 Import {len(df_m)} Guru ke Supabase (Batch 500)", type="primary", use_container_width=True):
                     bar = st.progress(0)
@@ -1514,7 +1389,6 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
 
     elif menu=="⚙️ Admin":
         st.header("Admin - Check Tables & Connection")
-        st.code(f"URL: {SUPABASE_URL}\nKEY: {SUPABASE_KEY[:20]}...{SUPABASE_KEY[-10:]} (Active)")
         for t in ["sekolah_master","pusat_master","guru_master","cadangan_sup"]:
             try:
                 res=supa.table(t).select("*", count="exact").limit(1).execute()
