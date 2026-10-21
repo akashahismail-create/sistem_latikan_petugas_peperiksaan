@@ -13,13 +13,6 @@ import time
 import threading
 from io import BytesIO
 
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials
-except Exception:  # library belum dipasang - app tetap boleh buka
-    gspread = None
-    Credentials = None
-
 st.set_page_config(page_title="Sistem Pelantikan Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -182,32 +175,20 @@ def load_pusat_calon():
 
 df_calon_master = load_pusat_calon()
 
-# ====== HELPER GSHEET & PENEMPATAN (mula) ======
-GS_SPREADSHEET_ID_DEFAULT = "1dweem4yw6nKlo1wy5PA264prHEHpLoBPSu89jRFi484"
+# ====== HELPER SUPABASE & PENEMPATAN (mula) ======
+KOD_DAERAH_SAH = ("BA", "BB", "BC", "BD", "BE", "BF", "BG", "BH", "BJ", "BK")
+# Jadual yang dipecah ikut daerah (lajur KOD_PPD). Menulis tanpa kod daerah ke jadual ini DITOLAK
+# supaya data daerah tak tercampur / tak dilabel semula salah.
+JADUAL_IKUT_DAERAH = ("maklumat_sekolah", "cadangan_sup", "penempatan_ppd", "petugas_simpanan",
+                      "log_simpanan", "guru_sekolah", "pilihan_ppd")
+_SAIZ_HALAMAN = 1000   # had baris setiap permintaan Supabase (PostgREST)
 
 
-@st.cache_resource(ttl=300, show_spinner=False)
-def get_gsheet():
-    """Sambung ke Google Sheet sekali sahaja. Pulang (client, spreadsheet_id, ralat)."""
-    if gspread is None:
-        return None, None, "Library gspread/google-auth belum dipasang (pip install gspread google-auth)"
-    try:
-        try:
-            sid = st.secrets["SPREADSHEET_ID"]
-        except Exception:
-            try:
-                sid = st.secrets["connections"]["gsheets"]["spreadsheet"].split("/d/")[1].split("/")[0]
-            except Exception:
-                sid = GS_SPREADSHEET_ID_DEFAULT
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        pk = creds_dict.get("private_key", "")
-        if "\\n" in pk:
-            creds_dict["private_key"] = pk.replace("\\n", "\n")
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return gspread.authorize(creds), sid, None
-    except Exception as e:
-        return None, None, str(e)
+def _urai_nama(name):
+    """'cadangan_sup_BK_2026' -> ('cadangan_sup', 'BK');  'kuota_ppd_2026' -> ('kuota_ppd', None)."""
+    s = re.sub(r"_(19|20)\d{2}$", "", str(name).strip())
+    m = re.match(r"^(.+)_(" + "|".join(KOD_DAERAH_SAH) + r")$", s)
+    return (m.group(1), m.group(2)) if m else (s, None)
 
 
 @st.cache_resource(show_spinner=False)
@@ -216,93 +197,80 @@ def _peta_kunci():
 
 
 def get_lock(name="*"):
-    """Satu kunci SETIAP tab - elak 2 orang tulis tab yang sama serentak.
-    Daerah berbeza guna tab berbeza, jadi tak perlu tunggu satu sama lain."""
+    """Satu kunci SETIAP jadual+daerah - elak 2 orang tulis data yang sama serentak.
+    Daerah berbeza tak perlu tunggu satu sama lain."""
     k = _peta_kunci()
     with k["master"]:
         return k["peta"].setdefault(name, threading.Lock())
 
 
-def _retry(fn, tries=3):
-    """Cuba semula bila Google beri ralat sementara (kuota / rangkaian)."""
-    for i in range(tries):
-        try:
-            return fn()
-        except gspread.exceptions.APIError:
-            if i == tries - 1:
-                raise
-            time.sleep(1.5 * (i + 1))
+def _ralat_jadual(base, e):
+    """Tukar ralat 'jadual tiada' kepada mesej yang jelas."""
+    t = str(e)
+    if "PGRST205" in t or "Could not find the table" in t or "does not exist" in t:
+        return RuntimeError(f"Jadual '{base}' belum wujud dalam Supabase - minta admin cipta jadual ini dahulu.")
+    return e
+
+
+def _baca_baris(base, kod):
+    """Baca SEMUA baris mentah (termasuk id) ikut halaman. Kalau GAGAL -> timbul ralat
+    (TIDAK PERNAH pulang kosong bila gagal, supaya tak tersilap padam data)."""
+    supa, err = get_supabase()
+    if supa is None:
+        raise RuntimeError(f"Supabase tidak connect: {err}")
+    semua, mula = [], 0
+    try:
+        while True:
+            q = supa.table(base).select("*", count="exact").order("id")
+            if kod:
+                q = q.eq("KOD_PPD", kod)
+            res = q.range(mula, mula + _SAIZ_HALAMAN - 1).execute()
+            baris = res.data or []
+            semua.extend(baris)
+            jumlah = getattr(res, "count", None)
+            if not baris or (jumlah is not None and len(semua) >= jumlah):
+                break
+            mula += len(baris)
+    except Exception as e:
+        raise _ralat_jadual(base, e) from e
+    return semua
 
 
 def read_sheet_strict(name):
-    """Baca dari Supabase - base name only"""
-    supa, err = get_supabase()
-    if supa is None:
-        return pd.DataFrame()
-    base = name.split("_2026")[0].split("_2025")[0]
-    for b in ["maklumat_sekolah","cadangan_sup","penempatan_ppd","status_hantar","kuota_ppd","petugas_simpanan","log_simpanan"]:
-        if b in name:
-            base = b
-            break
-    try:
-        parts = name.split("_")
-        filter_ppd = None
-        if len(parts)>=1 and parts[-1] in ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]:
-            filter_ppd = parts[-1]
-        q = supa.table(base).select("*").limit(10000)
-        if filter_ppd:
-            q = q.eq("KOD_PPD", filter_ppd)
-        res = q.execute()
-        return _df_from_rows(res.data)
-    except Exception as e:
-        return pd.DataFrame()
+    """Baca dari Supabase. Gagal -> timbul ralat (jangan pulang kosong)."""
+    base, kod = _urai_nama(name)
+    return _df_from_rows(_baca_baris(base, kod))
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def _cached_read(name):
     return read_sheet_strict(name)
 
 
 def read_sheet(name):
-    """Baca sheet dengan fallback ke format lama tanpa tahun jika sheet tahun kosong."""
+    """Untuk PAPARAN sahaja (cache 10 saat). Kalau gagal baca: amaran + jadual kosong.
+    Jangan guna untuk simpan data - guna modify_sheet()."""
+    klien, _ = get_supabase()
+    if klien is None:
+        return pd.DataFrame()   # amaran 'Supabase tidak connect' dipaparkan di skrin utama
     try:
-        df = read_sheet_strict(name)
-        if not df.empty:
-            return df
-        if "_" in name:
-            parts = name.rsplit("_", 1)
-            if parts[1].isdigit() and len(parts[1])==4:
-                fallback_name = parts[0]
-                try:
-                    df_old = read_sheet_strict(fallback_name)
-                    if not df_old.empty:
-                        return df_old
-                except:
-                    pass
-        return df
+        return _cached_read(name)
     except Exception as e:
-        try:
-            if "_" in name:
-                parts = name.rsplit("_", 1)
-                if parts[1].isdigit() and len(parts[1])==4:
-                    fallback_name = parts[0]
-                    return read_sheet_strict(fallback_name)
-        except:
-            pass
+        st.warning(f"⚠️ Gagal baca '{name}' dari Supabase ({type(e).__name__}). Data di bawah mungkin tidak lengkap - cuba muat semula sebentar lagi.")
         return pd.DataFrame()
+
 
 def read_sheet_tahun(base, kod_or_none=None, tahun=None):
     if tahun is None:
         try:
             tahun = st.session_state.get("tahun_pilih", 2026)
-        except:
+        except Exception:
             tahun = 2026
     if kod_or_none:
         name = tab_daerah(base, kod_or_none, tahun)
     else:
         name = tab_tahun(base, tahun)
     return read_sheet(name)
-
 
 
 def _cell(v):
@@ -320,37 +288,48 @@ def _cell(v):
     return v
 
 
+def _padam_id(supa, base, ids):
+    for i in range(0, len(ids), 100):
+        supa.table(base).delete().in_("id", ids[i:i + 100]).execute()
+
+
 def _tulis_sheet(name, df):
-    """Tulis df ke Supabase"""
+    """Ganti kandungan jadual (untuk daerah itu SAHAJA) dengan df, secara SELAMAT:
+    1) baris baru dimasukkan DAHULU;  2) baru baris lama dibuang.
+    - Kalau langkah 1 gagal: baris baru yang sempat masuk dibuang, data lama kekal.
+    - Kalau langkah 2 gagal: data baru sudah lengkap (tiada yang hilang); mungkin berganda sementara."""
     if len(df.columns) == 0:
         return
+    base, kod = _urai_nama(name)
+    if kod is None and base in JADUAL_IKUT_DAERAH:
+        raise ValueError(f"Jadual '{base}' mesti ditulis dengan kod daerah (contoh {base}_BK_2026) - penulisan dibatalkan.")
     supa, err = get_supabase()
     if supa is None:
         raise RuntimeError(f"Supabase tidak connect: {err}")
-    base = name.split("_2026")[0].split("_2025")[0]
-    for b in ["maklumat_sekolah","cadangan_sup","penempatan_ppd","status_hantar","kuota_ppd","petugas_simpanan","log_simpanan"]:
-        if b in name:
-            base = b
-            break
-    parts = name.split("_")
-    filter_ppd = None
-    if len(parts)>=1 and parts[-1] in ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]:
-        filter_ppd = parts[-1]
-    try:
-        if filter_ppd:
-            supa.table(base).delete().eq("KOD_PPD", filter_ppd).execute()
-        else:
-            supa.table(base).delete().neq("id", 0).execute()
-    except:
-        pass
-    batch=[]
+    ids_lama = [r["id"] for r in _baca_baris(base, kod) if isinstance(r, dict) and "id" in r]
+    batch = []
     for _, row in df.iterrows():
-        rd=row.to_dict()
-        clean={k: ("" if pd.isna(v) else v) for k,v in rd.items()}
-        kod_ppd = filter_ppd or str(clean.get("KOD PPD", clean.get("KOD_PPD", "")))[:2] or "BK"
-        batch.append({"KOD_PPD": kod_ppd, "data": clean})
-    for i in range(0, len(batch), 100):
-        supa.table(base).insert(batch[i:i+100]).execute()
+        bersih = {str(k): _cell(v) for k, v in row.to_dict().items()}
+        kod_ppd = kod or (str(bersih.get("KOD PPD", bersih.get("KOD_PPD", "")))[:2] or "BK")
+        batch.append({"KOD_PPD": kod_ppd, "data": bersih})
+    baru_id = []
+    try:
+        for i in range(0, len(batch), 100):
+            res = supa.table(base).insert(batch[i:i + 100]).execute()
+            baru_id += [r["id"] for r in (res.data or []) if isinstance(r, dict) and "id" in r]
+    except Exception as e:
+        try:
+            _padam_id(supa, base, baru_id)   # undur - data lama tak disentuh
+        except Exception:
+            pass
+        raise _ralat_jadual(base, e) from e
+    try:
+        _padam_id(supa, base, ids_lama)
+    except Exception:
+        try:
+            _padam_id(supa, base, ids_lama)   # cuba sekali lagi
+        except Exception as e:
+            raise RuntimeError("Data baru sudah disimpan tetapi baris lama gagal dibuang (mungkin berganda sementara). Tekan simpan sekali lagi.") from e
 
 
 def modify_sheet(name, modifier):
@@ -358,8 +337,9 @@ def modify_sheet(name, modifier):
     - Kalau bacaan gagal, TIADA apa ditulis (data lama selamat).
     - modifier boleh `raise ValueError("mesej")` untuk batalkan; pulang None = tiada perubahan.
     Pulang True kalau berjaya."""
+    base, kod = _urai_nama(name)
     try:
-        with get_lock(name):
+        with get_lock(f"{base}|{kod}"):
             df = read_sheet_strict(name)
             baru = modifier(df)
             if baru is not None:
@@ -601,7 +581,7 @@ def jana_penempatan(pusat_list, penempatan_df, cadangan_df, pusat_to_sekolah, pu
 
 def bersihkan_duplikasi(df_pen, pusat_ppd):
     """Cari guru yang dilantik di lebih daripada satu pusat (padan IC ATAU nama+sekolah).
-    Rekod PERTAMA (ikut susunan sheet, mis. BK001 dulu) dikekalkan; yang lain dibuang.
+    Rekod PERTAMA (ikut susunan data, mis. BK001 dulu) dikekalkan; yang lain dibuang.
     Pulang (df_baru, laporan[dict])."""
     if df_pen is None or df_pen.empty or "NO PUSAT TUGAS" not in df_pen.columns:
         return df_pen, []
@@ -636,7 +616,7 @@ def sah_email(e):
 
 
 def normalkan_cadangan(df):
-    """Samakan lajur lama 'JAWATAN CADANG' dengan header sheet 'JAWATAN CADANGAN'."""
+    """Samakan lajur lama 'JAWATAN CADANG' dengan lajur 'JAWATAN CADANGAN'."""
     if "JAWATAN CADANG" not in df.columns:
         return df
     df = df.copy()
@@ -648,7 +628,7 @@ def normalkan_cadangan(df):
 
 
 def tab_daerah(base, kod_ppd, tahun=None):
-    """Nama tab ikut daerah + tahun, contoh tab_daerah('cadangan_sup','BK',2026) -> 'cadangan_sup_BK_2026'."""
+    """Nama jadual ikut daerah + tahun, contoh tab_daerah('cadangan_sup','BK',2026) -> 'cadangan_sup_BK_2026'."""
     if tahun is None:
         try:
             tahun = st.session_state.get("tahun_pilih", 2026)
@@ -671,7 +651,7 @@ def tab_tahun(base, tahun=None):
 
 
 def read_semua_daerah(base, tahun=None):
-    """Gabung tab 10 daerah ikut tahun (untuk JPN sahaja)."""
+    """Gabung data 10 daerah ikut tahun (untuk JPN sahaja)."""
     if tahun is None:
         try:
             tahun = st.session_state.get("tahun_pilih", 2026)
@@ -687,69 +667,6 @@ def read_semua_daerah(base, tahun=None):
             d["KOD PPD"] = kod
             bahagian.append(d)
     return pd.concat(bahagian, ignore_index=True) if bahagian else pd.DataFrame()
-
-
-def pecah_data_lama(mapping_df, jeda=4):
-    """Salin data dalam tab lama (satu tab untuk semua daerah) ke tab setiap daerah.
-    - Tab lama TIDAK diubah / dipadam.
-    - Baris yang sudah ada dalam tab daerah dilangkau, jadi selamat dijalankan berulang kali.
-    - Baris yang kod sekolahnya tiada dalam senarai dilaporkan dan dibiar di tab lama."""
-    peta_sek = dict(zip(mapping_df["KOD SEKOLAH"].astype(str), mapping_df["KOD PPD"].astype(str)))
-
-    def k_mak(r):
-        return str(r.get("KOD SEKOLAH", "")).strip()
-
-    def k_cad(r):
-        return (kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL", "")) or [""])[0]
-
-    def k_pen(r):
-        k = (kunci_guru(r.get("IC", ""), r.get("NAMA GURU", ""), r.get("KOD SEKOLAH ASAL GURU", "")) or [""])[0]
-        return str(r.get("NO PUSAT TUGAS", "")).strip() + "|" + k
-
-    senarai = [("maklumat_sekolah", "KOD SEKOLAH", k_mak),
-               ("cadangan_sup", "KOD SEKOLAH ASAL", k_cad),
-               ("penempatan_ppd", "KOD SEKOLAH ASAL GURU", k_pen)]
-    laporan = []
-    for base, kol, kunci in senarai:
-        try:
-            lama = read_sheet_strict(base)
-        except Exception as e:
-            laporan.append({"TAB LAMA": base, "DAERAH": "-", "BARIS": 0, "STATUS": f"Gagal baca ({type(e).__name__})"})
-            continue
-        if lama.empty or kol not in lama.columns:
-            laporan.append({"TAB LAMA": base, "DAERAH": "-", "BARIS": 0, "STATUS": "Tiada data"})
-            continue
-        if base == "cadangan_sup":
-            lama = normalkan_cadangan(lama)
-        lama["_PPD"] = lama[kol].astype(str).map(peta_sek)
-        tak = int(lama["_PPD"].isna().sum())
-        if tak:
-            laporan.append({"TAB LAMA": base, "DAERAH": "(tak dikenali)", "BARIS": tak, "STATUS": "Dibiar di tab lama - kod sekolah tiada dalam senarai"})
-        for kod, grp in lama.dropna(subset=["_PPD"]).groupby("_PPD"):
-            baru = grp.drop(columns=["_PPD"]).reset_index(drop=True)
-            kiraan = {"n": 0}
-
-            def _gabung(df, baru=baru, kunci=kunci, kiraan=kiraan):
-                if df.empty:
-                    kiraan["n"] = len(baru)
-                    return baru
-                ada = {kunci(r) for _, r in df.iterrows()}
-                tambah = baru[[kunci(r) not in ada for _, r in baru.iterrows()]]
-                kiraan["n"] = len(tambah)
-                if tambah.empty:
-                    return None
-                return pd.concat([df, tambah], ignore_index=True)
-
-            ok = modify_sheet(tab_daerah(base, kod), _gabung)
-            if not ok:
-                status = "GAGAL - jalankan semula"
-            elif kiraan["n"] == 0:
-                status = "Sudah ada (tiada perubahan)"
-            else:
-                status = "Disalin"
-            laporan.append({"TAB LAMA": base, "DAERAH": kod, "BARIS": kiraan["n"], "STATUS": status})
-            time.sleep(jeda)   # elak had kuota Google (60 permintaan/min)
-    return laporan
 
 
 # ====== SENARAI GURU & MUAT NAIK / MUAT TURUN (mula) ======
@@ -961,7 +878,7 @@ def gabung_guru_sekolah(df_roster, df_baru, kod_sekolah, nama_sekolah):
     if df_roster is None or df_roster.empty:
         return baru[LAJUR_GURU].reset_index(drop=True), len(baru), 0
     if "IC" not in df_roster.columns or "KOD SEKOLAH ASAL" not in df_roster.columns:
-        raise ValueError("Format sheet guru_sekolah tidak dijangka - hubungi admin")
+        raise ValueError("Format data guru_sekolah tidak dijangka - hubungi admin")
     df = df_roster.copy().astype(object)
     for c in LAJUR_GURU:
         if c not in df.columns:
@@ -1051,6 +968,28 @@ def buang_guru_roster(df_roster, kod_sekolah, ic_dipilih, ic_cadangan):
     return df_roster[~sasar].reset_index(drop=True), int(sasar.sum())
 
 
+def pulang_ke_senarai_guru(df_roster, baris_cad, kod_sekolah, nama_sekolah):
+    """Guru yang dibatalkan pencalonannya mesti ada dalam Senarai Guru.
+    Tambah yang TIADA sahaja; yang sedia ada tak diubah (data terkini dalam Senarai Guru dikekalkan).
+    Pulang (df_baru, bil_ditambah)."""
+    kod = str(kod_sekolah)
+    ada = set()
+    if df_roster is not None and not df_roster.empty and "IC" in df_roster.columns and "KOD SEKOLAH ASAL" in df_roster.columns:
+        ada = {norm_ic(r["IC"]) for _, r in df_roster.iterrows() if str(r["KOD SEKOLAH ASAL"]) == kod and norm_ic(r["IC"])}
+    rows = []
+    if baris_cad is not None and not baris_cad.empty:
+        for _, x in normalkan_cadangan(baris_cad).iterrows():
+            k = norm_ic(x.get("IC", ""))
+            if not k or k in ada:
+                continue
+            ada.add(k)
+            rows.append({c: x.get(c, "") for c in LAJUR_GURU})
+    if not rows:
+        return df_roster, 0
+    df_n, nb, _ = gabung_guru_sekolah(df_roster, pd.DataFrame(rows), kod, nama_sekolah)
+    return df_n, nb
+
+
 def hantar_cadangan(df_cad, kod_sekolah, nama_sekolah, ticked_df, df_pen, df_simp):
     """HANTAR: senarai cadangan sekolah ini jadi TEPAT guru yang di-tick (ia yang dilihat PPD).
     - Guru baru di-tick -> ditambah; yang sedia ada -> dikemaskini (status dikekalkan).
@@ -1064,7 +1003,7 @@ def hantar_cadangan(df_cad, kod_sekolah, nama_sekolah, ticked_df, df_pen, df_sim
     df = pd.DataFrame()
     if df_cad is not None and not df_cad.empty:
         if "IC" not in df_cad.columns or "KOD SEKOLAH ASAL" not in df_cad.columns:
-            raise ValueError("Format sheet cadangan_sup tidak dijangka - hubungi admin")
+            raise ValueError("Format data cadangan_sup tidak dijangka - hubungi admin")
         df = normalkan_cadangan(df_cad).astype(object)
     own, lain = pd.DataFrame(), pd.DataFrame()
     if not df.empty:
@@ -1234,7 +1173,7 @@ def padam_cadangan_sekolah(df_cad, kod_sekolah, ic_dipilih, df_pen, df_simp=None
         if p_ is not None:
             terkunci.append(f"{r.get('NAMA GURU', '')} ({'Simpanan' if p_ == 'SIMPANAN' else p_})")
     if terkunci:
-        raise ValueError("Tak boleh dipadam kerana sudah dilantik / disimpan PPD: " + ", ".join(terkunci) + ". Minta PPD kosongkan lantikan itu dahulu.")
+        raise ValueError("Tak boleh dibatalkan kerana sudah dilantik / disimpan PPD: " + ", ".join(terkunci) + ". Minta PPD kosongkan lantikan itu dahulu.")
     return df_cad[~sasar].reset_index(drop=True), int(sasar.sum())
 
 
@@ -1253,7 +1192,7 @@ def buang_guru_ic(df, ic, pusat=None, label="senarai"):
 
 
 def baris_simpanan(baris_pen, sebab, ppd_nama):
-    """Baris untuk tab petugas_simpanan, daripada satu baris penempatan yang dibatalkan."""
+    """Baris untuk jadual petugas_simpanan, daripada satu baris penempatan yang dibatalkan."""
     return {
         "KOD SEKOLAH ASAL GURU": baris_pen.get("KOD SEKOLAH ASAL GURU", ""), "NAMA SEKOLAH ASAL": baris_pen.get("NAMA SEKOLAH ASAL", ""),
         "NAMA GURU": baris_pen.get("NAMA GURU", ""), "IC": baris_pen.get("IC", ""), "JANTINA": baris_pen.get("JANTINA", ""),
@@ -1283,7 +1222,7 @@ def transaksi_dua_tab(tab1, fn1, tab2, fn2, undur_fn1):
     if modify_sheet(tab1, undur_fn1):
         st.error("Operasi dibatalkan sepenuhnya - tiada perubahan dibuat. Cuba lagi sebentar.")
     else:
-        st.error(f"⚠️ Operasi separuh siap dan tak dapat diundur automatik. Muat semula halaman dan semak tab '{tab1}' dan '{tab2}'.")
+        st.error(f"⚠️ Operasi separuh siap dan tak dapat diundur automatik. Muat semula halaman dan semak data '{tab1}' dan '{tab2}'.")
     return False
 
 
@@ -1333,7 +1272,7 @@ def senarai_semua_petugas(cad_df, pen_df, simp_df):
 
 def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama_pusat, label_status, pindah=False):
     """Tempatkan seorang petugas ke pusat + jawatan pilihan PPD. Pulang df penempatan baru.
-    pindah=True: petugas sedang ditempatkan -> kedudukan lama dibuang, kedudukan baru ditambah (satu tab, atomik).
+    pindah=True: petugas sedang ditempatkan -> kedudukan lama dibuang, kedudukan baru ditambah (satu jadual, atomik).
     Disemak: ada IC; bukan guru sekolah tuan rumah; belum dilantik tempat lain; jawatan MASIH kosong."""
     ic = norm_ic(guru.get("IC", ""))
     if not ic:
@@ -1369,7 +1308,7 @@ def tempatkan_manual(df_pen, guru, pusat, jawatan, kod_sek_tuan, need_peng, nama
     return pd.concat([df, baru], ignore_index=True) if not df.empty else baru
 
 
-# ====== HELPER GSHEET & PENEMPATAN (tamat) ======
+# ====== HELPER SUPABASE & PENEMPATAN (tamat) ======
 
 
 # Debug info
@@ -1531,14 +1470,14 @@ with col_kiri:
     elif role=="PPD":
         menu = st.radio("Menu", ["Senarai Pusat", "Kuota Pusat", "Cadangan SUP", "Jana Penempatan", "Penempatan Manual", "Batal Penempatan", "Petugas Simpanan", "Hantar JPN"], label_visibility="collapsed")
     else:
-        menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat", "Pindah Data Daerah", "Backup & Restore 2026", "🔍 Check Supabase"], label_visibility="collapsed")
+        menu = st.radio("Menu", ["Semua PPD", "Sahkan PPD", "Jana Surat", "Backup & Restore 2026", "🔍 Check Supabase"], label_visibility="collapsed")
     st.markdown("---")
     tahun_list = [2026, 2027, 2028, 2029, 2030]
     if "tahun_pilih" not in st.session_state:
         st.session_state["tahun_pilih"] = 2026
     tahun_pilih = st.selectbox("📅 Tahun", tahun_list, index=tahun_list.index(st.session_state["tahun_pilih"]) if st.session_state["tahun_pilih"] in tahun_list else 0, key="tahun_selector")
     st.session_state["tahun_pilih"] = tahun_pilih
-    st.caption(f"Sheet: *_{tahun_pilih}")
+    st.caption(f"Tahun: {tahun_pilih}")
     st.markdown("---")
     exam_type = st.selectbox("Peperiksaan", ["SPM Bertulis", "SPM Amali Sains", "Ujian Mendengar", "Ujian Bertutur"])
     st.markdown("---")
@@ -1561,13 +1500,12 @@ with col_kanan:
             return pd.DataFrame({"NO PUSAT":["BK009"],"NAMA PUSAT":["SMJK KATHOLIK"]})
     pusat_master = load_master()
     
-    gspread_client, SPREADSHEET_ID_FIX, GS_ERR = get_gsheet()
-    USE_GSHEET = gspread_client is not None
-    if not USE_GSHEET:
-        st.warning(f"GSheet tidak connect - data TIDAK boleh disimpan: {GS_ERR}")
+    _supa_klien, _supa_ralat = get_supabase()
+    if _supa_klien is None:
+        st.error(f"Supabase tidak connect - data TIDAK boleh dibaca / disimpan: {_supa_ralat}")
     show_flash()
 
-    # Setiap daerah ada tab sendiri (contoh cadangan_sup_BK) - data daerah tak bercampur
+    # Setiap daerah ada data sendiri (lajur KOD_PPD, contoh cadangan_sup_BK) - data daerah tak bercampur
     _kod_daerah = str(info.get("kod_ppd") or info.get("kod") or "").strip().upper()
     if role in ("SUP", "PPD") and _kod_daerah not in {t[3] for t in PPD_LIST}:
         st.error("Kod daerah tidak sah - sila log keluar dan log masuk semula.")
@@ -1652,7 +1590,7 @@ with col_kanan:
             if not existing.empty:
                 st.success(f"✅ Data {info['kod_sekolah']} dijumpai - auto isi")
             
-            # Elak app crash kalau nilai lama dalam sheet di luar had
+            # Elak app crash kalau nilai lama dalam data di luar had
             def_val_poskod = max(40000, min(49000, def_val_poskod))
             def_val_bil_pusat = max(1, min(10, def_val_bil_pusat))
             def_val_bil_kelas = max(1, min(30, def_val_bil_kelas))
@@ -1671,7 +1609,7 @@ with col_kanan:
                     nama_sup = st.text_input("NAMA SUP", value=def_val_nama_sup)
                     nama_pengetua = st.text_input("NAMA PENGETUA", value=def_val_pengetua)
                 if st.form_submit_button("💾 Simpan", use_container_width=True):
-                    # Data baru - semua field - ikut format sheet sedia ada
+                    # Data baru - semua field - ikut format data sedia ada
                     new_row = {
                         "KOD SEKOLAH": info['kod_sekolah'], 
                         "NAMA SEKOLAH": nama_sek, 
@@ -1689,7 +1627,7 @@ with col_kanan:
                     }
                     def _simpan_maklumat(df):
                         if not df.empty and "KOD SEKOLAH" not in df.columns:
-                            raise ValueError("Format sheet maklumat_sekolah tidak dijangka - hubungi admin")
+                            raise ValueError("Format data maklumat_sekolah tidak dijangka - hubungi admin")
                         if not df.empty:
                             # Satu rekod sahaja setiap sekolah (buang rekod lama sekolah ini)
                             df = df[df["KOD SEKOLAH"].astype(str) != str(info['kod_sekolah'])]
@@ -1702,10 +1640,10 @@ with col_kanan:
             if not maklumat.empty and "KOD SEKOLAH" in maklumat.columns:
                 maklumat_sendiri = maklumat[maklumat["KOD SEKOLAH"].astype(str) == str(info['kod_sekolah'])]
                 if not maklumat_sendiri.empty:
-                    st.markdown("#### 📋 Rekod Sekolah Anda (dari Google Sheet)")
+                    st.markdown("#### 📋 Rekod Sekolah Anda (dari Supabase)")
                     st.dataframe(maklumat_sendiri, use_container_width=True)
                 else:
-                    st.info("Belum ada rekod untuk sekolah ini dalam Google Sheet")
+                    st.info("Belum ada rekod untuk sekolah ini dalam Supabase")
             
         elif menu=="Senarai Guru":
             st.header(f"🧑‍🏫 Senarai Guru - {info['nama']}")
@@ -1836,7 +1774,7 @@ with col_kanan:
                         st.info("Tiada guru yang boleh dibuang.")
                     else:
                         pilih_b = st.multiselect("Pilih guru", list(label_b.keys()), format_func=lambda k: label_b[k], key=f"guru_buang_{n_g}")
-                        sah_b = st.checkbox("Ya, buang terus daripada Google Sheet (tidak boleh dipulihkan)", key=f"guru_buang_sah_{n_g}")
+                        sah_b = st.checkbox("Ya, buang terus daripada Supabase (tidak boleh dipulihkan)", key=f"guru_buang_sah_{n_g}")
                         if st.button(f"🗑️ Buang {len(pilih_b)} guru", use_container_width=True, disabled=not (pilih_b and sah_b), key=f"guru_buang_btn_{n_g}"):
                             ic_cad_b = {norm_ic(x) for x in cadangan_g["IC"]} if (not cadangan_g.empty and "IC" in cadangan_g.columns) else set()
                             hasil_b = {}
@@ -1864,7 +1802,7 @@ with col_kanan:
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_templat")
 
             st.markdown("---")
-            st.markdown("### ⬆️ 2. Muat naik senarai guru (terus ke Google Sheet)")
+            st.markdown("### ⬆️ 2. Muat naik senarai guru (terus ke Supabase)")
             fail_up = st.file_uploader("Pilih fail Excel (.xlsx) atau CSV", type=["xlsx", "csv"], key=f"up_guru_{up_n}")
             if fail_up is not None:
                 try:
@@ -1890,7 +1828,7 @@ with col_kanan:
                     if not df_sah.empty:
                         st.markdown("**Pratonton baris sah:**")
                         st.dataframe(df_sah[["NAMA GURU", "IC", "JANTINA", "NO TELEFON GURU", "ALAMAT RUMAH", "POSKOD RUMAH", "NO PUSAT ASAL", "JAWATAN CADANGAN"]], use_container_width=True, hide_index=True)
-                        if st.button(f"📤 Import {len(df_sah)} guru ke Google Sheet", use_container_width=True, type="primary", key=f"up_btn_{up_n}"):
+                        if st.button(f"📤 Import {len(df_sah)} guru ke Supabase", use_container_width=True, type="primary", key=f"up_btn_{up_n}"):
                             hasil_u = {}
 
                             def _import(dfr):
@@ -1924,120 +1862,56 @@ with col_kanan:
                     st.download_button(f"⬇️ Senarai Cadangan dihantar ({len(cad_dl)} guru)", data=excel_bytes(cad_dl.drop(columns=["CADANGAN"]), "Cadangan"), file_name=f"cadangan_{kod_s}_{st.session_state.get('tahun_pilih', 2026)}.xlsx",
                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="dl_cadangan")
         elif menu=="Cadangan Petugas":
-            st.header(f"👥 Cadangan - {info['nama']}")
+            st.header(f"👥 Cadangan Petugas - {info['nama']}")
+            st.caption("Hanya guru yang anda TICK dan HANTAR di menu Senarai Guru masuk ke sini. Di sini anda hanya boleh membatalkan pencalonan: guru yang dibatalkan akan kembali ke Senarai Guru.")
+            kod_s = str(info['kod_sekolah'])
+            n_c = st.session_state.get("cad_n", 0)
             cadangan = read_sheet(TAB_CADANGAN)
-            # Pusat milik sekolah ini (untuk NO PUSAT ASAL)
-            _senarai_p = []
-            for _p in re.findall(r"[A-Za-z]+\d+", str(info.get("senarai_pusat", ""))):
-                if _p.upper() not in _senarai_p:
-                    _senarai_p.append(_p.upper())
-            TIADA_PUSAT = "-- Tiada --"
-            with st.form("guru"):
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    jaw = st.selectbox("JAWATAN CADANGAN", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Pengemas Bilik", "Penyelia Kawasan"])
-                    jantina = st.selectbox("JANTINA", ["L", "P"])
-                with c2:
-                    nama_g = st.text_input("NAMA GURU *")
-                    tel_g = st.text_input("NO TELEFON GURU *", placeholder="contoh: 012-3456789")
-                with c3:
-                    ic = st.text_input("IC *", placeholder="contoh: 900101-10-1234")
-                    email_g = st.text_input("EMAIL GURU", placeholder="contoh: nama@moe.gov.my")
-                alamat_g = st.text_area("ALAMAT RUMAH *", placeholder="No rumah, jalan, taman, poskod, bandar")
-                c4, c5, c6 = st.columns(3)
-                with c4:
-                    pos_rumah = st.number_input("POSKOD RUMAH *", 40000, 49000, 46000)
-                with c5:
-                    pengalaman = st.number_input("PENGALAMAN SPM (bil. kali bertugas)", 0, 40, 0)
-                with c6:
-                    pusat_asal = st.selectbox("NO PUSAT ASAL (pusat sekolah anda)", _senarai_p + [TIADA_PUSAT])
-                if st.form_submit_button("➕ Tambah", use_container_width=True):
-                    ic_digit = re.sub(r"\D", "", ic)
-                    if not nama_g.strip() or not ic.strip():
-                        st.error("Nama Guru dan IC wajib isi!")
-                    elif len(ic_digit) != 12:
-                        st.error("IC mesti 12 digit (contoh: 900101-10-1234)")
-                    elif len(alamat_g.strip()) < 10:
-                        st.error("Alamat Rumah wajib isi penuh (no rumah, jalan, taman, bandar).")
-                    elif not sah_telefon(tel_g):
-                        st.error("No Telefon Guru wajib isi dan mesti 9-12 digit (contoh: 012-3456789).")
-                    elif not sah_email(email_g):
-                        st.error("Format Email Guru tidak betul (contoh: nama@moe.gov.my) atau biarkan kosong.")
-                    else:
-                        ic_norm = norm_ic(ic)
-                        new_g_row = {
-                            "KOD SEKOLAH ASAL": info['kod_sekolah'], "NAMA SEKOLAH ASAL": info['nama'],
-                            "NAMA GURU": nama_g.strip(), "IC": ic.strip(), "JANTINA": jantina,
-                            "POSKOD RUMAH": pos_rumah, "ALAMAT RUMAH": re.sub(r"\s+", " ", alamat_g).strip(),
-                            "NO TELEFON GURU": tel_g.strip(), "EMAIL GURU": email_g.strip(),
-                            "JAWATAN CADANGAN": jaw, "PENGALAMAN SPM": int(pengalaman),
-                            "NO PUSAT ASAL": "" if pusat_asal == TIADA_PUSAT else pusat_asal,
-                            "STATUS": "Dicadang",
-                        }
-
-                        def _tambah_guru(df):
-                            if not df.empty and ("IC" not in df.columns or "KOD SEKOLAH ASAL" not in df.columns):
-                                raise ValueError("Format sheet cadangan_sup tidak dijangka - hubungi admin")
-                            if df.empty:
-                                return pd.DataFrame([new_g_row])
-                            df = normalkan_cadangan(df)
-                            sama = df["IC"].map(norm_ic) == ic_norm
-                            lain = sama & (df["KOD SEKOLAH ASAL"].astype(str) != str(info['kod_sekolah']))
-                            if lain.any():
-                                r = df[lain].iloc[0]
-                                raise ValueError(f"IC ini sudah dicadangkan oleh {r.get('NAMA SEKOLAH ASAL', r['KOD SEKOLAH ASAL'])}. Seorang guru hanya boleh dicadang oleh satu sekolah - hubungi PPD jika guru ini baru bertukar.")
-                            baris = dict(new_g_row)
-                            if sama.any() and "STATUS" in df.columns:
-                                s_lama = str(df[sama].iloc[0].get("STATUS", "")).strip()
-                                if s_lama and s_lama.lower() not in ("nan", "none"):
-                                    baris["STATUS"] = s_lama   # kekalkan status sedia ada
-                            # IC sama dalam sekolah SENDIRI sahaja yang diganti (kemaskini)
-                            df = df[~sama]
-                            return pd.concat([df, pd.DataFrame([baris])], ignore_index=True) if not df.empty else pd.DataFrame([baris])
-
-                        if modify_sheet(TAB_CADANGAN, _tambah_guru):
-                            # pastikan guru ini juga ada dalam Senarai Guru sekolah
-                            modify_sheet(TAB_GURU, lambda dfr: gabung_guru_sekolah(dfr, pd.DataFrame([new_g_row]), str(info['kod_sekolah']), info['nama'])[0])
-                            flash("success", f"✅ {nama_g} ditambah / dikemaskini! - Hanya untuk {info['kod_sekolah']}")
-                            st.rerun()
-            # === FIX: Hanya papar cadangan sekolah sendiri ===
             if not cadangan.empty and "KOD SEKOLAH ASAL" in cadangan.columns:
-                cadangan_sendiri = cadangan[cadangan["KOD SEKOLAH ASAL"].astype(str) == str(info['kod_sekolah'])]
-                if not cadangan_sendiri.empty:
-                    st.markdown(f"#### 👥 Senarai Cadangan Anda - {info['kod_sekolah']} ({len(cadangan_sendiri)} orang)")
-                    st.dataframe(cadangan_sendiri, use_container_width=True)
-
-                    # ===== PADAM CADANGAN =====
-                    st.markdown("#### 🗑️ Padam Cadangan")
-                    label_padam = {}
-                    if "IC" in cadangan_sendiri.columns:
-                        for _, r_ in cadangan_sendiri.iterrows():
-                            k_ = norm_ic(r_.get("IC", ""))
-                            if k_:
-                                label_padam[k_] = f"{r_.get('NAMA GURU', '')} | IC: {r_.get('IC', '')} | {r_.get('JAWATAN CADANGAN', r_.get('JAWATAN CADANG', ''))}"
-                    if not label_padam:
-                        st.info("Tiada cadangan yang boleh dipadam.")
-                    else:
-                        pilih_padam = st.multiselect("Pilih guru yang nak dipadam", list(label_padam.keys()), format_func=lambda k: label_padam[k], key=f"padam_pilih_{st.session_state.get('padam_n', 0)}")
-                        sahkan_padam = st.checkbox("Ya, padam terus daripada Google Sheet (tidak boleh dipulihkan)", key=f"padam_sahkan_{st.session_state.get('padam_n', 0)}")
-                        if st.button(f"🗑️ Padam {len(pilih_padam)} guru", use_container_width=True, disabled=not (pilih_padam and sahkan_padam), key="padam_btn"):
-                            hasil_padam = {}
-
-                            def _padam(df):
-                                # Semak lantikan dengan bacaan segar; kalau gagal baca -> batal (selamat)
-                                df_pen = read_sheet_strict(TAB_PENEMPATAN)
-                                baru, bil = padam_cadangan_sekolah(df, info['kod_sekolah'], pilih_padam, df_pen, read_sheet_strict(TAB_SIMPANAN))
-                                hasil_padam["bil"] = bil
-                                return baru
-
-                            if modify_sheet(TAB_CADANGAN, _padam):
-                                flash("success", f"✅ {hasil_padam['bil']} cadangan dipadam terus daripada Google Sheet.")
-                                st.session_state["padam_n"] = st.session_state.get("padam_n", 0) + 1   # kosongkan pilihan
-                                st.rerun()
-                else:
-                    st.info(f"Belum ada cadangan untuk {info['kod_sekolah']}")
+                cadangan_sendiri = normalkan_cadangan(cadangan[cadangan["KOD SEKOLAH ASAL"].astype(str) == kod_s]).reset_index(drop=True)
             else:
-                st.info("Belum ada cadangan")
+                cadangan_sendiri = pd.DataFrame()
+
+            if cadangan_sendiri.empty:
+                st.info("Belum ada guru dicalonkan. Pergi ke menu **Senarai Guru**, tick guru yang akan bertugas dan tekan Hantar.")
+            else:
+                st.markdown(f"#### 👥 Senarai Cadangan Anda - {kod_s} ({len(cadangan_sendiri)} orang)")
+                lajur_cad = [c for c in ["NAMA GURU", "IC", "JANTINA", "JAWATAN CADANGAN", "NO TELEFON GURU", "ALAMAT RUMAH", "POSKOD RUMAH", "PENGALAMAN SPM", "NO PUSAT ASAL", "STATUS"] if c in cadangan_sendiri.columns]
+                st.dataframe(cadangan_sendiri[lajur_cad], use_container_width=True, hide_index=True)
+
+                st.markdown("#### ↩️ Batal Pencalonan")
+                st.caption("Guru yang dibatalkan dibuang daripada senarai cadangan PPD dan kembali ke Senarai Guru (boleh ditick semula). Guru yang sudah dilantik / disimpan oleh PPD tidak boleh dibatalkan.")
+                label_batal = {}
+                if "IC" in cadangan_sendiri.columns:
+                    for _, r_ in cadangan_sendiri.iterrows():
+                        k_ = norm_ic(r_.get("IC", ""))
+                        if k_:
+                            label_batal[k_] = f"{r_.get('NAMA GURU', '')} | IC: {r_.get('IC', '')} | {r_.get('JAWATAN CADANGAN', '')}"
+                if not label_batal:
+                    st.info("Tiada cadangan yang boleh dibatalkan.")
+                else:
+                    pilih_batal = st.multiselect("Pilih guru untuk dibatalkan pencalonan", list(label_batal.keys()), format_func=lambda k: label_batal[k], key=f"cad_batal_pilih_{n_c}")
+                    sah_batal = st.checkbox("Ya, batalkan pencalonan guru yang dipilih", key=f"cad_batal_sah_{n_c}")
+                    if st.button(f"↩️ Batalkan pencalonan {len(pilih_batal)} guru", use_container_width=True, disabled=not (pilih_batal and sah_batal), key=f"cad_batal_btn_{n_c}"):
+                        ic_batal = {norm_ic(x) for x in pilih_batal}
+                        baris_batal = cadangan_sendiri[cadangan_sendiri["IC"].map(norm_ic).isin(ic_batal)]
+                        hasil_b = {}
+
+                        def _pulang(dfr):
+                            # pastikan guru ada dalam Senarai Guru (yang tiada ditambah; yang sedia ada tak diubah)
+                            df_n, n_tambah = pulang_ke_senarai_guru(dfr, baris_batal, kod_s, info['nama'])
+                            return df_n if n_tambah else None
+
+                        if modify_sheet(TAB_GURU, _pulang):
+                            def _batal(df):
+                                baru_c, bil = padam_cadangan_sekolah(df, kod_s, pilih_batal, read_sheet_strict(TAB_PENEMPATAN), read_sheet_strict(TAB_SIMPANAN))
+                                hasil_b["bil"] = bil
+                                return baru_c
+                            if modify_sheet(TAB_CADANGAN, _batal):
+                                flash("success", f"✅ Pencalonan {hasil_b['bil']} guru dibatalkan. Mereka kembali ke Senarai Guru.")
+                                st.session_state["cad_n"] = n_c + 1
+                                st.session_state["guru_n"] = st.session_state.get("guru_n", 0) + 1   # segarkan jadual Senarai Guru
+                                st.rerun()
         else:
             st.header("📤 Status")
             maklumat_s = read_sheet(TAB_MAKLUMAT)
@@ -2109,7 +1983,7 @@ with col_kanan:
         except Exception:
             pass
         
-        # 3. Dari Google Sheet sah_jpn - ada NO PUSAT + NAMA PUSAT penuh!
+        # 3. Dari jadual sah_jpn (Supabase) - ada NO PUSAT + NAMA PUSAT penuh!
         try:
             sah_tmp = read_sheet("sah_jpn")
             if not sah_tmp.empty and "NO PUSAT" in sah_tmp.columns:
@@ -2125,7 +1999,7 @@ with col_kanan:
         except Exception:
             pass
         
-        # 4. Dari penempatan_ppd sheet juga
+        # 4. Dari jadual penempatan_ppd juga
         try:
             pen_tmp = read_sheet(TAB_PENEMPATAN)
             if not pen_tmp.empty and "NO PUSAT TUGAS" in pen_tmp.columns:
@@ -2252,12 +2126,12 @@ with col_kanan:
             st.header(f"⚙️ Kuota Pusat - PPD {info['ppd_nama']} ({info['kod']})")
             st.info("Data asal dikekalkan ikut formula KELAS + 10 / PETUGAS_NEEDED. PPD boleh edit KEPERLUAN EDIT ikut kesesuaian. Bila edit, semua fungsi (Senarai Pusat, Jana Penempatan, Hantar JPN) akan auto guna kuota baru.")
             
-            # Load kuota sheet
+            # Load kuota dari Supabase
             df_kuota_all = read_sheet("kuota_ppd")
             if df_kuota_all.empty:
                 st.warning("Belum ada edit kuota - semua guna data asal.")
             else:
-                st.caption(f"Ada {len(df_kuota_all)} rekod kuota dalam sheet")
+                st.caption(f"Ada {len(df_kuota_all)} rekod kuota dalam Supabase")
             
             # Build table kuota
             kuota_data = []
@@ -3005,7 +2879,7 @@ with col_kanan:
                         sahkan_batal = st.checkbox(f"Ya, batalkan penempatan {nama_b}", key=f"batal_sahkan_{pusat_pilih}_{st.session_state.get('ppd_n', 0)}")
                         if st.button(f"❌ Batalkan {nama_b} dan masukkan ke Simpanan", use_container_width=True, disabled=not sahkan_batal, key=f"batal_btn_{pusat_pilih}"):
                             if not ic_b:
-                                st.error("Petugas ini tiada IC dalam data - tak boleh dibatalkan melalui sistem. Edit terus dalam Google Sheet.")
+                                st.error("Petugas ini tiada IC dalam data - tak boleh dibatalkan melalui sistem. Edit terus dalam Supabase.")
                             else:
                                 sebab_penuh = sebab_batal + (f": {catatan_batal.strip()}" if catatan_batal.strip() else "")
                                 baris_simp = baris_simpanan(baris_b, sebab_penuh, info['ppd_nama'])
@@ -3143,7 +3017,7 @@ with col_kanan:
 
         elif menu=="Batal Penempatan":
             st.header(f"❌ Batal Penempatan - PPD {info['ppd_nama']}")
-            st.caption("Batal penempatan ikut pusat atau keseluruhan daerah. Semua yang dibatalkan akan auto masuk ke Senarai Simpanan. SUP isi lebih petugas pun akan masuk simpanan. Sheet ikut tahun: {} - {}".format(tab_daerah("penempatan_ppd", info['kod']), st.session_state.get("tahun_pilih",2026)))
+            st.caption("Batal penempatan ikut pusat atau keseluruhan daerah. Semua yang dibatalkan akan auto masuk ke Senarai Simpanan. SUP isi lebih petugas pun akan masuk simpanan. Jadual: {} | Tahun: {}".format(tab_daerah("penempatan_ppd", info['kod']), st.session_state.get("tahun_pilih",2026)))
             
             penempatan_all = read_sheet(TAB_PENEMPATAN)
             simpanan_all = read_sheet(TAB_SIMPANAN)
@@ -3615,7 +3489,7 @@ with col_kanan:
 
                     def _hantar(df):
                         if not df.empty and "KOD PPD" not in df.columns:
-                            raise ValueError("Format sheet status_hantar tidak dijangka - hubungi admin")
+                            raise ValueError("Format data status_hantar tidak dijangka - hubungi admin")
                         if df.empty:
                             return pd.DataFrame([baris_hantar])
                         df = df[df["KOD PPD"].astype(str) != str(info['kod'])]
@@ -3649,24 +3523,9 @@ with col_kanan:
                 if modify_sheet("status_hantar", _sahkan):
                     flash("success", f"✅ {label_ppd[kod_sah]} DISAHKAN!")
                     st.rerun()
-        elif menu=="Pindah Data Daerah":
-            st.header("🗂️ Pindah Data Lama ke Tab Setiap Daerah")
-            st.info("Data dalam tab lama `maklumat_sekolah`, `cadangan_sup` dan `penempatan_ppd` akan disalin ke tab setiap daerah, contohnya `cadangan_sup_BK`. Tab lama TIDAK dipadam atau diubah (jadi ada salinan keselamatan). Selamat dijalankan berulang kali - baris yang dah ada akan dilangkau.")
-            st.caption("Tab daerah: " + ", ".join(f"{k} ({n})" for _, _, n, k in PPD_LIST))
-            st.warning("Proses ini mengambil beberapa minit (ada jeda untuk elak had kuota Google). Jangan tutup halaman sehingga jadual keputusan keluar.")
-            sahkan_pindah = st.checkbox("Saya faham, teruskan pemindahan", key="sahkan_pindah")
-            if st.button("🚚 Mulakan Pemindahan", use_container_width=True, type="primary", disabled=not sahkan_pindah):
-                with st.spinner("Memindahkan data ikut daerah... (beberapa minit)"):
-                    hasil_pindah = pecah_data_lama(mapping_df)
-                st.dataframe(pd.DataFrame(hasil_pindah), use_container_width=True, hide_index=True)
-                if any(str(h["STATUS"]).startswith("GAGAL") or str(h["STATUS"]).startswith("Gagal") for h in hasil_pindah):
-                    st.warning("Sebahagian gagal (biasanya had kuota Google). Tunggu seminit dan tekan Mulakan semula - yang dah siap akan dilangkau.")
-                else:
-                    st.success("✅ Selesai. App kini baca/tulis ikut tab daerah.")
-
         elif menu=="Backup & Restore 2026":
             st.header("🗄️ JPN - Backup & Restore 2026 - 100% SUPABASE")
-            st.info("DATA TARIK DARI: Supabase table cadangan_sup, penempatan_ppd, maklumat_sekolah (bukan Excel, bukan GSheet)")
+            st.info("DATA TARIK DARI: Supabase table cadangan_sup, penempatan_ppd, maklumat_sekolah (bukan Excel)")
 
             supa, err = get_supabase()
             if not supa:
@@ -3745,167 +3604,20 @@ with col_kanan:
                 st.stop()
             st.write("**DATA TARIK DARI:** Supabase project pelantikan-selangor-2026 (Singapore)")
             st.write(f"URL: {SUPABASE_URL}")
-            for tbl in ["cadangan_sup","penempatan_ppd","maklumat_sekolah","kuota_ppd","status_hantar","petugas_simpanan"]:
+            from collections import Counter
+            for tbl in ["cadangan_sup", "penempatan_ppd", "maklumat_sekolah", "kuota_ppd", "status_hantar", "petugas_simpanan", "guru_sekolah", "pilihan_ppd", "log_simpanan"]:
                 try:
-                    res=supa.table(tbl).select("KOD_PPD").limit(10000).execute()
-                    from collections import Counter
-                    c=Counter([r.get("KOD_PPD","?") for r in res.data])
-                    st.write(f"### {tbl}: {len(res.data)} baris")
+                    rows_c = _baca_baris(tbl, None)
+                    c = Counter([r.get("KOD_PPD", "?") for r in rows_c])
+                    st.write(f"### {tbl}: {len(rows_c)} baris")
                     st.json(dict(c))
-                    # Show sample data
-                    if res.data:
-                        res2=supa.table(tbl).select("*").limit(3).execute()
-                        df_sample=_df_from_rows(res2.data)
+                    if rows_c:
+                        df_sample = _df_from_rows(rows_c[:3])
                         if not df_sample.empty:
                             st.dataframe(df_sample.head(3), use_container_width=True)
                 except Exception as e:
                     st.error(f"{tbl} error: {e}")
             if st.button("🔄 Clear Cache & Refresh"):
-                _cached_read.clear()
-                st.rerun()
-
-
-        elif menu=="📚 Master 60K (Pindah Data Daerah)":
-            st.header("📚 MASTER 60K GURU - Data Guru Sahaja (Tanpa Jawatan Cadangan)")
-            st.info("""
-            **KONSEP MASTER (Faham dulu):**
-            - File master ni **DATA GURU SAHAJA**, bukan cadangan jawatan
-            - Column: NAMA GURU, IC, JANTINA, NO TELEFON, EMAIL, ALAMAT, POSKOD, PENGALAMAN SPM, GRED, JAWATAN HAKIKI, KOD SEKOLAH, KOD PPD
-            - **TAKDE** JAWATAN CADANGAN, TAKDE NO PUSAT ASAL - sebab tu akan wujud bila SUP tick nanti
-            - Bila JPN upload master 60K ni, sistem akan **PINDAH DATA DAERAH** - auto agih ikut KOD SEKOLAH -> KOD PPD berdasarkan pusat_2026.csv (369 sekolah)
-            - Lepas tu SUP login akan nampak guru di sekolah dia sahaja, dan tick siapa nak jadi cadangan + pilih jawatan cadangan apa
-            """)
-            supa, err = get_supabase()
-            if not supa:
-                st.error(f"Supabase tak connect: {err}")
-                st.stop()
-
-            # Stats guru_master
-            try:
-                res=supa.table("guru_master").select("KOD_PPD").limit(60000).execute()
-                from collections import Counter
-                c=Counter([r.get("KOD_PPD","?") for r in res.data])
-                col1,col2=st.columns(2)
-                col1.metric("Total Master Guru (Sekarang)", len(res.data))
-                col2.json(dict(c))
-            except Exception as e:
-                st.warning(f"guru_master belum wujud atau kosong: {e}")
-                st.code("""
-CREATE TABLE guru_master (
-  id bigint generated by default as identity primary key,
-  KOD_PPD text,
-  KOD_SEKOLAH text,
-  NAMA_GURU text,
-  IC_GURU text,
-  data jsonb,
-  created_at timestamptz default now()
-);
-ALTER TABLE guru_master ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all" ON guru_master FOR ALL TO public USING (true) WITH CHECK (true);
-                """, language="sql")
-
-            # Load pusat mapping
-            import os
-            df_pusat=None
-            for p in ["pusat_2026.csv","data/pusat_2026.csv","/mnt/data/pusat_2026.csv"]:
-                if os.path.exists(p):
-                    try:
-                        df_pusat=pd.read_csv(p)
-                        if "KOD_SEKOLAH" in df_pusat.columns:
-                            st.success(f"Pusat mapping loaded: {p} - {len(df_pusat)} pusat, {df_pusat['KOD_SEKOLAH'].nunique()} sekolah")
-                            break
-                    except:
-                        pass
-            if df_pusat is None:
-                st.error("pusat_2026.csv tak jumpa - letak dalam GitHub root atau data/")
-                st.stop()
-
-            PPD_MAP={'Klang':'BA','Kuala Langat':'BB','Kuala Selangor':'BC','Hulu Langat':'BD','Hulu Selangor':'BE','Sabak Bernam':'BF','Gombak':'BG','Petaling Perdana':'BH','Sepang':'BJ','Petaling Utama':'BK'}
-            if "KOD_PPD" not in df_pusat.columns:
-                df_pusat["KOD_PPD"]=df_pusat["PPD"].map(PPD_MAP)
-
-            st.divider()
-            st.subheader("Upload File Master 60K (Tanpa Jawatan Cadangan)")
-            st.write("Format: NAMA GURU, IC, JANTINA, NO TELEFON GURU, EMAIL GURU, ALAMAT RUMAH, POSKOD RUMAH, PENGALAMAN SPM, GRED, JAWATAN HAKIKI, KOD SEKOLAH, KOD PPD")
-            up = st.file_uploader("Upload Excel Master 60K", type=["xlsx","csv"], key="master60k_no_jawatan")
-            if up:
-                try:
-                    if up.name.endswith(".csv"):
-                        df_up=pd.read_csv(up)
-                    else:
-                        xls=pd.ExcelFile(up)
-                        dfs=[]
-                        for sh in xls.sheet_names:
-                            if "guru" in sh.lower() or "senarai" in sh.lower():
-                                try:
-                                    d=pd.read_excel(up, sheet_name=sh)
-                                    if not d.empty and "NAMA GURU" in d.columns:
-                                        dfs.append(d)
-                                except:
-                                    pass
-                        df_up=pd.concat(dfs, ignore_index=True) if dfs else pd.read_excel(up, sheet_name=0)
-                    st.success(f"Baca {len(df_up)} baris")
-                    st.dataframe(df_up.head(10), use_container_width=True)
-                    if "KOD SEKOLAH" not in df_up.columns:
-                        st.error("KOD SEKOLAH tiada - wajib ada untuk Pindah Data Daerah")
-                    else:
-                        map_sek_ppd = df_pusat.drop_duplicates("KOD_SEKOLAH").set_index("KOD_SEKOLAH")["KOD_PPD"].to_dict()
-                        df_up["KOD_PPD_AUTO"] = df_up["KOD SEKOLAH"].map(map_sek_ppd)
-                        if "KOD PPD" in df_up.columns:
-                            df_up["KOD_PPD_FINAL"] = df_up["KOD PPD"].fillna(df_up["KOD_PPD_AUTO"])
-                        else:
-                            df_up["KOD_PPD_FINAL"] = df_up["KOD_PPD_AUTO"]
-                        st.write("Agihan ikut daerah (berdasarkan KOD SEKOLAH -> pusat_2026.csv):")
-                        st.json(df_up["KOD_PPD_FINAL"].value_counts().to_dict())
-                        st.write(f"Sekolah terlibat: {df_up['KOD SEKOLAH'].nunique()} sekolah")
-                        if st.button("🚀 PINDAH DATA DAERAH - Masuk Supabase guru_master", type="primary", use_container_width=True):
-                            st.write("Padam lama...")
-                            for _ in range(100):
-                                res=supa.table("guru_master").select("id").limit(1000).execute()
-                                if not res.data:
-                                    break
-                                ids=[r["id"] for r in res.data]
-                                supa.table("guru_master").delete().in_("id", ids).execute()
-                            batch=[]
-                            for _, row in df_up.iterrows():
-                                rd=row.to_dict()
-                                clean={k: ("" if pd.isna(v) else str(v)) for k,v in rd.items()}
-                                batch.append({
-                                    "KOD_PPD": str(clean.get("KOD_PPD_FINAL", clean.get("KOD PPD", "")))[:2],
-                                    "KOD_SEKOLAH": str(clean.get("KOD SEKOLAH","")),
-                                    "NAMA_GURU": str(clean.get("NAMA GURU","")),
-                                    "IC_GURU": str(clean.get("IC","")),
-                                    "data": clean
-                                })
-                            total=0
-                            for i in range(0, len(batch), 100):
-                                supa.table("guru_master").insert(batch[i:i+100]).execute()
-                                total+=len(batch[i:i+100])
-                                st.write(f"{total}/{len(batch)}")
-                            st.balloons()
-                            st.success(f"Selesai {total} guru master dipindah ikut daerah & sekolah!")
-                            _cached_read.clear()
-                except Exception as e:
-                    st.error(f"Gagal: {e}")
-                    import traceback
-                    st.code(traceback.format_exc())
-
-        elif menu=="🔍 Check Supabase":
-            st.header("🔍 Check Supabase LIVE")
-            supa, err = get_supabase()
-            if not supa:
-                st.error(f"Supabase tak connect: {err}")
-                st.stop()
-            for tbl in ["guru_master","cadangan_sup","penempatan_ppd","maklumat_sekolah"]:
-                try:
-                    res=supa.table(tbl).select("KOD_PPD").limit(60000).execute()
-                    from collections import Counter
-                    c=Counter([r.get("KOD_PPD","?") for r in res.data])
-                    st.write(f"### {tbl}: {len(res.data)} rows")
-                    st.json(dict(c))
-                except Exception as e:
-                    st.error(f"{tbl}: {e}")
-            if st.button("Clear Cache"):
                 _cached_read.clear()
                 st.rerun()
 
