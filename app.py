@@ -313,33 +313,86 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         except:
             pass
         
+        # Pre-fetch guru_master map untuk tarik jantina, poskod, alamat, telefon, email kalau cadangan kosong
+        guru_map = {}
+        try:
+            res_guru = supa.table("guru_master").select("*").limit(5000).execute()
+            for g in res_guru.data or []:
+                ic = (g.get("ic_guru") or "").strip()
+                if not ic:
+                    d_tmp = g.get("data") or {}
+                    if isinstance(d_tmp, str):
+                        try:
+                            import json as js
+                            d_tmp = js.loads(d_tmp)
+                        except:
+                            d_tmp={}
+                    ic = str(d_tmp.get("IC","") or "").strip()
+                if ic:
+                    d = g.get("data") or {}
+                    if isinstance(d, str):
+                        try:
+                            import json as js
+                            d = js.loads(d)
+                        except:
+                            d={}
+                    guru_map[ic] = {
+                        "JANTINA": g.get("jantina") or d.get("JANTINA") or d.get("jantina") or "",
+                        "POSKOD": g.get("poskod_rumah") or d.get("POSKOD_RUMAH") or d.get("POSKOD") or "",
+                        "ALAMAT": g.get("alamat_rumah") or d.get("ALAMAT_RUMAH") or d.get("ALAMAT RUMAH") or d.get("ALAMAT") or "",
+                        "TELEFON": g.get("telefon_guru") or d.get("TELEFON_GURU") or d.get("NO TELEFON GURU") or d.get("TELEFON") or "",
+                        "EMAIL": g.get("email_guru") or d.get("EMAIL_GURU") or d.get("EMAIL") or "",
+                        "JAWATAN": g.get("jawatan_cadangan") or d.get("JAWATAN_CADANGAN") or d.get("JAWATAN CADANGAN") or "Pengawas Peperiksaan",
+                        "PENGALAMAN": g.get("pengalaman_spm") or d.get("PENGALAMAN_SPM") or d.get("PENGALAMAN") or "",
+                        "NO_PUSAT_ASAL": g.get("no_pusat_asal") or d.get("NO_PUSAT_ASAL") or "BA142",
+                        "KOD_SEKOLAH_ASAL": g.get("kod_sekolah_asal") or g.get("kod_sekolah") or "",
+                        "NAMA_SEKOLAH_ASAL": g.get("nama_sekolah_asal") or d.get("NAMA_SEKOLAH_ASAL") or d.get("NAMA_SEKOLAH") or ""
+                    }
+        except:
+            pass
+        
         norm_rows=[]
         for _, r in df.iterrows():
             kod_sek = get_col_value(r, "kod_sekolah", "KOD_SEKOLAH")
-            kod_sek_asal = get_col_value(r, "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "kod_sekolah")
+            kod_sek_asal = get_col_value(r, "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", "kod_sekolah") or kod_sek
             nama_sek_asal = get_col_value(r, "nama_sekolah_asal", "NAMA_SEKOLAH_ASAL", "NAMA_SEKOLAH")
-            # Jika nama sekolah asal kosong, ambil dari sekolah_map atau kod
             if not nama_sek_asal or nama_sek_asal.strip() == "":
                 nama_sek_asal = sekolah_map.get(kod_sek_asal.upper(), "") or sekolah_map.get(kod_sek.upper(), "") or kod_sek_asal or kod_sek
             
+            ic_guru_val = get_col_value(r, "ic_guru", "IC_GURU", "IC")
+            # Tarik dari guru_map kalau cadangan kosong
+            g_info = guru_map.get(ic_guru_val, {}) if ic_guru_val else {}
+            
+            jantina_val = get_col_value(r, "jantina", "JANTINA") or g_info.get("JANTINA","")
+            poskod_val = get_col_value(r, "poskod_rumah", "POSKOD_RUMAH", "POSKOD") or g_info.get("POSKOD","")
+            alamat_val = get_col_value(r, "alamat_rumah", "ALAMAT_RUMAH", "ALAMAT") or g_info.get("ALAMAT","")
+            telefon_val = get_col_value(r, "telefon_guru", "TELEFON_GURU", "TELEFON", "NO_TELEFON_GURU") or g_info.get("TELEFON","")
+            email_val = get_col_value(r, "email_guru", "EMAIL_GURU", "EMAIL") or g_info.get("EMAIL","")
+            jawatan_val = get_col_value(r, "jawatan_cadangan", "JAWATAN_CADANGAN") or g_info.get("JAWATAN","Pengawas Peperiksaan")
+            pengalaman_val = get_col_value(r, "pengalaman_spm", "PENGALAMAN_SPM", "PENGALAMAN") or g_info.get("PENGALAMAN","")
+            no_pusat_asal_val = get_col_value(r, "no_pusat_asal", "NO_PUSAT_ASAL", "NO_PUSAT") or g_info.get("NO_PUSAT_ASAL","BA142")
+            # KOD_PUSAT dan NO_PUSAT_ASAL sepatutnya sama - guna NO_PUSAT_ASAL sahaja
+            kod_pusat_val = no_pusat_asal_val  # Samakan, jangan duplicate
+            
+            kod_ppd_val = get_col_value(r, "kod_ppd", "KOD_PPD") or (kod_sek[:2] if len(kod_sek)>=2 else "BA")
+            kod_ppd_val = kod_ppd_val.upper()  # FIX huruf kecil jadi besar
+            
             norm_rows.append({
                 "id": r.get("id"),
-                "KOD_PPD": get_col_value(r, "kod_ppd", "KOD_PPD") or (kod_sek[:2] if len(kod_sek)>=2 else "BA"),
-                "KOD_SEKOLAH": kod_sek,
-                "KOD_SEKOLAH_ASAL": kod_sek_asal or kod_sek,
+                "KOD_PPD": kod_ppd_val,
+                "KOD_SEKOLAH_ASAL": kod_sek_asal,  # Hanya guna KOD_SEKOLAH_ASAL, bukan KOD_SEKOLAH
                 "NAMA_SEKOLAH_ASAL": nama_sek_asal,
-                "IC_GURU": get_col_value(r, "ic_guru", "IC_GURU", "IC"),
+                "IC_GURU": ic_guru_val,
                 "NAMA_GURU": get_col_value(r, "nama_guru", "NAMA_GURU", "NAMA GURU"),
-                "JANTINA": get_col_value(r, "jantina", "JANTINA"),
-                "POSKOD_RUMAH": get_col_value(r, "poskod_rumah", "POSKOD_RUMAH", "POSKOD"),
-                "ALAMAT_RUMAH": get_col_value(r, "alamat_rumah", "ALAMAT_RUMAH", "ALAMAT"),
-                "TELEFON_GURU": get_col_value(r, "telefon_guru", "TELEFON_GURU", "TELEFON", "NO_TELEFON_GURU"),
-                "EMAIL_GURU": get_col_value(r, "email_guru", "EMAIL_GURU", "EMAIL"),
-                "JAWATAN_CADANGAN": get_col_value(r, "jawatan_cadangan", "JAWATAN_CADANGAN"),
-                "PENGALAMAN_SPM": get_col_value(r, "pengalaman_spm", "PENGALAMAN_SPM", "PENGALAMAN"),
-                "NO_PUSAT_ASAL": get_col_value(r, "no_pusat_asal", "NO_PUSAT_ASAL", "NO_PUSAT"),
-                "KOD_PUSAT": get_col_value(r, "kod_pusat", "KOD_PUSAT", "NO_PUSAT"),
-                "STATUS": get_col_value(r, "status", "STATUS", default="DICADANGKAN"),
+                "JANTINA": jantina_val,
+                "POSKOD_RUMAH": poskod_val,
+                "ALAMAT_RUMAH": alamat_val,
+                "TELEFON_GURU": telefon_val,
+                "EMAIL_GURU": email_val,
+                "JAWATAN_CADANGAN": jawatan_val,
+                "PENGALAMAN_SPM": pengalaman_val,
+                "NO_PUSAT_ASAL": no_pusat_asal_val,  # Hanya NO_PUSAT_ASAL, bukan KOD_PUSAT duplicate
+                "STATUS": get_col_value(r, "status", "STATUS", default="DICADANGKAN").upper(),
                 "TARIKH_CADANG": get_col_value(r, "tarikh_cadang", "TARIKH_CADANG"),
                 "created_at": r.get("created_at", "")
             })
@@ -1070,7 +1123,7 @@ if st.session_state.role=="SUP":
                             telefon = gr.get("TELEFON_GURU","") or gr.get("TELEFON","")
                             email = gr.get("EMAIL_GURU","") or gr.get("EMAIL","")
                             pengalaman = pengalaman_input or gr.get("PENGALAMAN_SPM","") or gr.get("PENGALAMAN","")
-                            kod_ppd_guru = gr.get("KOD_PPD","") or info.get("kod_ppd","BH")
+                            kod_ppd_guru = (gr.get("KOD_PPD","") or info.get("kod_ppd","BA")).upper()  # FIX huruf kecil jadi besar
                             kod_sek_guru = gr.get("KOD_SEKOLAH","") or kod
                             nama_sek_guru = gr.get("NAMA_SEKOLAH_ASAL","") or gr.get("NAMA_SEKOLAH","") or info.get("nama_sekolah","")
                             no_pusat_asal = no_pusat_asal_input or gr.get("NO_PUSAT_ASAL","")
@@ -1081,23 +1134,16 @@ if st.session_state.role=="SUP":
                                 if pusat_pilih == "SPM001":
                                     pusat_pilih = "BA142"  # Fallback sebenar
                             
-                            # Data lengkap untuk cadangan - semua maklumat dipenuhi
+                            # Data lengkap untuk cadangan - HANYA guna KOD_SEKOLAH_ASAL & NO_PUSAT_ASAL (bukan duplicate)
+                            kod_ppd_guru = kod_ppd_guru.upper()  # Pastikan besar
+                            kod_sek_guru = kod_sek_guru.upper()
                             full_data = {
                                 "KOD_PPD": kod_ppd_guru,
                                 "KOD_PPD_ASAL": kod_ppd_guru,
-                                "kod_ppd": kod_ppd_guru.lower(),
-                                "KOD_SEKOLAH": kod_sek_guru,
-                                "KOD_SEKOLAH_ASAL": kod_sek_guru,
-                                "kod_sekolah": kod_sek_guru,
+                                "KOD_SEKOLAH_ASAL": kod_sek_guru,  # HANYA ASAL
                                 "NAMA_SEKOLAH_ASAL": nama_sek_guru,
-                                "nama_sekolah_asal": nama_sek_guru,
-                                "IC": ic,
                                 "IC_GURU": ic,
-                                "ic_guru": ic,
-                                "ic": ic,
                                 "NAMA_GURU": nama,
-                                "nama_guru": nama,
-                                "NAMA GURU": nama,
                                 "JANTINA": jantina,
                                 "jantina": jantina,
                                 "POSKOD_RUMAH": poskod,
@@ -1129,18 +1175,54 @@ if st.session_state.role=="SUP":
                             }
                             
                             inserted=False
-                            # Cuba insert dengan semua format untuk elak error column tidak wujud
+                            # Data lengkap - HANYA guna KOD_SEKOLAH_ASAL & NO_PUSAT_ASAL (tak duplicate KOD_SEKOLAH/KOD_PUSAT)
+                            # FIX PPD huruf besar
+                            clean_insert = {
+                                "kod_ppd": kod_ppd_guru.upper(),
+                                "kod_sekolah": kod_sek_guru.upper(),
+                                "kod_sekolah_asal": kod_sek_guru.upper(),
+                                "nama_sekolah_asal": nama_sek_guru,
+                                "ic_guru": ic,
+                                "nama_guru": nama,
+                                "jantina": jantina,
+                                "poskod_rumah": poskod,
+                                "alamat_rumah": alamat,
+                                "telefon_guru": telefon,
+                                "email_guru": email,
+                                "jawatan_cadangan": jawatan_clean,
+                                "pengalaman_spm": pengalaman,
+                                "no_pusat_asal": no_pusat_asal or pusat_pilih,  # HANYA NO_PUSAT_ASAL
+                                "kod_pusat": pusat_pilih,  # Simpan juga untuk compatibility tapi display guna NO_PUSAT_ASAL
+                                "kod_ppd_asal": kod_ppd_guru.upper(),
+                                "status": "DICADANGKAN",
+                                "tarikh_cadang": str(datetime.date.today()),
+                                "data": {
+                                    "KOD_PPD": kod_ppd_guru.upper(),
+                                    "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(),
+                                    "NAMA_SEKOLAH_ASAL": nama_sek_guru,
+                                    "IC_GURU": ic,
+                                    "NAMA_GURU": nama,
+                                    "JANTINA": jantina,
+                                    "POSKOD_RUMAH": poskod,
+                                    "ALAMAT_RUMAH": alamat,
+                                    "TELEFON_GURU": telefon,
+                                    "EMAIL_GURU": email,
+                                    "JAWATAN_CADANGAN": jawatan_clean,
+                                    "PENGALAMAN_SPM": pengalaman,
+                                    "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih,
+                                    "STATUS": "DICADANGKAN"
+                                }
+                            }
                             for attempt in [
-                                full_data,  # Cuba semua lowercase+uppercase sekali
-                                {"data": full_data},  # Hanya data JSON
+                                clean_insert,
+                                {"data": full_data},
                                 {
-                                    "kod_ppd": kod_ppd_guru,
-                                    "kod_sekolah": kod_sek_guru,
+                                    "kod_ppd": kod_ppd_guru.upper(),
+                                    "kod_sekolah": kod_sek_guru.upper(),
                                     "ic_guru": ic,
                                     "nama_guru": nama,
                                     "kod_pusat": pusat_pilih,
                                     "jawatan_cadangan": jawatan_clean,
-                                    "catatan": catatan,
                                     "status": "DICADANGKAN",
                                     "tarikh_cadang": str(datetime.date.today()),
                                     "jantina": jantina,
@@ -1206,28 +1288,83 @@ if st.session_state.role=="SUP":
                 st.download_button("📥 Export Cadangan", to_excel(df_cad), file_name=f"cadangan_{kod}.xlsx")
 
     elif menu=="📤 Hantar ke PPD":
-        st.header(f"Hantar Cadangan ke PPD {info.get('kod_ppd','BH')}")
+        st.header(f"Hantar Cadangan ke PPD {info.get('kod_ppd','BA')}")
         df_cad = get_cadangan_df(kod_sekolah=kod)
         if df_cad.empty:
             st.warning("Belum ada cadangan. Pergi menu Cadangan Lantikan dulu.")
         else:
-            st.dataframe(df_cad, use_container_width=True)
-            st.info(f"Ada {len(df_cad)} cadangan akan dihantar ke PPD {info.get('kod_ppd','BH')} - {PPD_MAP.get(info.get('kod_ppd','BH'),'')}")
-            if st.button("📤 Hantar Semua ke PPD", type="primary", use_container_width=True):
-                try:
-                    # Update status
-                    for _, row in df_cad.iterrows():
-                        try:
-                            supa.table("cadangan_sup").update({"status":"HANTAR KE PPD", "STATUS":"HANTAR KE PPD"}).eq("id", row["id"]).execute()
-                        except:
+            # Display tanpa duplicate columns - hanya NO_PUSAT_ASAL & KOD_SEKOLAH_ASAL
+            # Filter columns untuk display clean
+            display_cols = [c for c in ["NAMA_GURU","IC_GURU","JANTINA","POSKOD_RUMAH","ALAMAT_RUMAH","TELEFON_GURU","EMAIL_GURU","JAWATAN_CADANGAN","PENGALAMAN_SPM","KOD_SEKOLAH_ASAL","NAMA_SEKOLAH_ASAL","NO_PUSAT_ASAL","STATUS","TARIKH_CADANG"] if c in df_cad.columns]
+            if display_cols:
+                st.dataframe(df_cad[display_cols], use_container_width=True)
+            else:
+                st.dataframe(df_cad, use_container_width=True)
+            
+            st.info(f"Ada {len(df_cad)} cadangan akan dihantar ke PPD {info.get('kod_ppd','BA')} - {PPD_MAP.get(info.get('kod_ppd','BA'),'')}")
+            
+            col_hantar, col_batal, col_reset = st.columns(3)
+            with col_hantar:
+                if st.button("📤 Hantar Semua ke PPD", type="primary", use_container_width=True):
+                    try:
+                        for _, row in df_cad.iterrows():
                             try:
-                                supa.table("cadangan_sup").update({"data": {"STATUS":"HANTAR KE PPD"}}).eq("id", row["id"]).execute()
+                                # FIX huruf kecil jadi besar untuk kod_ppd
+                                supa.table("cadangan_sup").update({"status":"HANTAR KE PPD", "kod_ppd": info.get('kod_ppd','BA').upper()}).eq("id", row["id"]).execute()
                             except Exception as ee:
-                                st.error(f"Gagal update {row.get('id')}: {ee}")
-                    st.success(f"✅ Berjaya hantar {len(df_cad)} cadangan ke PPD!")
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"Gagal hantar: {e}")
+                                try:
+                                    supa.table("cadangan_sup").update({"status":"HANTAR KE PPD"}).eq("id", row["id"]).execute()
+                                except:
+                                    st.error(f"Gagal {row.get('id')}: {ee}")
+                        st.success(f"✅ Berjaya hantar {len(df_cad)} cadangan ke PPD!")
+                        st.balloons()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal hantar: {e}")
+            
+            with col_batal:
+                st.markdown("**Batal Cadangan (Selagi PPD Belum Lantik)**")
+                batal_ids = st.multiselect("Pilih untuk batal", df_cad["id"].tolist() if "id" in df_cad.columns else [], format_func=lambda x: f"{df_cad[df_cad['id']==x]['NAMA_GURU'].values[0] if not df_cad[df_cad['id']==x].empty else x} - {x}")
+                if st.button("❌ Batal Terpilih", use_container_width=True):
+                    if not batal_ids:
+                        st.warning("Pilih sekurang-kurangnya 1")
+                    else:
+                        for bid in batal_ids:
+                            try:
+                                # Check status dulu - hanya boleh batal kalau belum LULUS PPD
+                                row_check = df_cad[df_cad["id"]==bid]
+                                if not row_check.empty:
+                                    status_check = str(row_check.iloc[0].get("STATUS","")).upper()
+                                    if "LULUS" in status_check:
+                                        st.error(f"Tak boleh batal {bid} - sudah LULUS PPD!")
+                                        continue
+                                supa.table("cadangan_sup").delete().eq("id", bid).execute()
+                            except Exception as e:
+                                st.error(f"Gagal batal {bid}: {e}")
+                        st.success(f"✅ Berjaya batal {len(batal_ids)} cadangan!")
+                        st.rerun()
+            
+            with col_reset:
+                st.markdown("**Reset Semua (Clear & Isi Semula)**")
+                if st.button("🔄 Reset Semua Cadangan", use_container_width=True, type="secondary"):
+                    try:
+                        # Hanya reset yang belum LULUS
+                        count_del=0
+                        for _, row in df_cad.iterrows():
+                            status_check = str(row.get("STATUS","")).upper()
+                            if "LULUS" not in status_check:
+                                try:
+                                    supa.table("cadangan_sup").delete().eq("id", row["id"]).execute()
+                                    count_del+=1
+                                except:
+                                    pass
+                        st.success(f"✅ Reset {count_del} cadangan! Data baru akan keluar lengkap. Email sahaja kosong.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal reset: {e}")
+            
+            st.markdown("---")
+            st.caption("ℹ️ Nota: EMAIL_GURU kosong adalah normal - SUP perlu isi manual di Senarai Guru > Edit. NO_PUSAT_ASAL & KOD_SEKOLAH_ASAL sahaja digunakan (bukan KOD_PUSAT/KOD_SEKOLAH duplicate). Bila data baru isi, akan keluar lengkap kecuali email.")
 
 # ================= PPD =================
 elif st.session_state.role=="PPD":
