@@ -411,20 +411,65 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
 
 def to_excel(df):
     output = BytesIO()
+    # Cuba openpyxl dulu - paling standard
     try:
+        import openpyxl
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
-    except ModuleNotFoundError:
-        try:
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False)
-        except:
-            output = BytesIO()
-            output.write(df.to_csv(index=False).encode('utf-8'))
-    except Exception:
+        return output.getvalue()
+    except ImportError:
+        pass
+    except Exception as e:
+        pass
+    
+    # Fallback xlsxwriter
+    try:
+        import xlsxwriter
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False)
+        return output.getvalue()
+    except:
+        pass
+    
+    # Last fallback - buat CSV tapi dengan header yang betul, dan beri nama .csv bukan .xlsx
+    # Tapi untuk elak Excel error "file format not valid", kita cuba buat xlsx minimal manual
+    try:
+        # Cuba buat xlsx kosong guna openpyxl jika ada
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        # Tulis header
+        for col_idx, col_name in enumerate(df.columns, 1):
+            ws.cell(row=1, column=col_idx, value=col_name)
+        # Tulis data
+        for r_idx, row in enumerate(df.values, 2):
+            for c_idx, val in enumerate(row, 1):
+                ws.cell(row=r_idx, column=c_idx, value=str(val) if val is not None else "")
+        wb.save(output)
+        return output.getvalue()
+    except:
+        # Ultimate fallback - CSV
         output = BytesIO()
-        output.write(df.to_csv(index=False).encode('utf-8'))
-    return output.getvalue()
+        output.write(df.to_csv(index=False).encode('utf-8-sig'))  # UTF-8 BOM untuk Excel
+        return output.getvalue()
+
+def get_template_guru():
+    """Buat template guru yang sah - bukan CSV dengan extension xlsx"""
+    import pandas as pd
+    template_data = {
+        "NAMA GURU": ["CONTOH: ALI BIN ABU"],
+        "IC": ["900101-01-1234"],
+        "JANTINA": ["L"],
+        "POSKOD_RUMAH": ["40000"],
+        "ALAMAT_RUMAH": ["NO 1, JALAN CONTOH"],
+        "TELEFON_GURU": ["012-3456789"],
+        "EMAIL_GURU": ["ali@gmail.com"],
+        "PENGALAMAN_SPM": ["3"],
+        "KOD_SEKOLAH": ["BFT0003"],
+        "NAMA_SEKOLAH_ASAL": ["SAM NURUL IMAN"],
+        "NO_PUSAT_ASAL": ["BA142"]
+    }
+    return pd.DataFrame(template_data)
 
 # ================= SESSION =================
 if "role" not in st.session_state:
@@ -894,7 +939,8 @@ if st.session_state.role=="SUP":
     elif menu=="📤 Import Excel":
         st.header(f"Import Excel Guru - {kod}")
         st.info("Format Excel: NAMA GURU, IC, JANTINA, NO TELEFON GURU, EMAIL GURU, ALAMAT RUMAH, KOD SEKOLAH, KOD PPD | Untuk 60K, guna JPN > Import")
-        st.download_button("📥 Download Template", to_excel(pd.DataFrame([{"NAMA GURU":"ALI BIN ABU","IC":"900101011234","NO TELEFON GURU":"0123456789","JANTINA":"LELAKI","JAWATAN CADANGAN":"Pengawas Peperiksaan","ALAMAT RUMAH":"NO 1 JLN...","KOD SEKOLAH":kod,"KOD PPD":info.get("kod_ppd","BH")}])), "template_guru.xlsx")
+        st.download_button("📥 Download Template Guru (Excel Sah)", to_excel(get_template_guru()), file_name="template_guru.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 Download Template OLD", to_excel(pd.DataFrame([{"NAMA GURU":"ALI BIN ABU","IC":"900101011234","NO TELEFON GURU":"0123456789","JANTINA":"LELAKI","JAWATAN CADANGAN":"Pengawas Peperiksaan","ALAMAT RUMAH":"NO 1 JLN...","KOD SEKOLAH":kod,"KOD PPD":info.get("kod_ppd","BH")}])), "template_guru.xlsx")
         uploaded = st.file_uploader("Upload Excel Guru", type=["xlsx","xls"])
         if uploaded:
             try:
@@ -1230,44 +1276,36 @@ if st.session_state.role=="SUP":
                                     "STATUS": "DICADANGKAN"
                                 }
                             }
+                            # SIMPLE INSERT - hanya guna column yang wujud dalam table, EMAIL kosong dibenarkan
                             for attempt in [
-                                clean_insert,
-                                {"data": full_data},
+                                clean_insert,  # Full data dengan data JSON
                                 {
                                     "kod_ppd": kod_ppd_guru.upper(),
                                     "kod_sekolah": kod_sek_guru.upper(),
                                     "ic_guru": ic,
                                     "nama_guru": nama,
-                                    "kod_pusat": pusat_pilih,
+                                    "kod_pusat": no_pusat_asal,  # Guna NO_PUSAT_ASAL
                                     "jawatan_cadangan": jawatan_clean,
                                     "status": "DICADANGKAN",
                                     "tarikh_cadang": str(datetime.date.today()),
-                                    "jantina": jantina,
-                                    "poskod_rumah": poskod,
-                                    "alamat_rumah": alamat,
-                                    "telefon_guru": telefon,
-                                    "email_guru": email,
-                                    "pengalaman_spm": pengalaman,
+                                    "jantina": jantina or "L",
+                                    "poskod_rumah": poskod or "0",
+                                    "alamat_rumah": alamat or "-",
+                                    "telefon_guru": telefon or "-",
+                                    "email_guru": email or "",  # Kosong dibenarkan
+                                    "pengalaman_spm": pengalaman or "0",
                                     "no_pusat_asal": no_pusat_asal,
-                                    "kod_ppd_asal": kod_ppd_guru,
-                                    "kod_sekolah_asal": kod_sek_guru,
+                                    "kod_ppd_asal": kod_ppd_guru.upper(),
+                                    "kod_sekolah_asal": kod_sek_guru.upper(),
                                     "nama_sekolah_asal": nama_sek_guru
                                 },
                                 {
-                                    "KOD_PPD": kod_ppd_guru,
-                                    "KOD_SEKOLAH": kod_sek_guru,
-                                    "IC_GURU": ic,
-                                    "NAMA_GURU": nama,
-                                    "KOD_PUSAT": pusat_pilih,
-                                    "JAWATAN_CADANGAN": jawatan_clean,
-                                    "JANTINA": jantina,
-                                    "POSKOD_RUMAH": poskod,
-                                    "ALAMAT_RUMAH": alamat,
-                                    "TELEFON_GURU": telefon,
-                                    "EMAIL_GURU": email,
-                                    "PENGALAMAN_SPM": pengalaman,
-                                    "NO_PUSAT_ASAL": no_pusat_asal,
-                                    "STATUS": "DICADANGKAN"
+                                    # Minimal insert - kalau column lain tak wujud
+                                    "kod_ppd": kod_ppd_guru.upper(),
+                                    "kod_sekolah": kod_sek_guru.upper(),
+                                    "ic_guru": ic,
+                                    "nama_guru": nama,
+                                    "status": "DICADANGKAN"
                                 }
                             ]:
                                 try:
@@ -1277,9 +1315,20 @@ if st.session_state.role=="SUP":
                                     break
                                 except Exception as e:
                                     fail_msg=str(e)
+                                    # Debug: simpan error untuk tunjuk
+                                    if "duplicate" in fail_msg.lower() or "already exists" in fail_msg.lower():
+                                        # Kalau duplicate IC, update sahaja
+                                        try:
+                                            supa.table("cadangan_sup").update(attempt).eq("ic_guru", ic).eq("kod_sekolah", kod_sek_guru.upper()).execute()
+                                            inserted=True
+                                            ok_count+=1
+                                            break
+                                        except:
+                                            pass
                                     continue
                             if not inserted:
-                                st.error(f"Gagal {ic} - {nama}: {fail_msg[:400]}")
+                                st.error(f"❌ Gagal {ic} - {nama}: {fail_msg[:500]}")
+                                st.code(fail_msg[:1000])  # Tunjuk full error untuk debug
                         if ok_count>0:
                             st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih} - SEMUA maklumat lengkap!")
                             st.balloons()
