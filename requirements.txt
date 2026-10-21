@@ -1,3 +1,6 @@
 streamlit
 supabase
 pandas
+openpyxl
+xlsxwriter
+python-dateutil
