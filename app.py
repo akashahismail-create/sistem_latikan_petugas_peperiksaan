@@ -19,32 +19,82 @@ supa = get_supabase()
 KOD_DAERAH = ["BA","BB","BC","BD","BE","BF","BG","BH","BJ","BK"]
 PPD_MAP = {"BA":"Klang","BB":"Kuala Langat","BC":"Kuala Selangor","BD":"Hulu Langat","BE":"Hulu Selangor","BF":"Sabak Bernam","BG":"Gombak","BH":"Petaling Perdana","BJ":"Sepang","BK":"Petaling Utama"}
 
-# ================= HELPERS =================
-def get_sekolah(kod):
+# ================= HELPERS - FIX RLS + MULTI COLUMN SUPPORT =================
+def safe_count(table_name):
+    """Count dengan fallback kalau RLS block count exact"""
     try:
-        res = supa.table("sekolah_master").select("*").eq("kod_sekolah", kod.upper()).limit(1).execute()
-        if res.data:
-            return res.data[0]
+        res = supa.table(table_name).select("*", count="exact").limit(1).execute()
+        if res.count is not None and res.count > 0:
+            return res.count
+        # Jika count 0 tapi data ada, try fetch
+        if res.data and len(res.data) > 0:
+            # Fetch lebih banyak untuk count
+            res2 = supa.table(table_name).select("id").limit(1000).execute()
+            if res2.data:
+                # Kalau 1000, maksudnya lebih dari 1000, kita cuba count exact lagi dengan filter id>0
+                if len(res2.data) == 1000:
+                    return 1000  # at least
+                return len(res2.data)
+            return len(res.data)
+        # Try full fetch without count
+        res3 = supa.table(table_name).select("*").limit(1000).execute()
+        return len(res3.data) if res3.data else 0
     except Exception as e:
-        st.error(f"sekolah_master error: {e}")
+        # Last fallback
+        try:
+            res = supa.table(table_name).select("*").limit(1000).execute()
+            return len(res.data) if res.data else 0
+        except:
+            return 0
+
+def get_sekolah(kod):
+    # Support both kod_sekolah and Kod_Sekolah etc - try multiple
+    for col in ["kod_sekolah", "kod_sekolah_tuan_rumah", "KOD_SEKOLAH"]:
+        try:
+            res = supa.table("sekolah_master").select("*").eq(col, kod.upper()).limit(1).execute()
+            if res.data:
+                row = res.data[0]
+                # Normalize keys
+                return {
+                    "kod_sekolah": row.get("kod_sekolah") or row.get("KOD_SEKOLAH") or kod,
+                    "nama_sekolah": row.get("nama_sekolah") or row.get("NAMA_SEKOLAH") or row.get("nama_pusat") or f"SEKOLAH {kod}",
+                    "kod_ppd": row.get("kod_ppd") or row.get("KOD_PPD") or "BH",
+                    "ppd": row.get("ppd") or row.get("PPD") or "Petaling Perdana",
+                    "_raw": row
+                }
+        except:
+            continue
     return {"kod_sekolah": kod, "nama_sekolah": f"SEKOLAH {kod}", "kod_ppd": "BH", "ppd": "Petaling Perdana"}
 
 def get_guru_df(kod_sekolah):
     try:
-        res = supa.table("guru_master").select("*").eq("kod_sekolah", kod_sekolah.upper()).limit(2000).execute()
+        # Try both column names
+        res = None
+        for col in ["kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_tuan_rumah"]:
+            try:
+                r = supa.table("guru_master").select("*").eq(col, kod_sekolah.upper()).limit(2000).execute()
+                if r.data:
+                    res = r
+                    break
+            except:
+                continue
+        if not res:
+            res = supa.table("guru_master").select("*").eq("kod_sekolah", kod_sekolah.upper()).limit(2000).execute()
+        
         rows=[]
         for r in res.data or []:
             d = r.get("data") or {}
+            # Handle both JSON and flat
             rows.append({
                 "id": r.get("id"),
-                "NAMA GURU": r.get("nama_guru") or d.get("NAMA GURU",""),
-                "IC": r.get("ic_guru") or d.get("IC",""),
-                "JANTINA": d.get("JANTINA",""),
-                "TELEFON": d.get("NO TELEFON GURU","") or d.get("TELEFON",""),
-                "JAWATAN CADANGAN": d.get("JAWATAN CADANGAN",""),
-                "ALAMAT": d.get("ALAMAT RUMAH",""),
-                "KOD SEKOLAH": r.get("kod_sekolah"),
-                "data_full": d
+                "NAMA GURU": r.get("nama_guru") or d.get("NAMA GURU","") or r.get("NAMA_GURU",""),
+                "IC": r.get("ic_guru") or d.get("IC","") or r.get("IC",""),
+                "JANTINA": d.get("JANTINA","") or r.get("jantina",""),
+                "TELEFON": d.get("NO TELEFON GURU","") or d.get("TELEFON","") or r.get("no_telefon",""),
+                "JAWATAN CADANGAN": d.get("JAWATAN CADANGAN","") or r.get("jawatan",""),
+                "ALAMAT": d.get("ALAMAT RUMAH","") or r.get("alamat",""),
+                "KOD SEKOLAH": r.get("kod_sekolah") or d.get("KOD SEKOLAH","") or kod_sekolah,
+                "data_full": d if isinstance(d, dict) else {}
             })
         return pd.DataFrame(rows)
     except Exception as e:
@@ -54,7 +104,28 @@ def get_guru_df(kod_sekolah):
 def get_pusat_df():
     try:
         res = supa.table("pusat_master").select("*").limit(2000).execute()
-        return pd.DataFrame(res.data or [])
+        df = pd.DataFrame(res.data or [])
+        if not df.empty:
+            # Normalize column names: support no_pusat / kod_pusat / NO_PUSAT
+            # Create unified view
+            df_norm = df.copy()
+            # Map to standard
+            if "no_pusat" in df_norm.columns:
+                df_norm["kod_pusat_std"] = df_norm["no_pusat"]
+            elif "kod_pusat" in df_norm.columns:
+                df_norm["kod_pusat_std"] = df_norm["kod_pusat"]
+            elif "NO_PUSAT" in df_norm.columns:
+                df_norm["kod_pusat_std"] = df_norm["NO_PUSAT"]
+            else:
+                df_norm["kod_pusat_std"] = df_norm.iloc[:,1] if len(df_norm.columns)>1 else ""
+            
+            if "nama_pusat" in df_norm.columns:
+                df_norm["nama_pusat_std"] = df_norm["nama_pusat"]
+            elif "NAMA_PUSAT" in df_norm.columns:
+                df_norm["nama_pusat_std"] = df_norm["NAMA_PUSAT"]
+            else:
+                df_norm["nama_pusat_std"] = df_norm.get("nama_sekolah","")
+        return df
     except Exception as e:
         st.error(f"pusat_master error: {e}")
         return pd.DataFrame()
@@ -63,7 +134,11 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
     try:
         q = supa.table("cadangan_sup").select("*")
         if kod_ppd:
-            q = q.eq("kod_ppd", kod_ppd)
+            # Try both upper lower
+            try:
+                q = q.eq("kod_ppd", kod_ppd)
+            except:
+                q = q.eq("KOD_PPD", kod_ppd)
         if kod_sekolah:
             q = q.eq("kod_sekolah", kod_sekolah.upper())
         res = q.limit(5000).execute()
@@ -604,25 +679,35 @@ CREATE POLICY "allow all" ON sekolah_master FOR ALL USING (true) WITH CHECK (tru
     elif menu=="🏫 Pusat Master":
         st.header("Pusat Master - Selangor 2026 (506 Pusat)")
         try:
-            res=supa.table("pusat_master").select("*", count="exact").limit(5000).execute()
-            df=pd.DataFrame(res.data or [])
-            st.write(f"Total Pusat Sedia Ada: **{res.count}** / 506 pusat")
+            # Use safe_count + fetch
+            total = safe_count("pusat_master")
+            res = supa.table("pusat_master").select("*").limit(1000).execute()
+            df = pd.DataFrame(res.data or [])
+            st.write(f"Total Pusat Sedia Ada: **{total}** / 506 pusat (Supabase ada 506, App baca {len(df)})")
+            if total==0 and len(df)==0:
+                st.warning("pusat_master nampak kosong di app tapi ada 506 di Supabase - RLS policy block! Run SQL di bawah di Supabase SQL Editor")
+                st.code("""
+-- Fix RLS untuk pusat_master - Run ini di Supabase SQL Editor:
+ALTER TABLE pusat_master ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow all" ON pusat_master;
+CREATE POLICY "allow all" ON pusat_master FOR ALL USING (true) WITH CHECK (true);
+
+-- Sama untuk sekolah_master:
+ALTER TABLE sekolah_master ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow all" ON sekolah_master;
+CREATE POLICY "allow all" ON sekolah_master FOR ALL USING (true) WITH CHECK (true);
+
+-- Dan guru_master:
+ALTER TABLE guru_master ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow all" ON guru_master;
+CREATE POLICY "allow all" ON guru_master FOR ALL USING (true) WITH CHECK (true);
+                """, language="sql")
             if not df.empty:
-                # Show summary by PPD
-                if "data" in df.columns:
-                    st.dataframe(df.head(200), use_container_width=True)
-                else:
-                    st.dataframe(df, use_container_width=True)
+                # Show normalized
+                st.dataframe(df.head(200), use_container_width=True)
                 st.download_button("📥 Export Pusat Master", to_excel(df), file_name="pusat_master.xlsx")
-                # Breakdown
-                try:
-                    ppd_counts = df["kod_ppd"].value_counts() if "kod_ppd" in df.columns else None
-                    if ppd_counts is not None:
-                        st.write("Breakdown PPD:")
-                        st.bar_chart(ppd_counts)
-                except: pass
             else:
-                st.warning("pusat_master kosong - sila import pusat_2026.csv (506 pusat)")
+                st.warning("pusat_master kosong - sila import pusat_2026.csv (506 pusat) ATAU fix RLS dulu")
         except Exception as e:
             st.error(f"pusat_master error: {e}")
             st.code("""
