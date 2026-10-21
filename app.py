@@ -11,8 +11,7 @@ from supabase import create_client
 
 # HARDCODE FULL KEY - JANGAN PAKAI ...
 SUPABASE_URL = "https://gnmaijhugkkvxejvsotk.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamhpZ2tra3Z4ZWp2c290ayIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzU5MTUzMjM4MiwiZXhwIjoyMDc0MTA5MjM4Mn0.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
-
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamh1Z2trdnhlanZzb3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0ODc4OTcsImV4cCI6MjEwODA2Mzg5N30.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
 @st.cache_resource
 def get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
