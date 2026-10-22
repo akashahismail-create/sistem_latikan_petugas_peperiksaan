@@ -4030,23 +4030,35 @@ elif st.session_state.role == "PPD":
                                             existing_data["pusat_jagaan_str"] = pusat_str
                                             existing_data["pusat_bawah_bilik_kebal"] = saved_pusat_bawah
                                             
-                                            # V31 FIX: Simpan terus ke column kod_bilik_kebal (text) yang ada dalam table, bukan dalam data JSON je
+                                            # V33 FIX: kod_bilik_kebal = CB01 (bilik kebal), kod_pusat = pusat jagaan (BA021, BA053) untuk Penyelia Kawasan
+                                            pusat_jagaan_str = ",".join(pusat_list) if isinstance(pusat_list, list) else str(pusat_list)
                                             existing_data["kod_bilik_kebal"] = pilih_bk_tempat
                                             existing_data["kod_bilik_kebal_explicit"] = pilih_bk_tempat
-                                            payload_update = {
-                                                "kod_pusat": pilih_bk_tempat,
-                                                "kod_bilik_kebal": pilih_bk_tempat,
-                                                "status": "DITEMPATKAN BILIK KEBAL",
-                                                "STATUS": "DITEMPATKAN BILIK KEBAL",
-                                                "data": existing_data
-                                            }
-                                            # Also save no_surat if available
-                                            try:
-                                                if "no_surat" not in existing_data:
-                                                    existing_data["no_surat"] = f"JPN.SEL/SPM/2026/{pid}"
-                                            except:
-                                                pass
-                                            supa.table("cadangan_sup").update(payload_update).eq("id", pid).execute()
+                                            existing_data["pusat_jagaan"] = pusat_list
+                                            existing_data["pusat_jagaan_str"] = pusat_jagaan_str
+                                            existing_data["pusat_bawah_bilik_kebal"] = saved_pusat_bawah
+                                            
+                                            # V33: kod_pusat = pusat jagaan sebenar, kod_bilik_kebal = bilik kebal
+                                            # Contoh: kod_bilik_kebal=CB01, kod_pusat=BA021, BA053
+                                            payloads_try = [
+                                                {"kod_bilik_kebal": pilih_bk_tempat, "kod_pusat": pusat_jagaan_str, "status": "DITEMPATKAN BILIK KEBAL", "data": existing_data},
+                                                {"kod_bilik_kebal": pilih_bk_tempat, "kod_pusat": pusat_jagaan_str, "status": "DITEMPATKAN BILIK KEBAL"},
+                                                {"kod_bilik_kebal": pilih_bk_tempat, "status": "DITEMPATKAN BILIK KEBAL", "data": existing_data},
+                                                {"kod_bilik_kebal": pilih_bk_tempat, "status": "DITEMPATKAN BILIK KEBAL"},
+                                                {"kod_pusat": pusat_jagaan_str, "status": "DITEMPATKAN BILIK KEBAL", "data": existing_data},
+                                            ]
+                                            last_err = None
+                                            success = False
+                                            for payload in payloads_try:
+                                                try:
+                                                    supa.table("cadangan_sup").update(payload).eq("id", pid).execute()
+                                                    success = True
+                                                    break
+                                                except Exception as e:
+                                                    last_err = e
+                                                    continue
+                                            if not success and last_err:
+                                                raise last_err
                                         st.success(f"✅ {len([v for v in penyelia_pusat_map.values() if v])} Penyelia berjaya ditempatkan ke {pilih_bk_tempat}")
                                         st.balloons()
                                         st.rerun()
