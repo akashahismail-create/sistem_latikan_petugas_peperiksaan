@@ -952,7 +952,16 @@ if st.session_state.role == "SUP":
                 
                 col_f1_sup, col_f2_sup, col_f3_sup, col_f4_sup = st.columns([2,1,1,1])
                 with col_f1_sup:
-                    filter_jawatan_sup = st.multiselect("Filter Jawatan", jawatan_sup_sorted, default=st.session_state["filter_jawatan_sup_senarai"], placeholder="Kosong = semua jawatan")
+                    safe_default_sup = [x for x in st.session_state["filter_jawatan_sup_senarai"] if x in jawatan_sup_sorted]
+                    if not jawatan_sup_sorted:
+                        jawatan_sup_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                        safe_default_sup = st.session_state["filter_jawatan_sup_senarai"]
+                    if st.session_state["filter_jawatan_sup_senarai"] and not safe_default_sup:
+                        for v in st.session_state["filter_jawatan_sup_senarai"]:
+                            if v not in jawatan_sup_sorted:
+                                jawatan_sup_sorted.append(v)
+                        safe_default_sup = st.session_state["filter_jawatan_sup_senarai"]
+                    filter_jawatan_sup = st.multiselect("Filter Jawatan", jawatan_sup_sorted, default=safe_default_sup, placeholder="Kosong = semua jawatan")
                     if filter_jawatan_sup != st.session_state["filter_jawatan_sup_senarai"]:
                         st.session_state["filter_jawatan_sup_senarai"] = filter_jawatan_sup
                 with col_f2_sup:
@@ -1612,7 +1621,7 @@ elif st.session_state.role == "PPD":
         add_refresh_button()
         
         MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), 
-                    ('cadangan', '🔐 Cadangan SUP - Penyelia Kawasan'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('selenggara', '🔐 Selenggara Bilik Kebal'), ('kelulusan', '✅ Kelulusan'), 
+                    ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('selenggara', '🔐 Selenggara Bilik Kebal'), ('kelulusan', '✅ Kelulusan'), 
                     ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get, label_visibility="collapsed", key="ppd_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -3011,28 +3020,15 @@ elif st.session_state.role == "PPD":
         elif menu == "cadangan":
             st.markdown(f'''
             <div style="background: linear-gradient(135deg, #1565c0 0%, #1e88e5 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
-                <h2 style="margin:0; color:white;">🔐 Cadangan SUP - Penyelia Kawasan Sahaja - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
-                <p style="margin:5px 0 0 0; color:#bbdefb;">HANYA Penyelia Kawasan - Pilih sekolah dalam daerah untuk lihat senarai cadangan Penyelia Kawasan dari sekolah berkenaan</p>
+                <h2 style="margin:0; color:white;">📋 Cadangan SUP - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
+                <p style="margin:5px 0 0 0; color:#bbdefb;">Pilih sekolah dalam daerah untuk lihat senarai cadangan dari sekolah berkenaan</p>
             </div>
             ''', unsafe_allow_html=True)
             
-            df_cad_all_raw = get_cadangan_df(kod_ppd=kod_ppd)
-            if df_cad_all_raw.empty:
+            df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+            if df_cad_all.empty:
                 st.warning(f"Belum ada cadangan SUP untuk PPD {kod_ppd}")
                 st.stop()
-            
-            # ===== FIX V21: HANYA PENYELIA KAWASAN SAHAJA UNTUK PPD CADANGAN SUP =====
-            def is_penyelia_kawasan(row):
-                j = str(row.get("JAWATAN_CADANGAN") or row.get("jawatan_cadangan") or row.get("JAWATAN") or row.get("jawatan") or "").upper()
-                return "PENYELIA" in j and "KAWASAN" in j
-            
-            df_cad_all = df_cad_all_raw[df_cad_all_raw.apply(is_penyelia_kawasan, axis=1)].copy()
-            if df_cad_all.empty:
-                st.warning(f"⚠️ Tiada cadangan Penyelia Kawasan untuk PPD {kod_ppd}. Yang ada hanya {len(df_cad_all_raw)} cadangan jawatan lain (KP/TKP/Pengawas).")
-                st.info(f"💡 Menu ini KHAS untuk Penyelia Kawasan sahaja. Untuk KP/TKP/Pengawas, sila guna menu Jana Keseluruhan / Penempatan Manual.")
-                st.stop()
-            
-            st.success(f"🔐 Filter Aktif: Hanya Penyelia Kawasan | {len(df_cad_all)} dari {len(df_cad_all_raw)} cadangan")
             
             # ===== FILTER IKUT JAWATAN (MESTI AWAL) + CLEAN NAN =====
             # Clean NAN rows from df_cad_all - remove rows where KOD_SEKOLAH_ASAL is NAN/nan/None/empty
@@ -3046,11 +3042,15 @@ elif st.session_state.role == "PPD":
             df_cad_valid = df_cad_all[df_cad_all.apply(is_valid_sekolah, axis=1)].copy()
             df_cad_invalid = df_cad_all[~df_cad_all.apply(is_valid_sekolah, axis=1)].copy()
             if not df_cad_invalid.empty:
-                st.warning(f"⚠️ Ada {len(df_cad_invalid)} cadangan Penyelia Kawasan dengan KOD SEKOLAH kosong/NAN - akan disembunyikan.")
+                st.warning(f"⚠️ Ada {len(df_cad_invalid)} cadangan dengan KOD SEKOLAH kosong/NAN - akan disembunyikan dari senarai sekolah. Sila betulkan di SUP.")
             
-            jawatan_list_all = ["Penyelia Kawasan"]
-            order_jawatan = ["Penyelia Kawasan"]
-            jawatan_sorted = ["Penyelia Kawasan"]
+            jawatan_list_all = []
+            for _, r in df_cad_valid.iterrows():
+                j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip()
+                if j and j.lower() not in ("", "nan", "none") and j not in jawatan_list_all:
+                    jawatan_list_all.append(j)
+            order_jawatan = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Selenggara Bilik Kebal"]
+            jawatan_sorted = sorted(jawatan_list_all, key=lambda x: (order_jawatan.index(x) if x in order_jawatan else 99, x))
             
             # Default filter from session
             filter_jawatan = st.session_state.get("filter_jawatan_cad", [])
@@ -3109,9 +3109,23 @@ elif st.session_state.role == "PPD":
             
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             with col_f1:
-                # No key with _ui that we set - use simple key and rely on default param only via session_state logical
-                # To avoid AlreadyInstantiated, we do NOT set session_state[key] after widget, we only read
-                filter_jawatan_ui = st.multiselect("Filter Jawatan", jawatan_sorted, default=st.session_state["filter_jawatan_cad"], placeholder="Pilih jawatan - kosong = semua")
+                # V21 FIX DefaultNotInOptionsError: pastikan default ada dalam options
+                # Jika Penyelia Kawasan tidak ada dalam jawatan_sorted (data kosong), tambah manual
+                safe_default = [x for x in st.session_state["filter_jawatan_cad"] if x in jawatan_sorted]
+                # Jika user pilih Penyelia Kawasan tapi jawatan_sorted kosong, tetap tunjuk semua option yang mungkin
+                if not jawatan_sorted:
+                    jawatan_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                    safe_default = st.session_state["filter_jawatan_cad"]
+                # Jika safe_default kosong tapi session ada value yang bukan dalam options, guna empty supaya tak error
+                # Tapi untuk kes Penyelia Kawasan, kita benarkan jika memang dalam senarai tetap
+                if st.session_state["filter_jawatan_cad"] and not safe_default:
+                    # Kalau filter ada tapi takde dalam options, jangan error - guna filter tu sebagai options tambahan
+                    for v in st.session_state["filter_jawatan_cad"]:
+                        if v not in jawatan_sorted:
+                            jawatan_sorted.append(v)
+                    safe_default = st.session_state["filter_jawatan_cad"]
+                
+                filter_jawatan_ui = st.multiselect("Filter Jawatan", jawatan_sorted, default=safe_default, placeholder="Pilih jawatan - kosong = semua")
             with col_f2:
                 if filter_jawatan_ui:
                     st.metric(f"Filter: {len(filter_jawatan_ui)} jawatan", f"{len(df_cad_valid[df_cad_valid.apply(lambda r: str(r.get('JAWATAN_CADANGAN') or r.get('jawatan_cadangan') or r.get('JAWATAN') or '').strip() in filter_jawatan_ui, axis=1)]) if filter_jawatan_ui else len(df_cad_all)} guru")
