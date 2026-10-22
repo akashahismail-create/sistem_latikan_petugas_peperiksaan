@@ -256,6 +256,14 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
 
 def generate_surat_penyelia_kawasan_html(nama, ic, sek_asal, nama_sek_asal, telefon, kod_bilik_kebal, nama_bilik_kebal, alamat_bilik_kebal, pusat_jagaan_list, no_surat, kod_ppd, ppd_name, tarikh):
     """Surat khas untuk Penyelia Kawasan yang ditempatkan ke Bilik Kebal"""
+    # V34: Ensure pusat_jagaan_list is not empty, fallback to kod_pusat if needed
+    if not pusat_jagaan_list:
+        try:
+            # Try from data JSON
+            if isinstance(data_dict, dict):
+                pusat_jagaan_list = data_dict.get("pusat_jagaan") or data_dict.get("pusat_jagaan_str","").split(",") if isinstance(data_dict.get("pusat_jagaan_str"), str) else []
+        except:
+            pass
     pusat_jagaan_str = ", ".join(pusat_jagaan_list) if isinstance(pusat_jagaan_list, list) else str(pusat_jagaan_list)
     pusat_jagaan_table = ""
     if isinstance(pusat_jagaan_list, list) and pusat_jagaan_list:
@@ -4097,12 +4105,28 @@ elif st.session_state.role == "PPD":
                                                 d = json.loads(d)
                                             except:
                                                 d = {}
+                                        # V34 FIX: Baca pusat jagaan dari data JSON, fallback ke kod_pusat jika data kosong
                                         pusat_j = d.get("pusat_jagaan_str") or d.get("pusat_jagaan") or ""
                                         if isinstance(pusat_j, list):
                                             pusat_j = ",".join(pusat_j)
-                                        pusat_bawah = d.get("pusat_bawah_bilik_kebal") or ""
+                                        # Jika pusat_j masih kosong, cuba baca dari kod_pusat column (untuk data baru V33)
+                                        if not pusat_j or pusat_j == "-" or pusat_j.strip() == "":
+                                            raw_kod_pusat = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").strip()
+                                            # Jika kod_pusat bukan bilik kebal (CB, BK, BILIK), anggap itu pusat jagaan
+                                            if raw_kod_pusat and not any(x in raw_kod_pusat.upper() for x in ["CB", "BK-", "BILIK"]) or "," in raw_kod_pusat:
+                                                pusat_j = raw_kod_pusat
+                                            # Jika kod_pusat adalah CB01 tapi data ada pusat_bawah, guna pusat_bawah sebagai fallback lama
+                                            elif not pusat_j:
+                                                pusat_j = d.get("pusat_bawah_bilik_kebal") or ""
+                                                if isinstance(pusat_j, list):
+                                                    pusat_j = ",".join(pusat_j)
+                                        
+                                        pusat_bawah = d.get("pusat_bawah_bilik_kebal") or d.get("pusat_bawah") or ""
                                         if isinstance(pusat_bawah, list):
                                             pusat_bawah = ",".join(pusat_bawah)
+                                        # Jika pusat_bawah kosong, fallback ke semua pusat bawah bilik kebal dari kod_bilik_kebal
+                                        if not pusat_bawah:
+                                            pusat_bawah = d.get("kod_bilik_kebal") or c.get("kod_bilik_kebal") or ""
                                         penyelia_assigned.append({
                                             "nama": nama_g,
                                             "ic": ic_g,
@@ -4344,7 +4368,21 @@ elif st.session_state.role == "PPD":
                                         sek = str(r.get(c_sek_s,"") if c_sek_s else "")
                                         nama_sek = str(r.get(c_sek_nama_s,"") if c_sek_nama_s else sek)
                                         tel = str(r.get(c_tel_s,"") if c_tel_s else "")
-                                        kod_bk = str(r.get(c_pusat_s,"") if c_pusat_s else "")
+                                        # V35 FIX: kod_bk dari column kod_bilik_kebal, bukan kod_pusat
+                                        kod_bk = str(r.get("kod_bilik_kebal") or r.get("KOD_BILIK_KEBAL") or r.get(c_pusat_s,"") if c_pusat_s else "").strip()
+                                        # Jika kod_bk masih nampak macam pusat jagaan (BA021), cuba cari dalam data
+                                        d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                                        if isinstance(d, str):
+                                            try:
+                                                d = json.loads(d)
+                                            except:
+                                                d = {}
+                                        # Jika kod_bk adalah BA... bukan CB/BK, ambil dari data
+                                        if kod_bk and not any(x in kod_bk.upper() for x in ["CB", "BK-", "BK", "BILIK"]) or "," in kod_bk:
+                                            # kod_bk sekarang sebenarnya pusat jagaan, jadi cari bilik kebal sebenar dalam data
+                                            real_bk = d.get("kod_bilik_kebal") or d.get("kod_bilik_kebal_explicit") or ""
+                                            if real_bk:
+                                                kod_bk = str(real_bk).strip()
                                         
                                         # Get bilik kebal details
                                         bk_row = df_bk[df_bk["kod_bilik_kebal"].astype(str).str.upper()==kod_bk.upper()] if not df_bk.empty and "kod_bilik_kebal" in df_bk.columns else pd.DataFrame()
@@ -4352,19 +4390,21 @@ elif st.session_state.role == "PPD":
                                             nama_bk = str(bk_row.iloc[0].get("nama_bilik_kebal",""))
                                             alamat_bk = str(bk_row.iloc[0].get("alamat",""))
                                         else:
-                                            nama_bk = kod_bk
-                                            alamat_bk = ""
+                                            # Try data
+                                            nama_bk = str(d.get("nama_bilik_kebal","") or kod_bk)
+                                            alamat_bk = str(d.get("alamat_bilik_kebal","") or "")
                                         
-                                        # Get pusat jagaan from data json
-                                        d = r.get("data") if isinstance(r.get("data"), dict) else {}
-                                        if isinstance(d, str):
-                                            try:
-                                                d = json.loads(d)
-                                            except:
-                                                d = {}
+                                        # V35 FIX: Get pusat jagaan - dari kod_pusat ATAU data JSON
                                         pusat_jagaan = d.get("pusat_jagaan") or d.get("pusat_jagaan_str") or []
+                                        if not pusat_jagaan:
+                                            # Fallback: kod_pusat sekarang adalah pusat jagaan (BA021, BA053) untuk V33+
+                                            raw_kod_pusat = str(r.get("kod_pusat") or r.get("KOD_PUSAT") or r.get(c_pusat_s,"") if c_pusat_s else "").strip()
+                                            if raw_kod_pusat and raw_kod_pusat.upper() != kod_bk.upper():
+                                                pusat_jagaan = raw_kod_pusat
                                         if isinstance(pusat_jagaan, str):
                                             pusat_jagaan = [p.strip() for p in pusat_jagaan.split(",") if p.strip()]
+                                        if not isinstance(pusat_jagaan, list):
+                                            pusat_jagaan = [str(pusat_jagaan)] if pusat_jagaan else []
                                         
                                         no_surat = f"{prefix_surat}{current_no:04d}"
                                         current_no += 1
