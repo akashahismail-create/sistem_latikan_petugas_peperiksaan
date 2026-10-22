@@ -1216,7 +1216,7 @@ elif st.session_state.role == "PPD":
         add_refresh_button()
         
         MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), 
-                    ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('cadangan', '📋 Cadangan SUP'), ('kelulusan', '✅ Kelulusan'), 
+                    ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('kelulusan', '✅ Kelulusan'), 
                     ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get, label_visibility="collapsed", key="ppd_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -2603,12 +2603,129 @@ elif st.session_state.role == "PPD":
                 st.info(f"Belum ada penempatan manual di {pilih_pusat_manual} - Sila pilih KP, TKP, Pengawas di atas")
 
         elif menu == "cadangan":
-            st.header(f"Cadangan dari SUP - PPD {kod_ppd}")
-            df_cad = get_cadangan_df(kod_ppd=kod_ppd)
-            if df_cad.empty: st.info("Belum ada cadangan dari SUP")
-            else:
-                st.dataframe(df_cad, use_container_width=True)
-                st.download_button("Export Cadangan", to_excel(df_cad), file_name=f"cadangan_PPD_{kod_ppd}.xlsx")
+            st.markdown(f'''
+            <div style="background: linear-gradient(135deg, #1565c0 0%, #1e88e5 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+                <h2 style="margin:0; color:white;">📋 Cadangan SUP - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
+                <p style="margin:5px 0 0 0; color:#bbdefb;">Pilih sekolah dalam daerah untuk lihat senarai cadangan dari sekolah berkenaan</p>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+            df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+            if df_cad_all.empty:
+                st.warning(f"Belum ada cadangan SUP untuk PPD {kod_ppd}")
+                st.stop()
+            
+            # Get sekolah list in PPD
+            try:
+                res_sek = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
+                df_sek_list = pd.DataFrame(res_sek.data or [])
+            except:
+                df_sek_list = pd.DataFrame()
+            
+            # Build sekolah groups dari cadangan
+            sekolah_groups = {}
+            for _, r in df_cad_all.iterrows():
+                kod_sek = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or r.get("KOD_SEKOLAH") or r.get("kod_sekolah") or "TIADA KOD").upper().strip()
+                nama_sek = str(r.get("NAMA_SEKOLAH_ASAL") or r.get("nama_sekolah_asal") or r.get("NAMA_SEKOLAH") or kod_sek)[:50]
+                key = f"{kod_sek} - {nama_sek}"
+                if key not in sekolah_groups:
+                    sekolah_groups[key] = []
+                sekolah_groups[key].append(r)
+            
+            # Summary
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🏫 Sekolah Mencadang", len(sekolah_groups))
+            with col2:
+                st.metric("👥 Jumlah Cadangan", len(df_cad_all))
+            with col3:
+                # Belum vs sudah lantik
+                def is_belum(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                belum = df_cad_all[df_cad_all.apply(is_belum, axis=1)]
+                st.metric("✅ Belum Dilantik", len(belum), delta=f"{len(df_cad_all)-len(belum)} telah dilantik")
+            
+            st.markdown("---")
+            
+            # Ringkasan ikut sekolah
+            st.markdown("### 📋 Ringkasan Cadangan Mengikut Sekolah")
+            summary_rows = []
+            for key, guru_list in sorted(sekolah_groups.items()):
+                kod = key.split(" - ")[0]
+                nama = key.split(" - ", 1)[1] if " - " in key else key
+                # Kira belum vs sudah
+                belum_cnt = sum(1 for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat"))
+                sudah_cnt = len(guru_list) - belum_cnt
+                summary_rows.append({
+                    "KOD SEKOLAH": kod,
+                    "NAMA SEKOLAH": nama[:35],
+                    "JUMLAH CADANGAN": len(guru_list),
+                    "BELUM LANTIK": belum_cnt,
+                    "SUDAH LANTIK": sudah_cnt,
+                    "STATUS": "✅ Lengkap" if belum_cnt == 0 else f"⏳ {belum_cnt} belum"
+                })
+            df_summary = pd.DataFrame(summary_rows)
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
+            st.download_button("📥 Export Ringkasan Cadangan Ikut Sekolah", to_excel(df_summary), file_name=f"ringkasan_cadangan_{kod_ppd}.xlsx", use_container_width=True)
+            
+            st.markdown("---")
+            st.markdown("### 🔍 Detail Cadangan Ikut Sekolah - Pilih Sekolah")
+            
+            # Pilih sekolah dropdown
+            pilih_sek_cad = st.selectbox(
+                "Pilih Sekolah Dalam Daerah Untuk Lihat Senarai Cadangan",
+                sorted(sekolah_groups.keys()),
+                format_func=lambda x: f"{x} ({len(sekolah_groups[x])} cadangan)",
+                key="pilih_sekolah_cadangan"
+            )
+            
+            if pilih_sek_cad:
+                guru_list = sekolah_groups[pilih_sek_cad]
+                st.markdown(f"#### 🏫 {pilih_sek_cad} - {len(guru_list)} cadangan")
+                
+                # Filter tabs: Semua, Belum Lantik, Sudah Lantik
+                tab_all, tab_belum, tab_sudah = st.tabs(["📋 Semua", "⏳ Belum Dilantik", "✅ Sudah Dilantik"])
+                
+                def make_df_from_list(g_list):
+                    rows = []
+                    for g in g_list:
+                        rows.append({
+                            "NAMA GURU": g.get("NAMA_GURU", "") or g.get("nama_guru", ""),
+                            "NO IC": g.get("IC_GURU", "") or g.get("ic_guru", ""),
+                            "JAWATAN": g.get("JAWATAN_CADANGAN", "") or g.get("jawatan_cadangan", ""),
+                            "JANTINA": g.get("JANTINA", "") or g.get("jantina", ""),
+                            "TELEFON": g.get("TELEFON_GURU", "") or g.get("telefon_guru", ""),
+                            "KOD PUSAT": g.get("kod_pusat", "") or g.get("KOD_PUSAT", "") or "- Belum -",
+                            "STATUS": g.get("status", "") or g.get("STATUS", ""),
+                            "SEKOLAH": g.get("KOD_SEKOLAH_ASAL", "") or g.get("kod_sekolah_asal", "")
+                        })
+                    return pd.DataFrame(rows)
+                
+                with tab_all:
+                    df_all_guru = make_df_from_list(guru_list)
+                    st.dataframe(df_all_guru, use_container_width=True, hide_index=True)
+                    st.download_button(f"📥 Export {pilih_sek_cad.split(' - ')[0]} - Semua", to_excel(df_all_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_semua.xlsx", use_container_width=True, key="exp_all")
+                
+                with tab_belum:
+                    belum_list = [g for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat")]
+                    st.markdown(f"**{len(belum_list)} guru belum dilantik dari {pilih_sek_cad}**")
+                    if belum_list:
+                        df_belum_guru = make_df_from_list(belum_list)
+                        st.dataframe(df_belum_guru, use_container_width=True, hide_index=True)
+                        st.download_button(f"📥 Export Belum Lantik", to_excel(df_belum_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_belum.xlsx", use_container_width=True, key="exp_belum")
+                    else:
+                        st.success("✅ Semua guru dari sekolah ini telah dilantik!")
+                
+                with tab_sudah:
+                    sudah_list = [g for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() not in ("", "None", "none", "null", "nan", "nat")]
+                    st.markdown(f"**{len(sudah_list)} guru sudah dilantik dari {pilih_sek_cad}**")
+                    if sudah_list:
+                        df_sudah_guru = make_df_from_list(sudah_list)
+                        st.dataframe(df_sudah_guru, use_container_width=True, hide_index=True)
+                        st.download_button(f"📥 Export Sudah Lantik", to_excel(df_sudah_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_sudah.xlsx", use_container_width=True, key="exp_sudah")
+                    else:
+                        st.info("Belum ada guru dilantik dari sekolah ini")
 
         elif menu == "kelulusan":
             st.header(f"Kelulusan PPD {kod_ppd}")
