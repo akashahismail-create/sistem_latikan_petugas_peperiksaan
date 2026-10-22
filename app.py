@@ -508,6 +508,7 @@ if st.session_state.role == "SUP":
             
         elif menu == "dashboard":
             st.header(f"Dashboard SUP - {kod} {info.get('nama_sekolah', '')}")
+            st.markdown(f"**Kod Sekolah:** `{kod}` | **PPD:** `{info.get('kod_ppd','')} - {PPD_MAP.get(info.get('kod_ppd',''),'')}` | **Nama:** {info.get('nama_sekolah','')}")
             try:
                 df_pusat_all = get_pusat_df()
                 pusat_sekolah = []
@@ -516,18 +517,22 @@ if st.session_state.role == "SUP":
                     if isinstance(d, str):
                         try: d = json.loads(d)
                         except: d = {}
-                    ks = r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or d.get("KOD SEKOLAH") or ""
-                    if ks.upper().strip() == kod.upper().strip():
-                        calon = r.get("jumlah_calon") or r.get("calon") or d.get("JUMLAH_CALON") or 0
+                    # Check multiple possible columns for tuan rumah
+                    ks_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or r.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH") or d.get("KOD SEKOLAH") or d.get("KOD_SEKOLAH_TUAN_RUMAH") or "").upper().strip()
+                    ks_biasa = str(r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or "").upper().strip()
+                    # Match if kod sekolah matches tuan rumah OR kod sekolah biasa
+                    if ks_tuan == kod.upper().strip() or ks_biasa == kod.upper().strip():
+                        calon = r.get("jumlah_calon") or r.get("calon") or r.get("JUMLAH_CALON") or d.get("JUMLAH_CALON") or d.get("CALON") or 0
                         try: calon_i = int(float(str(calon) or 0))
                         except: calon_i = 0
                         kelas = kira_kelas_dari_calon(calon_i)
                         petugas_k9 = kira_petugas_dari_kelas(kelas)
                         sekolah_perlu = kira_sekolah_perlu_calonkan(kelas)
-                        pusat_sekolah.append({"NO_PUSAT": r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "",
-                                                "NAMA_PUSAT": r.get("nama_pusat") or d.get("NAMA_PUSAT") or "",
-                                                "CALON": calon_i, "KELAS": kelas, "PETUGAS_K9": petugas_k9, "SEKOLAH_PERLU": sekolah_perlu})
-            except:
+                        no_pusat_val = str(r.get("no_pusat") or r.get("kod_pusat") or r.get("NO_PUSAT") or d.get("NO_PUSAT") or d.get("NO PUSAT") or d.get("KOD_PUSAT") or "").upper().strip()
+                        nama_pusat_val = str(r.get("nama_pusat") or r.get("NAMA_PUSAT") or d.get("NAMA_PUSAT") or d.get("NAMA PUSAT") or "").upper().strip()
+                        pusat_sekolah.append({"NO_PUSAT": no_pusat_val, "NAMA_PUSAT": nama_pusat_val, "CALON": calon_i, "KELAS": kelas, "PETUGAS_K9": petugas_k9, "SEKOLAH_PERLU": sekolah_perlu})
+            except Exception as e:
+                st.error(f"Error load pusat: {e}")
                 pusat_sekolah = []
             
             if pusat_sekolah:
@@ -535,13 +540,19 @@ if st.session_state.role == "SUP":
                 total_kelas = sum([p["KELAS"] for p in pusat_sekolah])
                 total_petugas = sum([p["PETUGAS_K9"] for p in pusat_sekolah])
                 total_perlu = sum([p["SEKOLAH_PERLU"] for p in pusat_sekolah])
+                # Paparan NO PUSAT yang jelas
+                no_pusat_list = ", ".join([f"{p['NO_PUSAT']}" for p in pusat_sekolah if p['NO_PUSAT']])
                 st.markdown(f"""
                 <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding:20px; border-radius:12px; border-left:6px solid #1565c0; margin-bottom:20px;">
-                    <h3 style="margin:0; color:#0d47a1;">️ KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
+                    <h3 style="margin:0; color:#0d47a1;">🏫 KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
                     <p style="margin:8px 0; font-size:16px;">
                         Sekolah anda ada <b>{len(pusat_sekolah)} pusat</b> | <b>{total_calon} calon</b> | <b>{total_kelas} kelas</b> (1 kelas=20 calon)<br>
-                        Formula: Kelas = CEIL(Calon/20), Petugas = Kelas+9, Sekolah Perlu = Kelas+12 (Petugas+KP+TKP+Penyelia)
+                        Formula: Kelas = CEIL(Calon/20), Petugas = Kelas+9, Sekolah Perlu = Kelas+12
                     </p>
+                    <div style="background:#fff3e0; padding:12px 16px; border-radius:8px; border-left:4px solid #ff9800; margin:10px 0;">
+                        <div style="font-size:14px; color:#e65100; font-weight:700;">📍 NO PUSAT SEKOLAH ANDA:</div>
+                        <div style="font-size:22px; font-weight:800; color:#bf360c; letter-spacing:1px;">{no_pusat_list}</div>
+                    </div>
                     <div style="display:flex; gap:15px; margin-top:12px; flex-wrap:wrap;">
                         <div style="background:white; padding:12px 18px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
                             <div style="font-size:13px; color:#666;">JUMLAH KELAS</div>
@@ -558,9 +569,24 @@ if st.session_state.role == "SUP":
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-                st.dataframe(pd.DataFrame(pusat_sekolah), use_container_width=True, hide_index=True)
+                # Table dengan NO PUSAT di depan, lebih jelas
+                df_pusat_display = pd.DataFrame(pusat_sekolah)
+                # Reorder columns: NO_PUSAT first
+                cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
+                df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
+                st.markdown("### 📍 Senarai Pusat Sekolah Anda (NO PUSAT)")
+                st.dataframe(df_pusat_display, use_container_width=True, hide_index=True)
             else:
-                st.info(f"Tiada pusat dijumpai untuk sekolah {kod}. Hubungi PPD untuk semak pusat sekolah anda.")
+                st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
+                st.info("Sistem cuba cari pusat dengan kod_sekolah_tuan_rumah = kod sekolah anda. Hubungi PPD untuk semak pusat sekolah anda di table pusat_master.")
+                # Show all pusat for debugging
+                try:
+                    df_all = get_pusat_df()
+                    if not df_all.empty:
+                        st.caption(f"Debug: Ada {len(df_all)} pusat dalam DB. 10 pertama:")
+                        st.dataframe(df_all.head(10), use_container_width=True)
+                except:
+                    pass
             
             c1, c2, c3, c4 = st.columns(4)
             with c1: st.metric("Jumlah Guru", len(df_guru))
