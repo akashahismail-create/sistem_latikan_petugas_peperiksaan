@@ -27,27 +27,32 @@ PPD_MAP = {
     "BG": "Gombak", "BH": "Petaling Perdana", "BJ": "Sepang", "BK": "Petaling Utama"
 }
 
-# ================= CSS MESRA DARK MODE - SEMUA TULISAN NAMPAK =================
+# ================= CSS BIRU CAIR - BACKGROUND BIRU CAIR =================
 st.markdown("""
 <style>
-/* Hide original sidebar */
 [data-testid="stSidebar"] {display: none !important;}
-[data-testid="stSidebarNav"] {display: none !important;}
 .stSidebar {display: none !important;}
 section[data-testid="stSidebar"] {display: none !important;}
 
-/* ===== GLOBAL DARK MODE FIX ===== */
-/* Pastikan semua text utama nampak dalam dark mode */
+/* ===== BACKGROUND BIRU CAIR ===== */
 .stApp {
-    color-scheme: light;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #e1f5fe 100%) !important;
+    background-color: #e3f2fd !important;
+    background-attachment: fixed !important;
 }
 
-/* Metric cards - pastikan text hitam atas background putih sentiasa nampak */
+/* Main container */
+.main .block-container {
+    background: transparent !important;
+}
+
+/* Metric cards - putih atas biru cair */
 [data-testid="stMetric"] {
     background: #ffffff !important;
-    border: 1px solid #e0e0e0 !important;
-    border-radius: 8px !important;
-    padding: 12px !important;
+    border: 1px solid #90caf9 !important;
+    border-radius: 12px !important;
+    padding: 14px !important;
+    box-shadow: 0 2px 8px rgba(13, 71, 161, 0.1) !important;
 }
 [data-testid="stMetric"] label, [data-testid="stMetric"] div {
     color: #212121 !important;
@@ -57,28 +62,28 @@ section[data-testid="stSidebar"] {display: none !important;}
     font-weight: 800 !important;
 }
 
-/* Info, Warning, Success boxes - pastikan text gelap atas background cerah */
 [data-testid="stAlert"] {
     background: #ffffff !important;
     color: #212121 !important;
     border: 1px solid #90caf9 !important;
+    border-radius: 10px !important;
 }
 [data-testid="stAlert"] p, [data-testid="stAlert"] div {
     color: #212121 !important;
 }
 
-/* Dataframe - pastikan header nampak */
 [data-testid="stDataFrame"] {
     background: white !important;
+    border-radius: 10px !important;
 }
 
-/* Custom left panel - FIX DARK MODE - sentiasa putih dengan text hitam */
+/* Custom sidebar - putih atas background biru cair */
 .custom-sidebar {
     background: #ffffff !important;
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 16px;
-    border: 2px solid #0d47a1 !important;
-    box-shadow: 0 4px 12px rgba(13, 71, 161, 0.15);
+    border: 2px solid #1976d2 !important;
+    box-shadow: 0 4px 16px rgba(13, 71, 161, 0.15);
     height: fit-content;
     position: sticky;
     top: 10px;
@@ -92,7 +97,6 @@ section[data-testid="stSidebar"] {display: none !important;}
 .custom-sidebar p, .custom-sidebar span, .custom-sidebar div {
     color: #212121 !important;
 }
-/* Caption nama sekolah - buat hitam pekat, bukan kelabu cair */
 .custom-sidebar [data-testid="stCaptionContainer"] {
     color: #212121 !important;
     opacity: 1 !important;
@@ -103,7 +107,6 @@ section[data-testid="stSidebar"] {display: none !important;}
     font-size: 13px !important;
 }
 
-/* NO PUSAT box - high contrast kuning dengan text hitam - nampak dalam dark & light */
 .no-pusat-box {
     background: #ffeb3b !important;
     border: 2px solid #f57f17 !important;
@@ -115,17 +118,13 @@ section[data-testid="stSidebar"] {display: none !important;}
     font-size: 11px;
     color: #bf360c !important;
     font-weight: 700;
-    margin-bottom: 2px;
 }
 .no-pusat-value {
     font-size: 18px;
     color: #000000 !important;
     font-weight: 900;
-    letter-spacing: 0.5px;
-    word-break: break-all;
 }
 
-/* PPD Dashboard cards - pastikan nampak */
 .ppd-table {
     background: white !important;
     color: #212121 !important;
@@ -140,97 +139,52 @@ section[data-testid="stSidebar"] {display: none !important;}
     border-bottom: 1px solid #e0e0e0 !important;
 }
 
-/* Badge merah/kuning/hijau - pastikan text nampak */
 .badge-merah, .badge-kuning, .badge-hijau {
-    color: #000000 !important;
     font-weight: 800 !important;
 }
 .badge-merah {background: #ffcdd2 !important; border: 2px solid #d32f2f !important; color: #b71c1c !important;}
 .badge-kuning {background: #fff9c4 !important; border: 2px solid #f57f17 !important; color: #e65100 !important;}
 .badge-hijau {background: #c8e6c9 !important; border: 2px solid #2e7d32 !important; color: #1b5e20 !important;}
 
-/* Semua markdown dengan background gradient - pastikan text gelap nampak */
-div[style*="background: linear-gradient"] h3, div[style*="background: linear-gradient"] p, div[style*="background: linear-gradient"] div {
-    color: #0d47a1 !important;
-}
-div[style*="background: linear-gradient"] b {
-    color: #000000 !important;
-}
-
-/* Radio buttons menu - pastikan text nampak */
 [data-testid="stRadio"] label {
     color: #212121 !important;
     font-weight: 600 !important;
 }
 
-/* Buttons */
 .stButton button {
-    color: #ffffff !important;
     font-weight: 700 !important;
 }
 
-/* Tabs */
 [data-testid="stTabs"] button {
     color: #212121 !important;
     font-weight: 600 !important;
 }
 
-/* Headers */
 h1, h2, h3, h4, h5, h6 {
     color: #0d47a1 !important;
 }
 
-/* Force all captions to be dark and visible */
-[data-testid="stCaptionContainer"] {
-    color: #424242 !important;
-}
 [data-testid="stCaptionContainer"] p {
-    color: #212121 !important;
+    color: #424242 !important;
     font-weight: 600 !important;
     opacity: 1 !important;
 }
 
-/* Selectbox, text input labels */
 label {
     color: #212121 !important;
     font-weight: 600 !important;
 }
 
-/* Dark mode override - force light theme for our custom components */
-@media (prefers-color-scheme: dark) {
-    .custom-sidebar {
-        background: #ffffff !important;
-        border-color: #0d47a1 !important;
-    }
-    .custom-sidebar * {
-        color: #212121 !important;
-    }
-    .custom-sidebar h3 {
-        color: #0d47a1 !important;
-    }
-    .no-pusat-box {
-        background: #ffeb3b !important;
-    }
-    .no-pusat-box * {
-        color: #000000 !important;
-    }
-    [data-testid="stMetric"] {
-        background: #ffffff !important;
-    }
-    [data-testid="stMetric"] * {
-        color: #212121 !important;
-    }
+/* Card putih atas biru cair */
+div[data-testid="stHorizontalBlock"] {
+    background: transparent !important;
 }
 
-/* Additional fix for Streamlit dark theme */
-.stApp[data-theme="dark"] .custom-sidebar {
+/* Expander */
+[data-testid="stExpander"] {
     background: #ffffff !important;
-}
-.stApp[data-theme="dark"] .custom-sidebar * {
-    color: #212121 !important;
-}
-.stApp[data-theme="dark"] [data-testid="stCaptionContainer"] p {
-    color: #212121 !important;
+    border: 1px solid #90caf9 !important;
+    border-radius: 10px !important;
 }
 </style>
 """, unsafe_allow_html=True)
