@@ -1804,30 +1804,118 @@ elif st.session_state.role == "PPD":
                         st.error(f"❌ PPD {kod_ppd}: Semua guru telah dilantik atau tiada senarai cadangan untuk dilantik!")
                         st.stop()
                     
-                    # Generate assignments
+                    # ===== JANAAN RAWAK DENGAN 2 SYARAT =====
+                    # SYARAT 1: Guru sekolah asal tidak boleh jadi pengawas di sekolah dia mengajar (KOD_SEKOLAH_ASAL != KOD_TUAN_RUMAH)
+                    # SYARAT 2: Max 3 orang guru dari sekolah sama ke pusat peperiksaan yang sama
+                    import random
+                    
                     assignments = []
-                    df_cad_sorted = df_untuk_jana_check.sort_values("JAWATAN_CADANGAN") if "JAWATAN_CADANGAN" in df_untuk_jana_check.columns else df_untuk_jana_check
+                    df_cad_sorted = df_untuk_jana_check.copy()
+                    # Shuffle secara rawak untuk penempatan rawak
+                    df_cad_sorted = df_cad_sorted.sample(frac=1, random_state=random.randint(1, 10000)).reset_index(drop=True) if len(df_cad_sorted) > 1 else df_cad_sorted
+                    
+                    # Tracking untuk syarat 2: kira guru dari sekolah sama ke pusat sama
+                    # Key: (NO_PUSAT, KOD_SEKOLAH_ASAL) -> count
+                    pusat_sekolah_count = {}
+                    # Key: NO_PUSAT -> total assigned
+                    pusat_total_count = {no_pusat: 0 for no_pusat in df_pusat_ppd["NO_PUSAT"].tolist()}
+                    # Map pusat -> info
+                    pusat_info_map = {}
+                    for _, p in df_pusat_ppd.iterrows():
+                        pusat_info_map[p["NO_PUSAT"]] = {
+                            "KOD_TUAN": str(p.get("KOD_SEKOLAH_TUAN_RUMAH", "") or "").upper().strip(),
+                            "NAMA": p.get("NAMA_PUSAT", ""),
+                            "PETUGAS": int(p.get("PETUGAS", 0))
+                        }
+                    
+                    st.markdown(f'''
+                    <div style="background:#e3f2fd; border:2px solid #1565c0; border-radius:10px; padding:12px; margin:10px 0;">
+                        <div style="font-weight:700; color:#0d47a1;">📋 Syarat Janaan Rawak:</div>
+                        <div style="font-size:12px; color:#212121; margin-top:5px;">
+                            1️⃣ Guru <b>tidak boleh</b> ditempatkan di sekolah dia mengajar (KOD_SEKOLAH_ASAL ≠ KOD_TUAN_RUMAH)<br>
+                            2️⃣ Max <b>3 orang</b> guru dari sekolah sama ke pusat sama (hadkan 3 orang sahaja)
+                        </div>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                    
                     for idx, row in df_cad_sorted.iterrows():
                         kod_sek_asal = str(row.get("KOD_SEKOLAH_ASAL", "") or row.get("KOD_SEKOLAH", "") or "").upper().strip()
-                        asal = str(row.get("NO_PUSAT_ASAL", "") or "").upper().strip()
-                        pusat_tugas = None
+                        nama_guru = str(row.get("NAMA_GURU", "") or "")
                         
-                        if asal and asal in df_pusat_ppd["NO_PUSAT"].values:
-                            pusat_info = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == asal]
-                            if not pusat_info.empty:
-                                tuan_rumah = str(pusat_info.iloc[0].get("KOD_SEKOLAH_TUAN_RUMAH", "") or "").upper().strip()
-                                if not (tuan_rumah and kod_sek_asal and tuan_rumah == kod_sek_asal):
-                                    pusat_tugas = asal
+                        # Cari pusat yang layak ikut syarat
+                        eligible_pusat = []
+                        for no_pusat, info in pusat_info_map.items():
+                            kod_tuan = info["KOD_TUAN"]
+                            
+                            # SYARAT 1: Guru tidak boleh di sekolah sendiri
+                            if kod_tuan and kod_sek_asal and kod_tuan == kod_sek_asal:
+                                continue
+                            
+                            # SYARAT 2: Max 3 dari sekolah sama ke pusat sama
+                            key = (no_pusat, kod_sek_asal)
+                            current_count = pusat_sekolah_count.get(key, 0)
+                            if current_count >= 3:
+                                continue
+                            
+                            # Optional: Utamakan pusat yang masih belum cukup petugas
+                            total_assigned = pusat_total_count.get(no_pusat, 0)
+                            perlu = info["PETUGAS"]
+                            kekurangan = perlu - total_assigned
+                            
+                            eligible_pusat.append({
+                                "NO_PUSAT": no_pusat,
+                                "KEKURANGAN": kekurangan,
+                                "TOTAL": total_assigned,
+                                "SEKOLAH_COUNT": current_count
+                            })
                         
-                        if not pusat_tugas:
-                            for p_idx in range(len(df_pusat_ppd)):
-                                candidate = df_pusat_ppd.iloc[(idx + p_idx) % len(df_pusat_ppd)]
-                                cand_no = candidate["NO_PUSAT"]
-                                cand_tuan = str(candidate.get("KOD_SEKOLAH_TUAN_RUMAH", "") or "").upper().strip()
-                                if cand_tuan and kod_sek_asal and cand_tuan == kod_sek_asal:
+                        # Jika tiada eligible yang masih perlu, cuba cari yang masih ada slot walau dah cukup (untuk letak semua guru)
+                        if not eligible_pusat:
+                            # Cuba cari tanpa syarat kekurangan, tapi masih ikut syarat 1 & 2
+                            for no_pusat, info in pusat_info_map.items():
+                                kod_tuan = info["KOD_TUAN"]
+                                if kod_tuan and kod_sek_asal and kod_tuan == kod_sek_asal:
                                     continue
-                                pusat_tugas = cand_no
-                                break
+                                key = (no_pusat, kod_sek_asal)
+                                if pusat_sekolah_count.get(key, 0) >= 3:
+                                    continue
+                                eligible_pusat.append({
+                                    "NO_PUSAT": no_pusat,
+                                    "KEKURANGAN": 0,
+                                    "TOTAL": pusat_total_count.get(no_pusat, 0),
+                                    "SEKOLAH_COUNT": pusat_sekolah_count.get(key, 0)
+                                })
+                        
+                        # Pilih pusat secara rawak dari eligible, utamakan yang kekurangan paling banyak
+                        pusat_tugas = None
+                        if eligible_pusat:
+                            # Sort by kekurangan descending (pusat yang paling kurang dulu), then random
+                            eligible_pusat.sort(key=lambda x: (-x["KEKURANGAN"], x["TOTAL"], random.random()))
+                            # Ambil top 3 yang kekurangan paling tinggi, pilih rawak dari situ untuk lebih rawak
+                            top_candidates = eligible_pusat[:min(5, len(eligible_pusat))]
+                            chosen = random.choice(top_candidates) if top_candidates else eligible_pusat[0]
+                            pusat_tugas = chosen["NO_PUSAT"]
+                        else:
+                            # Jika masih tiada (semua pusat dah ada 3 dari sekolah sama atau sekolah sendiri), terpaksa langgar syarat 2 tapi tetap ikut syarat 1
+                            # Ini untuk kes edge dimana sekolah kecil
+                            fallback = []
+                            for no_pusat, info in pusat_info_map.items():
+                                kod_tuan = info["KOD_TUAN"]
+                                if kod_tuan and kod_sek_asal and kod_tuan == kod_sek_asal:
+                                    continue
+                                fallback.append(no_pusat)
+                            if fallback:
+                                pusat_tugas = random.choice(fallback)
+                            else:
+                                # Last resort - mana-mana pusat kecuali sekolah sendiri
+                                all_pusat = [p for p in df_pusat_ppd["NO_PUSAT"].tolist() if pusat_info_map[p]["KOD_TUAN"] != kod_sek_asal]
+                                pusat_tugas = random.choice(all_pusat) if all_pusat else df_pusat_ppd["NO_PUSAT"].iloc[0] if len(df_pusat_ppd) > 0 else None
+                        
+                        # Update tracking
+                        if pusat_tugas:
+                            key = (pusat_tugas, kod_sek_asal)
+                            pusat_sekolah_count[key] = pusat_sekolah_count.get(key, 0) + 1
+                            pusat_total_count[pusat_tugas] = pusat_total_count.get(pusat_tugas, 0) + 1
                         
                         assignments.append({
                             "id": row.get("id", ""),
@@ -1835,12 +1923,39 @@ elif st.session_state.role == "PPD":
                             "IC_GURU": row.get("IC_GURU", ""),
                             "JAWATAN_CADANGAN": row.get("JAWATAN_CADANGAN", ""),
                             "JAWATAN": row.get("JAWATAN_CADANGAN", ""),
-                            "KOD_SEKOLAH_ASAL": row.get("KOD_SEKOLAH_ASAL", ""),
+                            "KOD_SEKOLAH_ASAL": kod_sek_asal,
                             "NAMA_SEKOLAH_ASAL": row.get("NAMA_SEKOLAH_ASAL", ""),
                             "NO_PUSAT_ASAL": row.get("NO_PUSAT_ASAL", ""),
                             "NO_PUSAT_TUGAS": pusat_tugas,
                             "STATUS": row.get("STATUS", "DICADANGKAN")
                         })
+                    
+                    # Show summary syarat 2
+                    st.markdown("#### ✅ Semakan Syarat")
+                    col_s1, col_s2 = st.columns(2)
+                    with col_s1:
+                        # Check syarat 1 violations
+                        violations_s1 = 0
+                        for a in assignments:
+                            kod_asal = str(a.get("KOD_SEKOLAH_ASAL", "")).upper()
+                            no_pusat = a.get("NO_PUSAT_TUGAS", "")
+                            if no_pusat in pusat_info_map:
+                                if pusat_info_map[no_pusat]["KOD_TUAN"] == kod_asal and kod_asal != "":
+                                    violations_s1 += 1
+                        if violations_s1 == 0:
+                            st.success(f"✅ Syarat 1 OK: Tiada guru di sekolah sendiri (0 pelanggaran)")
+                        else:
+                            st.error(f"❌ Syarat 1: Ada {violations_s1} guru di sekolah sendiri!")
+                    
+                    with col_s2:
+                        violations_s2 = 0
+                        for (no_pusat, kod_sek), count in pusat_sekolah_count.items():
+                            if count > 3:
+                                violations_s2 += 1
+                        if violations_s2 == 0:
+                            st.success(f"✅ Syarat 2 OK: Max 3 dari sekolah sama ke pusat sama (0 pelanggaran)")
+                        else:
+                            st.error(f"❌ Syarat 2: Ada {violations_s2} pusat langgar had 3 orang")
                     
                     df_assign = pd.DataFrame(assignments)
                     st.session_state["jana_all_result"] = df_assign.to_dict('records')
@@ -1899,18 +2014,45 @@ elif st.session_state.role == "PPD":
                     pusat_info = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == pilihan_pusat_jana]
                     perlu = int(pusat_info["PETUGAS"].values[0]) if not pusat_info.empty else 10
                     
-                    # Filter guru yang belum ada pusat tugas atau yang sesuai
+                    # Filter guru ikut 2 SYARAT
                     df_available = df_cad_all.copy()
                     
-                    # Elak sekolah tuan rumah
+                    # SYARAT 1: Elak sekolah tuan rumah
                     tuan_rumah_kod = str(pusat_info["KOD_SEKOLAH_TUAN_RUMAH"].values[0] if not pusat_info.empty else "").upper().strip()
                     if tuan_rumah_kod:
-                        df_available = df_available[~df_available["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.contains(tuan_rumah_kod, na=False)]
+                        df_available = df_available[~df_available["KOD_SEKOLAH_ASAL"].astype(str).str.upper().eq(tuan_rumah_kod)]
                     
-                    # Ambil sebanyak yang perlu, prioriti ikut jawatan
-                    # Ketua Pengawas, TKP, Penyelia, Pengawas
+                    # SYARAT 2: Max 3 dari sekolah sama - kira yang dah ada di pusat ini
+                    # Dapatkan yang sudah dijana untuk pusat ini
+                    existing_assignments = st.session_state.get("jana_all_result", []) + st.session_state.get("jana_pusat_result", [])
+                    sekolah_count_pusat = {}
+                    for ex in existing_assignments:
+                        if ex.get("NO_PUSAT_TUGAS") == pilihan_pusat_jana:
+                            k = str(ex.get("KOD_SEKOLAH_ASAL", "")).upper()
+                            sekolah_count_pusat[k] = sekolah_count_pusat.get(k, 0) + 1
+                    
+                    # Filter yang dah ada 3 dari sekolah sama
+                    def check_max_3(row):
+                        k = str(row.get("KOD_SEKOLAH_ASAL", "")).upper()
+                        return sekolah_count_pusat.get(k, 0) < 3
+                    
+                    df_available["ELIGIBLE"] = df_available.apply(check_max_3, axis=1)
+                    df_eligible = df_available[df_available["ELIGIBLE"] == True].copy()
+                    
+                    if df_eligible.empty and not df_available.empty:
+                        st.warning(f"⚠️ Semua sekolah sudah ada 3 orang di {pilihan_pusat_jana}. Akan cuba tetap letak dengan had longgar.")
+                        df_eligible = df_available.copy()
+                    elif len(df_eligible) < len(df_available):
+                        st.info(f"📋 Syarat 2: {len(df_available) - len(df_eligible)} guru ditapis kerana sekolah sama sudah ada 3 orang di {pilihan_pusat_jana}")
+                    
+                    df_available = df_eligible
+                    
+                    # Ambil sebanyak yang perlu, prioriti ikut jawatan, tapi rawak dalam jawatan sama
+                    import random
                     jawatan_order = {"Ketua Pengawas": 1, "Timbalan Ketua Pengawas": 2, "Penyelia Kawasan": 3, "Pengawas Peperiksaan": 4}
                     df_available["JAWATAN_ORDER"] = df_available["JAWATAN_CADANGAN"].map(jawatan_order).fillna(5)
+                    # Shuffle untuk rawak
+                    df_available = df_available.sample(frac=1, random_state=random.randint(1, 10000)).reset_index(drop=True) if len(df_available) > 1 else df_available
                     df_available = df_available.sort_values("JAWATAN_ORDER").head(perlu)
                     
                     assignments = []
