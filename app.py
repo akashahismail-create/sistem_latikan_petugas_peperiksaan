@@ -609,15 +609,28 @@ def hantar_ke_ppd(ids, kod_ppd):
     berjaya, gagal = 0, []
     for i in range(0, len(ids), 100):
         kelompok = ids[i:i + 100]
-        try:
-            supa.table("cadangan_sup").update({"status": "HANTAR KE PPD", "kod_ppd": kod_ppd}).in_("id", kelompok).execute()
-        except Exception:
+        # V23 FIX: update both status (lower) and STATUS (upper) + STATUS column variations + data json if needed
+        # Supabase has both status and STATUS columns in some rows, so update all to avoid Belum dihantar stuck
+        payloads_to_try = [
+            {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD", "kod_ppd": kod_ppd, "KOD_PPD": kod_ppd},
+            {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"},
+            {"status": "HANTAR KE PPD", "kod_ppd": kod_ppd},
+            {"STATUS": "HANTAR KE PPD", "KOD_PPD": kod_ppd},
+        ]
+        success = False
+        last_err = ""
+        for payload in payloads_to_try:
             try:
-                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).in_("id", kelompok).execute()
+                supa.table("cadangan_sup").update(payload).in_("id", kelompok).execute()
+                success = True
+                break
             except Exception as e:
-                gagal.append(f"{e}")
+                last_err = str(e)
                 continue
-        berjaya += len(kelompok)
+        if success:
+            berjaya += len(kelompok)
+        else:
+            gagal.append(last_err)
     return berjaya, gagal
 
 def simpan_penempatan_ppd(items):
@@ -1379,7 +1392,17 @@ if st.session_state.role == "SUP":
                 st.warning("Belum ada cadangan. Pergi menu Cadangan Lantikan dulu.")
             else:
                 kod_ppd_sup = str(info.get('kod_ppd', 'BA')).upper()
-                status_s = df_cad["STATUS"].astype(str).str.upper() if "STATUS" in df_cad.columns else pd.Series([""] * len(df_cad), index=df_cad.index)
+                # V23 FIX: check both STATUS and status columns
+                if "STATUS" in df_cad.columns:
+                    status_s = df_cad["STATUS"].astype(str)
+                elif "status" in df_cad.columns:
+                    status_s = df_cad["status"].astype(str)
+                else:
+                    status_s = pd.Series([""] * len(df_cad), index=df_cad.index)
+                status_s = status_s.fillna("").astype(str).str.upper()
+                # Also check alternative column if empty
+                if "status" in df_cad.columns and (status_s == "").all():
+                    status_s = df_cad["status"].fillna("").astype(str).str.upper()
                 m_lulus = status_s.str.contains("LULUS", na=False)
                 m_hantar = status_s.str.contains("HANTAR", na=False) & ~m_lulus
                 m_baru = ~(m_lulus | m_hantar)   # DICADANGKAN / TOLAK PPD - boleh dihantar (semula)
