@@ -532,12 +532,23 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
             ng = row_dict.get('NAMA_GURU') or row_dict.get('nama_guru') or row_dict.get('NAMA GURU') or ''
             row_dict['NAMA_GURU'] = str(ng).strip().upper()
             
+            # NAMA SEKOLAH ASAL - V28 FIX
+            nsa = row_dict.get('NAMA_SEKOLAH_ASAL') or row_dict.get('nama_sekolah_asal') or row_dict.get('NAMA_SEKOLAH') or row_dict.get('nama_sekolah') or row_dict.get('NAMA SEKOLAH ASAL') or ''
+            row_dict['NAMA_SEKOLAH_ASAL'] = str(nsa).strip().upper()
+            row_dict['nama_sekolah_asal'] = str(nsa).strip()
+            
             # IC
             ic = row_dict.get('IC_GURU') or row_dict.get('ic_guru') or row_dict.get('IC') or row_dict.get('ic') or ''
             ic = str(ic).strip()
             # Normalize IC - remove spaces
             ic = ic.replace(' ', '')
             row_dict['IC_GURU'] = ic
+            
+            # ALAMAT, TELEFON, EMAIL, POSKOD - ensure exists
+            for key_lower, key_upper in [('alamat_rumah','ALAMAT_RUMAH'), ('telefon_guru','TELEFON_GURU'), ('email_guru','EMAIL_GURU'), ('poskod_rumah','POSKOD_RUMAH'), ('no_pusat_asal','NO_PUSAT_ASAL'), ('pengalaman_spm','PENGALAMAN_SPM')]:
+                val = row_dict.get(key_upper) or row_dict.get(key_lower) or ''
+                row_dict[key_upper] = str(val).strip()
+                row_dict[key_lower] = str(val).strip()
             
             if 'STATUS' not in row_dict or not row_dict['STATUS']:
                 row_dict['STATUS'] = row_dict.get('status') or 'DICADANGKAN'
@@ -1444,11 +1455,21 @@ if st.session_state.role == "SUP":
                         c4.metric("Pengawas Peperiksaan", counts.get("Pengawas Peperiksaan", 0), delta=f"Perlu {total_kelas_alert if 'total_kelas_alert' in locals() else 6}")
                     except: pass
                     # V24 FIX: Show clean without duplicate id columns
-                    clean_cols = ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "JAWATAN_CADANGAN", "STATUS"]
-                    clean_show = [c for c in clean_cols if c in df_cad.columns]
+                    clean_cols = ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "EMAIL_GURU", "JAWATAN_CADANGAN", "STATUS", "NAMA_SEKOLAH_ASAL"]
+                    # V29: find columns case-insensitive
+                    cols_map = {str(c).lower(): c for c in df_cad.columns}
+                    clean_show = []
+                    for wanted in clean_cols:
+                        if wanted in df_cad.columns:
+                            clean_show.append(wanted)
+                        elif wanted.lower() in cols_map:
+                            clean_show.append(cols_map[wanted.lower()])
                     df_clean_show = df_cad[clean_show] if clean_show else df_cad
                     # Remove any duplicate columns by lowercase name
-                    df_clean_show = df_clean_show.loc[:, ~df_clean_show.columns.str.lower().duplicated()]
+                    try:
+                        df_clean_show = df_clean_show.loc[:, ~df_clean_show.columns.str.lower().duplicated()]
+                    except:
+                        pass
                     st.dataframe(df_clean_show, use_container_width=True)
                     st.download_button("📥 Export Cadangan", to_excel(df_clean_show), file_name=f"cadangan_{kod}.xlsx")
 
@@ -3878,9 +3899,13 @@ elif st.session_state.role == "PPD":
                         st.caption(f"Pusat yang boleh diagihkan hanya dari senarai yang dipilih untuk {pilih_bk_tempat} tadi ({len(saved_pusat_bawah)} pusat), bukan semua pusat PPD. Agihkan supaya sorang Penyelia tidak pegang semua.")
                         
                         def get_col2(df, *cands):
+                            # V29: case-insensitive search
+                            cols_lower = {str(c).lower(): c for c in df.columns}
                             for cand in cands:
                                 if cand in df.columns:
                                     return cand
+                                if cand.lower() in cols_lower:
+                                    return cols_lower[cand.lower()]
                             return None
                         
                         c_nama = get_col2(df_penyelia, "NAMA_GURU","nama_guru")
@@ -4239,7 +4264,7 @@ elif st.session_state.role == "PPD":
                         c_ic_s = get_col_s(df_surat, "IC_GURU","ic_guru")
                         c_sek_s = get_col_s(df_surat, "KOD_SEKOLAH_ASAL","kod_sekolah_asal")
                         c_sek_nama_s = get_col_s(df_surat, "NAMA_SEKOLAH_ASAL","nama_sekolah_asal")
-                        c_tel_s = get_col_s(df_surat, "TELEFON_GURU","telefon_guru")
+                        c_tel_s = get_col_s(df_surat, "TELEFON_GURU","telefon_guru","TELEFON","telefon")
                         c_pusat_s = get_col_s(df_surat, "KOD_PUSAT","kod_pusat")
                         c_id_s = "id" if "id" in df_surat.columns else None
                         
