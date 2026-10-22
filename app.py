@@ -548,26 +548,41 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         if df_norm.empty:
             return df_norm
         
-        # V24 FIX: Deduplicate and keep latest status (HANTAR > DICADANGKAN)
+        # V25 FIX: Deduplicate and keep HANTAR status prioritized over DICADANGKAN
         if 'IC_GURU' in df_norm.columns:
-            # Add sort key: id descending, created_at descending if exists
-            sort_cols = []
+            # Create priority for status: LULUS=3, HANTAR=2, DICADANGKAN=1
+            def status_priority(s):
+                s = str(s).upper()
+                if 'LULUS' in s:
+                    return 3
+                if 'HANTAR' in s:
+                    return 2
+                return 1
+            try:
+                df_norm['status_prio'] = df_norm['STATUS'].apply(status_priority)
+            except:
+                try:
+                    df_norm['status_prio'] = df_norm['status'].apply(status_priority)
+                except:
+                    df_norm['status_prio'] = 1
+            
+            # Add sort key: id descending, status_prio descending
+            sort_cols = ['status_prio']
             if 'id' in df_norm.columns:
                 try:
                     df_norm['id_num'] = pd.to_numeric(df_norm['id'], errors='coerce')
                     sort_cols.append('id_num')
                 except:
-                    sort_cols.append('id')
+                    pass
             if 'created_at' in df_norm.columns:
                 sort_cols.append('created_at')
-            # Sort by IC then by id/created_at descending to keep latest
-            if sort_cols:
-                df_norm = df_norm.sort_values(by=sort_cols, ascending=False)
-            # Now drop duplicates keep first (which is latest due to descending sort)
+            
+            df_norm = df_norm.sort_values(by=sort_cols, ascending=False)
             df_norm = df_norm.drop_duplicates(subset=['IC_GURU', 'KOD_SEKOLAH_ASAL'], keep='first')
-            # Clean helper column
-            if 'id_num' in df_norm.columns:
-                df_norm = df_norm.drop(columns=['id_num'])
+            # Clean helper columns
+            for col in ['id_num', 'status_prio']:
+                if col in df_norm.columns:
+                    df_norm = df_norm.drop(columns=[col])
         
         # Filter by PPD if requested - robust case-insensitive contains
         if kod_ppd:
@@ -621,12 +636,24 @@ def _id_py(x):
     if isinstance(x, float) and x.is_integer(): return int(x)
     return x
 
-def hantar_ke_ppd(ids, kod_ppd):
+def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
+    """V25 FIX: Update by IC + sekolah to ensure all duplicate rows become HANTAR, not just by id"""
     berjaya, gagal = 0, []
+    # If df_sasaran provided, also get IC list to update all duplicates
+    ic_list = []
+    sekolah_list = []
+    if df_sasaran is not None and not df_sasaran.empty:
+        try:
+            if 'IC_GURU' in df_sasaran.columns:
+                ic_list = df_sasaran['IC_GURU'].astype(str).str.strip().tolist()
+            if 'KOD_SEKOLAH_ASAL' in df_sasaran.columns:
+                sekolah_list = df_sasaran['KOD_SEKOLAH_ASAL'].astype(str).str.strip().str.upper().tolist()
+        except:
+            pass
+    
+    # First, update by id (original)
     for i in range(0, len(ids), 100):
         kelompok = ids[i:i + 100]
-        # V23 FIX: update both status (lower) and STATUS (upper) + STATUS column variations + data json if needed
-        # Supabase has both status and STATUS columns in some rows, so update all to avoid Belum dihantar stuck
         payloads_to_try = [
             {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD", "kod_ppd": kod_ppd, "KOD_PPD": kod_ppd},
             {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"},
@@ -647,6 +674,24 @@ def hantar_ke_ppd(ids, kod_ppd):
             berjaya += len(kelompok)
         else:
             gagal.append(last_err)
+    
+    # Second, ensure all rows with same IC + sekolah also updated to HANTAR (to fix duplicate bug)
+    # This ensures even if there are 2 rows id 19 and 140 with same IC, both become HANTAR
+    if ic_list:
+        for ic_val, sek_val in zip(ic_list, sekolah_list):
+            try:
+                # Update all rows with same IC
+                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
+            except:
+                try:
+                    supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
+                except:
+                    pass
+            try:
+                supa.table("cadangan_sup").update({"STATUS": "HANTAR KE PPD"}).eq("IC_GURU", ic_val).execute()
+            except:
+                pass
+    
     return berjaya, gagal
 
 def simpan_penempatan_ppd(items):
@@ -1471,14 +1516,18 @@ if st.session_state.role == "SUP":
                         if not ids:
                             st.error("Tiada ID cadangan - data tak lengkap, hubungi admin.")
                         else:
-                            berjaya, gagal = hantar_ke_ppd(ids, kod_ppd_sup)
+                            berjaya, gagal = hantar_ke_ppd(ids, kod_ppd_sup, df_sasaran=sasaran)
                             if berjaya:
                                 flash("success", f"✅ Berjaya hantar {berjaya} cadangan ke PPD {kod_ppd_sup} - {PPD_MAP.get(kod_ppd_sup, '')}!")
-                                # V24: Clear cache to force fresh data
+                                # V25: Clear cache to force fresh data
                                 try:
                                     st.cache_data.clear()
+                                    st.cache_resource.clear()
                                 except:
                                     pass
+                                # Force small delay to let Supabase replicate
+                                import time
+                                time.sleep(1)
                             if gagal: flash("error", "Sebahagian gagal dihantar: " + "; ".join(gagal[:3]))
                             st.rerun()
                 
