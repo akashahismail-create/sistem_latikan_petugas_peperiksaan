@@ -963,13 +963,10 @@ if st.session_state.role == "SUP":
                 with col_f3_sup:
                     if st.button("🔐 Hanya Penyelia", use_container_width=True, key="btn_filter_pk_sup"):
                         st.session_state["filter_jawatan_sup_senarai"] = ["Penyelia Kawasan"]
-                        st.session_state["filter_jawatan_sup_senarai_ui"] = ["Penyelia Kawasan"]
                         st.rerun()
                 with col_f4_sup:
                     if st.button("🔄 Clear", use_container_width=True, key="btn_clear_sup"):
                         st.session_state["filter_jawatan_sup_senarai"] = []
-                        if "filter_jawatan_sup_senarai_ui" in st.session_state:
-                            del st.session_state["filter_jawatan_sup_senarai_ui"]
                         st.rerun()
                 
                 current_sup_filter2 = st.session_state.get("filter_jawatan_sup_senarai", [])
@@ -3110,16 +3107,12 @@ elif st.session_state.role == "PPD":
                     st.metric("Semua Jawatan", f"{len(df_cad_all)} guru")
             with col_f3:
                 if st.button("🔐 Hanya Penyelia Kawasan", use_container_width=True, key="btn_filter_pk"):
-                    # Set logical filter only, widget key is different so no conflict
+                    # Only set logical filter - widget key will sync on next rerun via default param
                     st.session_state["filter_jawatan_cad"] = ["Penyelia Kawasan"]
-                    # Also update widget default for next run
-                    st.session_state["filter_jawatan_cad_ui"] = ["Penyelia Kawasan"]
                     st.rerun()
             with col_f4:
                 if st.button("🔄 Clear Filter", use_container_width=True, key="btn_clear_filter"):
                     st.session_state["filter_jawatan_cad"] = []
-                    if "filter_jawatan_cad_ui" in st.session_state:
-                        del st.session_state["filter_jawatan_cad_ui"]
                     st.rerun()
             
             if st.session_state.get("filter_jawatan_cad"):
