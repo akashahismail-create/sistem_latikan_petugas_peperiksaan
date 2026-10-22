@@ -27,20 +27,57 @@ PPD_MAP = {
     "BG": "Gombak", "BH": "Petaling Perdana", "BJ": "Sepang", "BK": "Petaling Utama"
 }
 
-# ================= CSS UNTUK CUSTOM SIDEBAR - FIX DARK MODE =================
+# ================= CSS MESRA DARK MODE - SEMUA TULISAN NAMPAK =================
 st.markdown("""
 <style>
+/* Hide original sidebar */
 [data-testid="stSidebar"] {display: none !important;}
 [data-testid="stSidebarNav"] {display: none !important;}
 .stSidebar {display: none !important;}
 section[data-testid="stSidebar"] {display: none !important;}
 
-/* Custom left panel that looks like sidebar - FIX DARK MODE */
+/* ===== GLOBAL DARK MODE FIX ===== */
+/* Pastikan semua text utama nampak dalam dark mode */
+.stApp {
+    color-scheme: light;
+}
+
+/* Metric cards - pastikan text hitam atas background putih sentiasa nampak */
+[data-testid="stMetric"] {
+    background: #ffffff !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+}
+[data-testid="stMetric"] label, [data-testid="stMetric"] div {
+    color: #212121 !important;
+}
+[data-testid="stMetricValue"] {
+    color: #0d47a1 !important;
+    font-weight: 800 !important;
+}
+
+/* Info, Warning, Success boxes - pastikan text gelap atas background cerah */
+[data-testid="stAlert"] {
+    background: #ffffff !important;
+    color: #212121 !important;
+    border: 1px solid #90caf9 !important;
+}
+[data-testid="stAlert"] p, [data-testid="stAlert"] div {
+    color: #212121 !important;
+}
+
+/* Dataframe - pastikan header nampak */
+[data-testid="stDataFrame"] {
+    background: white !important;
+}
+
+/* Custom left panel - FIX DARK MODE - sentiasa putih dengan text hitam */
 .custom-sidebar {
-    background: #ffffff;
+    background: #ffffff !important;
     border-radius: 12px;
     padding: 16px;
-    border: 2px solid #0d47a1;
+    border: 2px solid #0d47a1 !important;
     box-shadow: 0 4px 12px rgba(13, 71, 161, 0.15);
     height: fit-content;
     position: sticky;
@@ -52,24 +89,31 @@ section[data-testid="stSidebar"] {display: none !important;}
     font-weight: 800;
     margin-bottom: 4px;
 }
-/* Caption nama sekolah - buat lebih gelap dan visible */
-.custom-sidebar .caption, .custom-sidebar [data-testid="stCaptionContainer"] {
+.custom-sidebar p, .custom-sidebar span, .custom-sidebar div {
     color: #212121 !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
+}
+/* Caption nama sekolah - buat hitam pekat, bukan kelabu cair */
+.custom-sidebar [data-testid="stCaptionContainer"] {
+    color: #212121 !important;
     opacity: 1 !important;
 }
-/* NO PUSAT box - high contrast, visible in both light and dark */
+.custom-sidebar [data-testid="stCaptionContainer"] p {
+    color: #212121 !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+}
+
+/* NO PUSAT box - high contrast kuning dengan text hitam - nampak dalam dark & light */
 .no-pusat-box {
-    background: #ffeb3b;
-    border: 2px solid #f57f17;
+    background: #ffeb3b !important;
+    border: 2px solid #f57f17 !important;
     border-radius: 8px;
     padding: 10px 12px;
     margin: 10px 0;
 }
 .no-pusat-label {
     font-size: 11px;
-    color: #bf360c;
+    color: #bf360c !important;
     font-weight: 700;
     margin-bottom: 2px;
 }
@@ -80,23 +124,113 @@ section[data-testid="stSidebar"] {display: none !important;}
     letter-spacing: 0.5px;
     word-break: break-all;
 }
-/* Dark mode fix - ensure custom sidebar stays light with dark text */
+
+/* PPD Dashboard cards - pastikan nampak */
+.ppd-table {
+    background: white !important;
+    color: #212121 !important;
+}
+.ppd-table th {
+    background: #0d47a1 !important;
+    color: white !important;
+}
+.ppd-table td {
+    background: white !important;
+    color: #212121 !important;
+    border-bottom: 1px solid #e0e0e0 !important;
+}
+
+/* Badge merah/kuning/hijau - pastikan text nampak */
+.badge-merah, .badge-kuning, .badge-hijau {
+    color: #000000 !important;
+    font-weight: 800 !important;
+}
+.badge-merah {background: #ffcdd2 !important; border: 2px solid #d32f2f !important; color: #b71c1c !important;}
+.badge-kuning {background: #fff9c4 !important; border: 2px solid #f57f17 !important; color: #e65100 !important;}
+.badge-hijau {background: #c8e6c9 !important; border: 2px solid #2e7d32 !important; color: #1b5e20 !important;}
+
+/* Semua markdown dengan background gradient - pastikan text gelap nampak */
+div[style*="background: linear-gradient"] h3, div[style*="background: linear-gradient"] p, div[style*="background: linear-gradient"] div {
+    color: #0d47a1 !important;
+}
+div[style*="background: linear-gradient"] b {
+    color: #000000 !important;
+}
+
+/* Radio buttons menu - pastikan text nampak */
+[data-testid="stRadio"] label {
+    color: #212121 !important;
+    font-weight: 600 !important;
+}
+
+/* Buttons */
+.stButton button {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Tabs */
+[data-testid="stTabs"] button {
+    color: #212121 !important;
+    font-weight: 600 !important;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+    color: #0d47a1 !important;
+}
+
+/* Force all captions to be dark and visible */
+[data-testid="stCaptionContainer"] {
+    color: #424242 !important;
+}
+[data-testid="stCaptionContainer"] p {
+    color: #212121 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* Selectbox, text input labels */
+label {
+    color: #212121 !important;
+    font-weight: 600 !important;
+}
+
+/* Dark mode override - force light theme for our custom components */
 @media (prefers-color-scheme: dark) {
     .custom-sidebar {
         background: #ffffff !important;
-        border-color: #1565c0 !important;
+        border-color: #0d47a1 !important;
+    }
+    .custom-sidebar * {
+        color: #212121 !important;
     }
     .custom-sidebar h3 {
         color: #0d47a1 !important;
     }
-    .custom-sidebar p, .custom-sidebar span, .custom-sidebar div {
+    .no-pusat-box {
+        background: #ffeb3b !important;
+    }
+    .no-pusat-box * {
+        color: #000000 !important;
+    }
+    [data-testid="stMetric"] {
+        background: #ffffff !important;
+    }
+    [data-testid="stMetric"] * {
         color: #212121 !important;
     }
 }
-/* Force Streamlit caption to be visible */
-[data-testid="stCaptionContainer"] p {
+
+/* Additional fix for Streamlit dark theme */
+.stApp[data-theme="dark"] .custom-sidebar {
+    background: #ffffff !important;
+}
+.stApp[data-theme="dark"] .custom-sidebar * {
     color: #212121 !important;
-    font-weight: 600 !important;
+}
+.stApp[data-theme="dark"] [data-testid="stCaptionContainer"] p {
+    color: #212121 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -610,8 +744,8 @@ if st.session_state.role == "SUP":
                 # Paparan NO PUSAT yang jelas
                 no_pusat_list = ", ".join([f"{p['NO_PUSAT']}" for p in pusat_sekolah if p['NO_PUSAT']])
                 st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding:20px; border-radius:12px; border-left:6px solid #1565c0; margin-bottom:20px;">
-                    <h3 style="margin:0; color:#0d47a1;">🏫 KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
+                <div style="background: #ffffff; padding:20px; border-radius:12px; border:3px solid #1565c0; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px;">
+                    <h3 style="margin:0; color:#0d47a1 !important; font-weight:800;">🏫 KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
                     <p style="margin:8px 0; font-size:16px;">
                         Sekolah anda ada <b>{len(pusat_sekolah)} pusat</b> | <b>{total_calon} calon</b> | <b>{total_kelas} kelas</b> (1 kelas=20 calon)<br>
                         Formula: Kelas = CEIL(Calon/20), Petugas = Kelas+9, Sekolah Perlu = Kelas+12
@@ -1106,7 +1240,7 @@ elif st.session_state.role == "PPD":
         
         elif menu == "dashboard":
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+            <div style="background: #0d47a1; padding:20px; border-radius:12px; color:white; border: 2px solid #002171; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <div style="font-size:48px;">🏢</div>
                     <div>
