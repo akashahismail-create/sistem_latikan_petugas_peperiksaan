@@ -2261,9 +2261,21 @@ elif st.session_state.role == "PPD":
             # Paparan semasa
             st.markdown(f"### 🏫 Pusat {pilih_pusat_manual} - Penempatan Semasa")
             col_curr1, col_curr2, col_curr3, col_curr4 = st.columns(4)
-            kp_curr = [c for c in tugas_pusat_ini.values() if "Ketua Pengawas" in str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "") and "Timbalan" not in str(c.get("JAWATAN_CADANGAN") or "")]
-            tkp_curr = [c for c in tugas_pusat_ini.values() if "Timbalan" in str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "")]
-            peng_curr = [c for c in tugas_pusat_ini.values() if c not in kp_curr and c not in tkp_curr]
+            # FIX: Gunakan ID comparison, bukan object comparison (pandas Series error)
+            kp_curr_dict = {}
+            tkp_curr_dict = {}
+            peng_curr_dict = {}
+            for k, c in tugas_pusat_ini.items():
+                jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or c.get("JAWATAN") or "")
+                if "Ketua Pengawas" in jaw and "Timbalan" not in jaw:
+                    kp_curr_dict[k] = c
+                elif "Timbalan" in jaw:
+                    tkp_curr_dict[k] = c
+                else:
+                    peng_curr_dict[k] = c
+            kp_curr = list(kp_curr_dict.values())
+            tkp_curr = list(tkp_curr_dict.values())
+            peng_curr = list(peng_curr_dict.values())
             
             with col_curr1:
                 st.metric("Ketua Pengawas", f"{len(kp_curr)}/1", delta="OK" if len(kp_curr)==1 else "Perlu 1", delta_color="normal" if len(kp_curr)==1 else "inverse")
@@ -2311,12 +2323,13 @@ elif st.session_state.role == "PPD":
                         </div>
                         ''', unsafe_allow_html=True)
                     if st.button("🗑️ Buang KP", key="buang_kp", use_container_width=True):
-                        for k, c in list(tugas_pusat_ini.items()):
-                            if c in kp_curr:
-                                try:
+                        for k in list(kp_curr_dict.keys()):
+                            try:
+                                c = tugas_pusat_ini.get(k)
+                                if c is not None:
                                     supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
-                                except Exception as e:
-                                    st.error(str(e))
+                            except Exception as e:
+                                st.error(str(e))
                         st.success("KP dibuang")
                         st.rerun()
                 else:
@@ -2356,8 +2369,9 @@ elif st.session_state.role == "PPD":
                         if pilih_kp:
                             try:
                                 # Jika sudah ada KP, buang dulu
-                                for k, c in list(tugas_pusat_ini.items()):
-                                    if c in kp_curr:
+                                for k in list(kp_curr_dict.keys()):
+                                    c = tugas_pusat_ini.get(k)
+                                    if c is not None:
                                         supa.table("cadangan_sup").update({"kod_pusat": None}).eq("id", c.get("id")).execute()
                                 supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pilih_kp).execute()
                                 st.success(f"KP dilantik ke {pilih_pusat_manual}")
@@ -2386,12 +2400,13 @@ elif st.session_state.role == "PPD":
                         </div>
                         ''', unsafe_allow_html=True)
                     if st.button("🗑️ Buang TKP", key="buang_tkp", use_container_width=True):
-                        for k, c in list(tugas_pusat_ini.items()):
-                            if c in tkp_curr:
-                                try:
+                        for k in list(tkp_curr_dict.keys()):
+                            try:
+                                c = tugas_pusat_ini.get(k)
+                                if c is not None:
                                     supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
-                                except Exception as e:
-                                    st.error(str(e))
+                            except Exception as e:
+                                st.error(str(e))
                         st.success("TKP dibuang")
                         st.rerun()
                 else:
@@ -2421,8 +2436,9 @@ elif st.session_state.role == "PPD":
                     if st.button("✅ Lantik Sebagai TKP", type="primary", use_container_width=True, key="lantik_tkp"):
                         if pilih_tkp:
                             try:
-                                for k, c in list(tugas_pusat_ini.items()):
-                                    if c in tkp_curr:
+                                for k in list(tkp_curr_dict.keys()):
+                                    c = tugas_pusat_ini.get(k)
+                                    if c is not None:
                                         supa.table("cadangan_sup").update({"kod_pusat": None}).eq("id", c.get("id")).execute()
                                 supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pilih_tkp).execute()
                                 st.success(f"TKP dilantik ke {pilih_pusat_manual}")
@@ -2455,12 +2471,13 @@ elif st.session_state.role == "PPD":
                     if len(peng_curr) > 5:
                         st.caption(f"... dan {len(peng_curr)-5} lagi")
                     if st.button("🗑️ Buang Semua Pengawas", key="buang_peng", use_container_width=True):
-                        for k, c in list(tugas_pusat_ini.items()):
-                            if c in peng_curr:
-                                try:
+                        for k in list(peng_curr_dict.keys()):
+                            try:
+                                c = tugas_pusat_ini.get(k)
+                                if c is not None:
                                     supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
-                                except Exception as e:
-                                    st.error(str(e))
+                            except Exception as e:
+                                st.error(str(e))
                         st.success("Pengawas dibuang")
                         st.rerun()
                 else:
