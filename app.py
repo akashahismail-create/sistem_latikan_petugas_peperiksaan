@@ -952,7 +952,16 @@ if st.session_state.role == "SUP":
                 
                 col_f1_sup, col_f2_sup, col_f3_sup, col_f4_sup = st.columns([2,1,1,1])
                 with col_f1_sup:
-                    filter_jawatan_sup = st.multiselect("Filter Jawatan", jawatan_sup_sorted, default=st.session_state["filter_jawatan_sup_senarai"], placeholder="Kosong = semua jawatan")
+                    safe_default_sup = [x for x in st.session_state["filter_jawatan_sup_senarai"] if x in jawatan_sup_sorted]
+                    if not jawatan_sup_sorted:
+                        jawatan_sup_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                        safe_default_sup = st.session_state["filter_jawatan_sup_senarai"]
+                    if st.session_state["filter_jawatan_sup_senarai"] and not safe_default_sup:
+                        for v in st.session_state["filter_jawatan_sup_senarai"]:
+                            if v not in jawatan_sup_sorted:
+                                jawatan_sup_sorted.append(v)
+                        safe_default_sup = st.session_state["filter_jawatan_sup_senarai"]
+                    filter_jawatan_sup = st.multiselect("Filter Jawatan", jawatan_sup_sorted, default=safe_default_sup, placeholder="Kosong = semua jawatan")
                     if filter_jawatan_sup != st.session_state["filter_jawatan_sup_senarai"]:
                         st.session_state["filter_jawatan_sup_senarai"] = filter_jawatan_sup
                 with col_f2_sup:
@@ -3100,9 +3109,23 @@ elif st.session_state.role == "PPD":
             
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             with col_f1:
-                # No key with _ui that we set - use simple key and rely on default param only via session_state logical
-                # To avoid AlreadyInstantiated, we do NOT set session_state[key] after widget, we only read
-                filter_jawatan_ui = st.multiselect("Filter Jawatan", jawatan_sorted, default=st.session_state["filter_jawatan_cad"], placeholder="Pilih jawatan - kosong = semua")
+                # V21 FIX DefaultNotInOptionsError: pastikan default ada dalam options
+                # Jika Penyelia Kawasan tidak ada dalam jawatan_sorted (data kosong), tambah manual
+                safe_default = [x for x in st.session_state["filter_jawatan_cad"] if x in jawatan_sorted]
+                # Jika user pilih Penyelia Kawasan tapi jawatan_sorted kosong, tetap tunjuk semua option yang mungkin
+                if not jawatan_sorted:
+                    jawatan_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                    safe_default = st.session_state["filter_jawatan_cad"]
+                # Jika safe_default kosong tapi session ada value yang bukan dalam options, guna empty supaya tak error
+                # Tapi untuk kes Penyelia Kawasan, kita benarkan jika memang dalam senarai tetap
+                if st.session_state["filter_jawatan_cad"] and not safe_default:
+                    # Kalau filter ada tapi takde dalam options, jangan error - guna filter tu sebagai options tambahan
+                    for v in st.session_state["filter_jawatan_cad"]:
+                        if v not in jawatan_sorted:
+                            jawatan_sorted.append(v)
+                    safe_default = st.session_state["filter_jawatan_cad"]
+                
+                filter_jawatan_ui = st.multiselect("Filter Jawatan", jawatan_sorted, default=safe_default, placeholder="Pilih jawatan - kosong = semua")
             with col_f2:
                 if filter_jawatan_ui:
                     st.metric(f"Filter: {len(filter_jawatan_ui)} jawatan", f"{len(df_cad_valid[df_cad_valid.apply(lambda r: str(r.get('JAWATAN_CADANGAN') or r.get('jawatan_cadangan') or r.get('JAWATAN') or '').strip() in filter_jawatan_ui, axis=1)]) if filter_jawatan_ui else len(df_cad_all)} guru")
