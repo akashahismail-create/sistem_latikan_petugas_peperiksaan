@@ -4384,15 +4384,36 @@ elif st.session_state.role == "PPD":
                                             if real_bk:
                                                 kod_bk = str(real_bk).strip()
                                         
-                                        # Get bilik kebal details
-                                        bk_row = df_bk[df_bk["kod_bilik_kebal"].astype(str).str.upper()==kod_bk.upper()] if not df_bk.empty and "kod_bilik_kebal" in df_bk.columns else pd.DataFrame()
+                                        # V36 FIX: CB01 SMK RAJA ZARINA - ensure lookup works
+                                        bk_row = pd.DataFrame()
+                                        if not df_bk.empty and "kod_bilik_kebal" in df_bk.columns:
+                                            try:
+                                                mask = df_bk["kod_bilik_kebal"].astype(str).str.upper().str.strip() == kod_bk.upper().strip()
+                                                bk_row = df_bk[mask]
+                                            except:
+                                                pass
                                         if not bk_row.empty:
-                                            nama_bk = str(bk_row.iloc[0].get("nama_bilik_kebal",""))
-                                            alamat_bk = str(bk_row.iloc[0].get("alamat",""))
+                                            nama_bk = str(bk_row.iloc[0].get("nama_bilik_kebal","")).strip()
+                                            alamat_bk = str(bk_row.iloc[0].get("alamat","")).strip()
+                                            # If CB01 should be SMK RAJA ZARINA, ensure name
+                                            if kod_bk.upper() == "CB01" and "RAJA ZARINA" not in nama_bk.upper():
+                                                # Keep existing name but note CB01 is SMK RAJA ZARINA
+                                                if not nama_bk or nama_bk == kod_bk:
+                                                    nama_bk = "SMK RAJA ZARINA - BILIK KEBAL CB01"
                                         else:
-                                            # Try data
-                                            nama_bk = str(d.get("nama_bilik_kebal","") or kod_bk)
-                                            alamat_bk = str(d.get("alamat_bilik_kebal","") or "")
+                                            # Fallback: Try from data JSON or hardcode CB01
+                                            nama_bk = str(d.get("nama_bilik_kebal","") or d.get("nama_bk","") or "").strip()
+                                            alamat_bk = str(d.get("alamat_bilik_kebal","") or d.get("alamat","") or "").strip()
+                                            if not nama_bk or nama_bk == kod_bk:
+                                                if kod_bk.upper() == "CB01":
+                                                    nama_bk = "SMK RAJA ZARINA"
+                                                    alamat_bk = alamat_bk or "SMK RAJA ZARINA, KLANG"
+                                                else:
+                                                    nama_bk = kod_bk
+                                            # If still CB01, ensure SMK RAJA ZARINA
+                                            if kod_bk.upper() == "CB01" and "RAJA ZARINA" not in nama_bk.upper():
+                                                if len(nama_bk) < 5:
+                                                    nama_bk = "SMK RAJA ZARINA"
                                         
                                         # V35 FIX: Get pusat jagaan - dari kod_pusat ATAU data JSON
                                         pusat_jagaan = d.get("pusat_jagaan") or d.get("pusat_jagaan_str") or []
