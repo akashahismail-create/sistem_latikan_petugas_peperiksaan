@@ -1105,17 +1105,259 @@ elif st.session_state.role == "PPD":
             st.rerun()
         
         elif menu == "dashboard":
-            st.header(f"Dashboard PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}")
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <div style="font-size:48px;">🏢</div>
+                    <div>
+                        <h2 style="margin:0; color:white; font-size:28px;">PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
+                        <p style="margin:5px 0 0 0; color:#bbdefb; font-size:14px;">Dashboard Pelantikan SPM 2026 - Senarai Pusat & Keperluan Petugas</p>
+                    </div>
+                    <div style="margin-left:auto; font-size:48px;">📚</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
             try:
-                cnt_sekolah = supa.table("sekolah_master").select("kod_sekolah", count="exact").eq("kod_ppd", kod_ppd).execute()
-                cnt_guru = supa.table("guru_master").select("id", count="exact").eq("kod_ppd", kod_ppd.lower()).execute()
-                cnt_cadang = supa.table("cadangan_sup").select("id", count="exact").eq("kod_ppd", kod_ppd).execute()
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Sekolah", cnt_sekolah.count)
-                c2.metric("Guru", cnt_guru.count)
-                c3.metric("Cadangan", cnt_cadang.count)
+                # Load data
+                df_pusat_raw = get_pusat_df()
+                df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+                df_sekolah_raw = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
+                df_sekolah_list = pd.DataFrame(df_sekolah_raw.data or [])
+                
+                # Parse pusat
+                pusat_list = []
+                for _, r in df_pusat_raw.iterrows():
+                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                    if isinstance(d, str):
+                        try: d = json.loads(d)
+                        except: d = {}
+                    no_pusat = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or d.get("NO PUSAT") or "").upper().strip()
+                    if not no_pusat.startswith(kod_ppd.upper()):
+                        continue
+                    nama_pusat = str(r.get("nama_pusat") or d.get("NAMA_PUSAT") or d.get("NAMA PUSAT") or "").upper().strip()
+                    kod_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH_TUAN_RUMAH") or "").upper().strip()
+                    j_calon = r.get("jumlah_calon") or r.get("calon") or d.get("JUMLAH_CALON") or d.get("CALON") or 0
+                    j_kelas = r.get("jumlah_kelas") or d.get("JUMLAH_KELAS") or 0
+                    try: jc = int(float(str(j_calon) or 0))
+                    except: jc = 0
+                    try: jk = int(float(str(j_kelas) or 0))
+                    except: jk = 0
+                    if jk == 0:
+                        jk = kira_kelas_dari_calon(jc)
+                    petugas_sep = kira_petugas_dari_kelas(jk)
+                    
+                    # Kira berapa petugas telah dicadangkan untuk pusat ini
+                    # Cari dalam cadangan_sup yang kod_pusat / no_pusat_asal / no_pusat_tugas == no_pusat ini
+                    dicadangkan = 0
+                    if not df_cad_all.empty:
+                        # Check multiple columns
+                        for _, c_row in df_cad_all.iterrows():
+                            c_no_pusat = str(c_row.get("kod_pusat") or c_row.get("no_pusat_asal") or c_row.get("NO_PUSAT_ASAL") or c_row.get("KOD_PUSAT") or "").upper().strip()
+                            # Also check data dict
+                            c_data = c_row.get("data") or {}
+                            if isinstance(c_data, str):
+                                try: c_data = json.loads(c_data)
+                                except: c_data = {}
+                            c_no_pusat2 = str(c_data.get("NO_PUSAT_ASAL") or c_data.get("KOD_PUSAT") or "").upper().strip()
+                            if c_no_pusat == no_pusat or c_no_pusat2 == no_pusat:
+                                dicadangkan += 1
+                        # If no specific assignment yet, distribute proportionally? For now show 0, but total will show overall
+                    
+                    pusat_list.append({
+                        "NO_PUSAT": no_pusat,
+                        "NAMA_PUSAT": nama_pusat,
+                        "KOD_TUAN_RUMAH": kod_tuan,
+                        "CALON": jc,
+                        "KELAS": jk,
+                        "SEPATUTNYA": petugas_sep,
+                        "DICADANGKAN": dicadangkan
+                    })
+                
+                df_pusat_ppd = pd.DataFrame(pusat_list)
+                
+                if df_pusat_ppd.empty:
+                    st.warning(f"⚠️ Tiada pusat dijumpai untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}. Sila import pusat di JPN > Pusat Master")
+                else:
+                    # Summary metrics
+                    total_pusat = len(df_pusat_ppd)
+                    total_calon = int(df_pusat_ppd["CALON"].sum())
+                    total_kelas = int(df_pusat_ppd["KELAS"].sum())
+                    total_sepatutnya = int(df_pusat_ppd["SEPATUTNYA"].sum())
+                    total_dicadangkan = len(df_cad_all) if not df_cad_all.empty else 0
+                    kekurangan = total_sepatutnya - total_dicadangkan
+                    
+                    # Color logic for total
+                    if total_dicadangkan == 0:
+                        color_total = "#d32f2f"
+                        bg_total = "#ffebee"
+                        icon_total = "🔴"
+                    elif total_dicadangkan < total_sepatutnya:
+                        color_total = "#f57f17"
+                        bg_total = "#fff8e1"
+                        icon_total = "🟡"
+                    else:
+                        color_total = "#2e7d32"
+                        bg_total = "#e8f5e9"
+                        icon_total = "🟢"
+                    
+                    st.markdown(f"""
+                    <div style="background:{bg_total}; border:2px solid {color_total}; border-radius:12px; padding:16px; margin-bottom:20px;">
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                            <div style="font-size:32px;">{icon_total}</div>
+                            <div>
+                                <div style="font-size:13px; color:#666; font-weight:600;">RUMUSAN PPD {kod_ppd}</div>
+                                <div style="font-size:18px; font-weight:800; color:{color_total};">
+                                    {total_pusat} Pusat | {total_calon} Calon | {total_kelas} Kelas | Perlu {total_sepatutnya} Petugas | Dicadangkan {total_dicadangkan} | {'Cukup' if total_dicadangkan >= total_sepatutnya else f'Kurang {kekurangan}'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    c1, c2, c3, c4, c5, c6 = st.columns(6)
+                    c1.metric("🏫 Pusat", total_pusat)
+                    c2.metric("👨‍🎓 Calon", total_calon)
+                    c3.metric("🏫 Kelas", total_kelas)
+                    c4.metric("📋 Perlu", total_sepatutnya)
+                    c5.metric("✅ Dicadangkan", total_dicadangkan)
+                    c6.metric("⚠️ Kurang", kekurangan if kekurangan > 0 else 0, delta=f"{'Cukup' if kekurangan <=0 else f'-{kekurangan}'}", delta_color="normal" if kekurangan <=0 else "inverse")
+                    
+                    st.markdown("---")
+                    st.markdown("### 📍 Senarai Pusat Peperiksaan - Status Petugas")
+                    st.caption("🔴 Merah = Belum Ada (0) | 🟡 Kuning = Belum Cukup (< sepatutnya) | 🟢 Hijau = Cukup / Lebih (>= sepatutnya)")
+                    
+                    # Build display table with colors
+                    display_rows = []
+                    for _, p in df_pusat_ppd.sort_values("NO_PUSAT").iterrows():
+                        no_p = p["NO_PUSAT"]
+                        dic = p["DICADANGKAN"]
+                        sep = p["SEPATUTNYA"]
+                        
+                        if dic == 0:
+                            status_icon = "🔴"
+                            status_text = "Belum Ada"
+                            color = "#d32f2f"
+                            bg = "#ffebee"
+                        elif dic < sep:
+                            status_icon = "🟡"
+                            status_text = f"Belum Cukup ({dic}/{sep})"
+                            color = "#f57f17"
+                            bg = "#fff8e1"
+                        else:
+                            status_icon = "🟢"
+                            status_text = f"Cukup ({dic}/{sep})"
+                            color = "#2e7d32"
+                            bg = "#e8f5e9"
+                        
+                        display_rows.append({
+                            "Logo": "🏫",
+                            "NO_PUSAT": no_p,
+                            "NAMA_PUSAT": p["NAMA_PUSAT"][:30],
+                            "KOD_TUAN": p["KOD_TUAN_RUMAH"],
+                            "CALON": p["CALON"],
+                            "KELAS": p["KELAS"],
+                            "SEPATUTNYA": sep,
+                            "DICADANGKAN": dic,
+                            "STATUS": f"{status_icon} {status_text}",
+                            "_color": color,
+                            "_bg": bg
+                        })
+                    
+                    df_display = pd.DataFrame(display_rows)
+                    
+                    # Create HTML table with colors
+                    html_table = """
+                    <style>
+                    .ppd-table {width:100%; border-collapse:collapse; font-size:13px;}
+                    .ppd-table th {background:#0d47a1; color:white; padding:10px 8px; text-align:left; font-weight:700;}
+                    .ppd-table td {padding:8px; border-bottom:1px solid #e0e0e0;}
+                    .ppd-table tr:hover {background:#f5f5f5;}
+                    .badge-merah {background:#ffebee; color:#d32f2f; padding:4px 8px; border-radius:12px; font-weight:700; border:1px solid #d32f2f;}
+                    .badge-kuning {background:#fff8e1; color:#f57f17; padding:4px 8px; border-radius:12px; font-weight:700; border:1px solid #f57f17;}
+                    .badge-hijau {background:#e8f5e9; color:#2e7d32; padding:4px 8px; border-radius:12px; font-weight:700; border:1px solid #2e7d32;}
+                    </style>
+                    <table class="ppd-table">
+                    <tr><th>🏫</th><th>NO PUSAT</th><th>NAMA PUSAT</th><th>KOD TUAN</th><th>CALON</th><th>KELAS</th><th>PERLU (K+9)</th><th>DICADANG</th><th>STATUS</th></tr>
+                    """
+                    
+                    for _, r in df_display.iterrows():
+                        dic = r["DICADANGKAN"]
+                        sep = r["SEPATUTNYA"]
+                        if dic == 0:
+                            badge_class = "badge-merah"
+                            badge_text = f"🔴 {dic}"
+                            status_badge = f'<span class="{badge_class}">{r["STATUS"]}</span>'
+                        elif dic < sep:
+                            badge_class = "badge-kuning"
+                            badge_text = f"🟡 {dic}"
+                            status_badge = f'<span class="{badge_class}">{r["STATUS"]}</span>'
+                        else:
+                            badge_class = "badge-hijau"
+                            badge_text = f"🟢 {dic}"
+                            status_badge = f'<span class="{badge_class}">{r["STATUS"]}</span>'
+                        
+                        html_table += f"<tr><td>{r['Logo']}</td><td><b>{r['NO_PUSAT']}</b></td><td>{r['NAMA_PUSAT']}</td><td>{r['KOD_TUAN']}</td><td style='text-align:center;'><b>{r['CALON']}</b></td><td style='text-align:center;'>{r['KELAS']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700;'>{r['SEPATUTNYA']}</td><td style='text-align:center;'><span class='{badge_class}'>{badge_text}</span></td><td>{status_badge}</td></tr>"
+                    
+                    html_table += "</table>"
+                    
+                    st.markdown(html_table, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+                    
+                    # Also show as dataframe for export
+                    with st.expander("📊 Lihat Dataframe & Export", expanded=False):
+                        st.dataframe(df_pusat_ppd.sort_values("NO_PUSAT"), use_container_width=True, hide_index=True)
+                        st.download_button(f"📥 Export Dashboard PPD {kod_ppd} (Excel)", to_excel(df_pusat_ppd), file_name=f"Dashboard_PPD_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
+                    
+                    # Senarai sekolah dalam PPD
+                    st.markdown("---")
+                    st.markdown(f"### 🏫 Senarai Sekolah dalam PPD {kod_ppd} ({len(df_sekolah_list)} sekolah)")
+                    if not df_sekolah_list.empty:
+                        # Kira cadangan per sekolah
+                        sekolah_cad_count = {}
+                        if not df_cad_all.empty:
+                            for _, c_row in df_cad_all.iterrows():
+                                k_sek = str(c_row.get("kod_sekolah") or c_row.get("kod_sekolah_asal") or "").upper().strip()
+                                if k_sek:
+                                    sekolah_cad_count[k_sek] = sekolah_cad_count.get(k_sek, 0) + 1
+                        
+                        sekolah_rows = []
+                        for _, s in df_sekolah_list.iterrows():
+                            k_sek = str(s.get("kod_sekolah") or s.get("KOD_SEKOLAH") or "").upper().strip()
+                            n_sek = str(s.get("nama_sekolah") or s.get("NAMA_SEKOLAH") or "").upper().strip()
+                            cad = sekolah_cad_count.get(k_sek, 0)
+                            
+                            if cad == 0:
+                                s_icon = "🔴"
+                                s_status = "Belum Cadang"
+                            elif cad < 5:
+                                s_icon = "🟡"
+                                s_status = f"{cad} dicadang"
+                            else:
+                                s_icon = "🟢"
+                                s_status = f"{cad} dicadang"
+                            
+                            sekolah_rows.append({"Logo": "🏫", "KOD_SEKOLAH": k_sek, "NAMA_SEKOLAH": n_sek[:35], "DICADANGKAN": cad, "STATUS": f"{s_icon} {s_status}"})
+                        
+                        df_sekolah_display = pd.DataFrame(sekolah_rows).sort_values("KOD_SEKOLAH")
+                        st.dataframe(df_sekolah_display, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"Tiada sekolah dijumpai untuk PPD {kod_ppd}")
+                
             except Exception as e:
-                st.error(f"Error dashboard: {e}")
+                st.error(f"Error dashboard PPD: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+                # Fallback simple
+                try:
+                    cnt_sekolah = supa.table("sekolah_master").select("kod_sekolah", count="exact").eq("kod_ppd", kod_ppd).execute()
+                    cnt_cadang = supa.table("cadangan_sup").select("id", count="exact").eq("kod_ppd", kod_ppd).execute()
+                    c1, c2 = st.columns(2)
+                    c1.metric("Sekolah", cnt_sekolah.count)
+                    c2.metric("Cadangan", cnt_cadang.count)
+                except Exception as e2:
+                    st.error(f"Fallback error: {e2}")
 
         elif menu == "sekolah":
             st.header(f"Senarai Sekolah PPD {kod_ppd}")
