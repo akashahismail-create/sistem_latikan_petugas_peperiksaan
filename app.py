@@ -27,342 +27,149 @@ PPD_MAP = {
     "BG": "Gombak", "BH": "Petaling Perdana", "BJ": "Sepang", "BK": "Petaling Utama"
 }
 
-# ================= CSS MESRA DARK MODE - SEMUA TULISAN NAMPAK =================
+# ================= CSS BIRU GELAP - SIDEBAR BOX & HEADER ATAS SAHAJA =================
 st.markdown("""
 <style>
-/* Hide original sidebar */
 [data-testid="stSidebar"] {display: none !important;}
-[data-testid="stSidebarNav"] {display: none !important;}
 .stSidebar {display: none !important;}
 section[data-testid="stSidebar"] {display: none !important;}
 
-/* ===== GLOBAL DARK MODE FIX - FORCE LIGHT FOR CUSTOM SIDEBAR ===== */
 .stApp {
-    color-scheme: light;
+    background: #f5f7fb !important;
 }
 
-/* Force left column (col_menu) to have white background */
+/* Kolum kiri - transparent, bukan biru gelap keseluruhan */
 div[data-testid="stHorizontalBlock"] > div:first-child {
-    background: #ffffff !important;
-    border-radius: 12px;
-}
-
-/* Ensure the column containing custom-sidebar is white */
-[data-testid="column"] {
-    background: transparent;
+    background: transparent !important;
+    padding: 0 12px 0 0 !important;
 }
 
 [data-testid="column"]:first-child {
-    background: #ffffff !important;
-    border-radius: 12px;
-    padding: 0 !important;
+    background: transparent !important;
 }
 
-/* Metric cards - pastikan text hitam atas background putih sentiasa nampak */
-[data-testid="stMetric"] {
-    background: #ffffff !important;
-    border: 1px solid #e0e0e0 !important;
-    border-radius: 8px !important;
-    padding: 12px !important;
-}
-[data-testid="stMetric"] label, [data-testid="stMetric"] div {
-    color: #212121 !important;
-}
-[data-testid="stMetricValue"] {
-    color: #0d47a1 !important;
-    font-weight: 800 !important;
-}
-
-/* Info, Warning, Success boxes - pastikan text gelap atas background cerah */
-[data-testid="stAlert"] {
-    background: #ffffff !important;
-    color: #212121 !important;
-    border: 1px solid #90caf9 !important;
-}
-[data-testid="stAlert"] p, [data-testid="stAlert"] div {
-    color: #212121 !important;
-}
-
-/* Dataframe - pastikan header nampak */
-[data-testid="stDataFrame"] {
-    background: white !important;
-}
-
-/* Custom left panel - FIX DARK MODE - sentiasa putih dengan text hitam */
+/* ========== CUSTOM SIDEBAR BOX SAHAJA - BIRU GELAP ========== */
 .custom-sidebar {
-    background: #ffffff !important;
-    border-radius: 12px;
+    background: linear-gradient(180deg, #0d1b3e 0%, #0a1931 100%) !important;
+    background-color: #0d1b3e !important;
+    border-radius: 14px;
     padding: 16px;
-    border: 2px solid #0d47a1 !important;
-    box-shadow: 0 4px 12px rgba(13, 71, 161, 0.15);
+    border: 2px solid #1a237e !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
     height: fit-content;
     position: sticky;
     top: 10px;
 }
 .custom-sidebar h3 {
     font-size: 20px;
-    color: #0d47a1 !important;
+    color: #ffffff !important;
     font-weight: 800;
     margin-bottom: 4px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 .custom-sidebar p, .custom-sidebar span, .custom-sidebar div {
-    color: #212121 !important;
-}
-/* Caption nama sekolah - buat hitam pekat, bukan kelabu cair */
-.custom-sidebar [data-testid="stCaptionContainer"] {
-    color: #212121 !important;
-    opacity: 1 !important;
+    color: #e3f2fd !important;
 }
 .custom-sidebar [data-testid="stCaptionContainer"] p {
-    color: #212121 !important;
-    font-weight: 700 !important;
-    font-size: 13px !important;
+    color: #90caf9 !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
 }
 
-/* NO PUSAT box - high contrast kuning dengan text hitam - nampak dalam dark & light */
 .no-pusat-box {
     background: #ffeb3b !important;
-    border: 2px solid #f57f17 !important;
+    border: 2px solid #ffeb3b !important;
     border-radius: 8px;
     padding: 10px 12px;
     margin: 10px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .no-pusat-label {
     font-size: 11px;
     color: #bf360c !important;
     font-weight: 700;
-    margin-bottom: 2px;
 }
 .no-pusat-value {
     font-size: 18px;
     color: #000000 !important;
     font-weight: 900;
-    letter-spacing: 0.5px;
-    word-break: break-all;
-}
-
-/* PPD Dashboard cards - pastikan nampak */
-.ppd-table {
-    background: white !important;
-    color: #212121 !important;
-}
-.ppd-table th {
-    background: #0d47a1 !important;
-    color: white !important;
-}
-.ppd-table td {
-    background: white !important;
-    color: #212121 !important;
-    border-bottom: 1px solid #e0e0e0 !important;
-}
-
-/* Badge merah/kuning/hijau - pastikan text nampak */
-.badge-merah, .badge-kuning, .badge-hijau {
-    color: #000000 !important;
-    font-weight: 800 !important;
-}
-.badge-merah {background: #ffcdd2 !important; border: 2px solid #d32f2f !important; color: #b71c1c !important;}
-.badge-kuning {background: #fff9c4 !important; border: 2px solid #f57f17 !important; color: #e65100 !important;}
-.badge-hijau {background: #c8e6c9 !important; border: 2px solid #2e7d32 !important; color: #1b5e20 !important;}
-
-/* Semua markdown dengan background gradient - pastikan text gelap nampak */
-div[style*="background: linear-gradient"] h3, div[style*="background: linear-gradient"] p, div[style*="background: linear-gradient"] div {
-    color: #0d47a1 !important;
-}
-div[style*="background: linear-gradient"] b {
-    color: #000000 !important;
-}
-
-/* ===== FIX MENU RADIO DARK MODE - PASTIKAN NAMPAK ===== */
-.custom-sidebar [data-testid="stRadio"] {
-    background: #ffffff !important;
 }
 
 .custom-sidebar [data-testid="stRadio"] > div {
-    background: #ffffff !important;
     gap: 6px !important;
+    background: transparent !important;
 }
-
-/* Setiap label radio - buat macam button, putih background, hitam text, sentiasa nampak */
 .custom-sidebar [data-testid="stRadio"] label {
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-    color: #000000 !important;
+    background: rgba(255,255,255,0.08) !important;
+    color: #e3f2fd !important;
     padding: 10px 12px !important;
     border-radius: 8px !important;
-    border: 2px solid #e0e0e0 !important;
-    margin-bottom: 2px !important;
-    font-weight: 700 !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    font-weight: 600 !important;
     font-size: 13px !important;
     width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    cursor: pointer !important;
-    transition: all 0.2s !important;
 }
-
 .custom-sidebar [data-testid="stRadio"] label:hover {
-    background: #e3f2fd !important;
-    border-color: #1976d2 !important;
-    color: #0d47a1 !important;
-}
-
-/* Label yang dipilih - biru pekat dengan text putih - nampak dalam light & dark */
-.custom-sidebar [data-testid="stRadio"] label:has(input:checked),
-.custom-sidebar [data-testid="stRadio"] div[aria-checked="true"] {
-    background: #0d47a1 !important;
-    background-color: #0d47a1 !important;
+    background: rgba(255,255,255,0.15) !important;
+    border-color: #42a5f5 !important;
     color: #ffffff !important;
-    border-color: #0d47a1 !important;
+}
+.custom-sidebar [data-testid="stRadio"] label:has(input:checked) {
+    background: #ffffff !important;
+    color: #0d1b3e !important;
+    border-color: #ffffff !important;
     font-weight: 800 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
-
-/* Alternative selector for checked state */
-.custom-sidebar [data-testid="stRadio"] label[data-checked="true"] {
-    background: #0d47a1 !important;
-    color: #ffffff !important;
-    border-color: #0d47a1 !important;
-}
-
-/* Radio circle - pastikan nampak */
-.custom-sidebar [data-testid="stRadio"] input {
-    accent-color: #0d47a1 !important;
-}
-
-/* Text inside label */
-.custom-sidebar [data-testid="stRadio"] label p,
-.custom-sidebar [data-testid="stRadio"] label div,
-.custom-sidebar [data-testid="stRadio"] label span {
+.custom-sidebar [data-testid="stRadio"] label p {
     color: inherit !important;
-    font-weight: inherit !important;
-}
-
-/* Force menu container background putih */
-.custom-sidebar {
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-}
-
-/* Refresh button section - pastikan nampak */
-.custom-sidebar .stButton {
-    background: #ffffff !important;
 }
 
 .custom-sidebar .stButton button {
     background: #ff1744 !important;
     color: #ffffff !important;
     font-weight: 800 !important;
-    border: 2px solid #d50000 !important;
+    border: 2px solid #ff1744 !important;
 }
 
-/* Dark mode specific - force menu jadi putih dengan text hitam, selected biru dengan text putih */
-@media (prefers-color-scheme: dark) {
-    .custom-sidebar {
-        background: #ffffff !important;
-        background-color: #ffffff !important;
-    }
-    .custom-sidebar [data-testid="stRadio"] {
-        background: #ffffff !important;
-    }
-    .custom-sidebar [data-testid="stRadio"] label {
-        background: #ffffff !important;
-        color: #000000 !important;
-        border: 2px solid #9e9e9e !important;
-    }
-    .custom-sidebar [data-testid="stRadio"] label p {
-        color: #000000 !important;
-    }
+/* ========== HEADER ATAS PAGE SAHAJA - BIRU GELAP ========== */
+.header-dark-blue {
+    background: linear-gradient(135deg, #0d1b3e 0%, #1a237e 100%) !important;
+    background-color: #0d1b3e !important;
+    padding: 20px;
+    border-radius: 12px;
+    color: white !important;
+    margin-bottom: 20px;
+    border: 2px solid #0a1931;
+    box-shadow: 0 4px 12px rgba(13, 27, 62, 0.25);
+}
+.header-dark-blue h2 {
+    margin: 0;
+    color: white !important;
+    font-size: 22px;
+}
+.header-dark-blue p {
+    margin: 5px 0 0 0;
+    color: #90caf9 !important;
+    font-size: 13px;
 }
 
-[data-theme="dark"] .custom-sidebar,
-.stApp[data-theme="dark"] .custom-sidebar {
+/* Metric cards */
+[data-testid="stMetric"] {
     background: #ffffff !important;
-    background-color: #ffffff !important;
+    border-radius: 8px !important;
+    border: 1px solid #e0e0e0 !important;
 }
-
-[data-theme="dark"] .custom-sidebar [data-testid="stRadio"] label {
-    background: #ffffff !important;
-    color: #000000 !important;
-    border: 2px solid #757575 !important;
-}
-
-/* Global radio fix - outside custom-sidebar also */
-[data-testid="stRadio"] label {
-    color: #212121 !important;
-    font-weight: 600 !important;
-}
-
-/* Buttons */
-.stButton button {
-    color: #ffffff !important;
-    font-weight: 700 !important;
-}
-
-/* Tabs */
-[data-testid="stTabs"] button {
-    color: #212121 !important;
-    font-weight: 600 !important;
-}
-
-/* Headers */
-h1, h2, h3, h4, h5, h6 {
-    color: #0d47a1 !important;
-}
-
-/* Force all captions to be dark and visible */
-[data-testid="stCaptionContainer"] {
-    color: #424242 !important;
-}
-[data-testid="stCaptionContainer"] p {
-    color: #212121 !important;
-    font-weight: 600 !important;
-    opacity: 1 !important;
-}
-
-/* Selectbox, text input labels */
-label {
-    color: #212121 !important;
-    font-weight: 600 !important;
-}
-
-/* Dark mode override - force light theme for our custom components */
-@media (prefers-color-scheme: dark) {
-    .custom-sidebar {
-        background: #ffffff !important;
-        border-color: #0d47a1 !important;
-    }
-    .custom-sidebar * {
-        color: #212121 !important;
-    }
-    .custom-sidebar h3 {
-        color: #0d47a1 !important;
-    }
-    .no-pusat-box {
-        background: #ffeb3b !important;
-    }
-    .no-pusat-box * {
-        color: #000000 !important;
-    }
-    [data-testid="stMetric"] {
-        background: #ffffff !important;
-    }
-    [data-testid="stMetric"] * {
-        color: #212121 !important;
-    }
-}
-
-/* Additional fix for Streamlit dark theme */
-.stApp[data-theme="dark"] .custom-sidebar {
-    background: #ffffff !important;
-}
-.stApp[data-theme="dark"] .custom-sidebar * {
+[data-testid="stMetric"] label, [data-testid="stMetric"] div {
     color: #212121 !important;
 }
-.stApp[data-theme="dark"] [data-testid="stCaptionContainer"] p {
-    color: #212121 !important;
+[data-testid="stMetricValue"] {
+    color: #0d1b3e !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
+
 
 # ================= HELPER FUNCTIONS (FORMULA & LOGIC) =================
 
@@ -1369,7 +1176,7 @@ elif st.session_state.role == "PPD":
         
         elif menu == "dashboard":
             st.markdown(f"""
-            <div style="background: #0d47a1; padding:20px; border-radius:12px; color:white; border: 2px solid #002171; margin-bottom:20px;">
+            <div style="background: linear-gradient(135deg, #0d1b3e 0%, #1a237e 100%); padding:20px; border-radius:12px; color:white; border: 2px solid #0a1931; margin-bottom:20px; box-shadow: 0 4px 12px rgba(13, 27, 62, 0.2);">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <div style="font-size:48px;">🏢</div>
                     <div>
@@ -1758,7 +1565,7 @@ elif st.session_state.role == "PPD":
 
         elif menu == "jana":
             st.markdown(f"""
-            <div style="background: #0d47a1; padding:20px; border-radius:12px; color:white; border: 2px solid #002171; margin-bottom:20px;">
+            <div style="background: linear-gradient(135deg, #0d1b3e 0%, #1a237e 100%); padding:20px; border-radius:12px; color:white; border: 2px solid #0a1931; margin-bottom:20px; box-shadow: 0 4px 12px rgba(13, 27, 62, 0.2);">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <div style="font-size:48px;">🚀</div>
                     <div>
@@ -2021,7 +1828,7 @@ elif st.session_state.role == "PPD":
 
         elif menu == "hasil":
             st.markdown(f"""
-            <div style="background: #1b5e20; padding:20px; border-radius:12px; color:white; border: 2px solid #0d3b0d; margin-bottom:20px;">
+            <div style="background: linear-gradient(135deg, #0d1b3e 0%, #1a237e 100%); padding:20px; border-radius:12px; color:white; border: 2px solid #0a1931; margin-bottom:20px; box-shadow: 0 4px 12px rgba(13, 27, 62, 0.25);">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <div style="font-size:48px;">📋</div>
                     <div>
