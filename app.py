@@ -423,6 +423,32 @@ def hantar_ke_ppd(ids, kod_ppd):
         berjaya += len(kelompok)
     return berjaya, gagal
 
+def simpan_penempatan_ppd(items):
+    """Simpan hasil janaan ke cadangan_sup (lajur kod_pusat + status DIJANA PPD), berkelompok ikut pusat.
+    items: [{"id":..., "ic":..., "pusat":...}]. Pulang (bil_berjaya, senarai_gagal)."""
+    berjaya, gagal = 0, []
+    ikut_pusat = {}
+    for it in items:
+        ikut_pusat.setdefault(str(it["pusat"]), []).append(it)
+    for pusat, senarai in ikut_pusat.items():
+        ids = [_id_py(i["id"]) for i in senarai if str(i.get("id") or "").strip() not in ("", "nan", "None")]
+        for k in range(0, len(ids), 100):
+            kelompok = ids[k:k + 100]
+            try:
+                supa.table("cadangan_sup").update({"kod_pusat": pusat, "status": "DIJANA PPD"}).in_("id", kelompok).execute()
+                berjaya += len(kelompok)
+            except Exception as e:
+                gagal.append(f"{pusat}: {e}")
+        for i in senarai:
+            if str(i.get("id") or "").strip() in ("", "nan", "None") and i.get("ic"):
+                try:
+                    supa.table("cadangan_sup").update({"kod_pusat": pusat, "status": "DIJANA PPD"}).eq("ic_guru", i["ic"]).execute()
+                    berjaya += 1
+                except Exception as e:
+                    gagal.append(f"{i.get('ic')}: {e}")
+    return berjaya, gagal
+
+
 def to_excel(df):
     output = BytesIO()
     try:
@@ -1908,33 +1934,92 @@ elif st.session_state.role == "PPD":
             
             st.markdown("---")
             
-            # Filter cadangan untuk pusat ini
-            # Cari yang kod_pusat == pilihan_pusat_hasil
-            hasil_pusat = []
+            # ===== Guru yang ditempatkan di pusat ini =====
+            # Sumber: (1) hasil janaan yang masih dalam sesi (belum disimpan) dan (2) kod_pusat yang sudah disimpan dalam DB.
+            # PUSAT ASAL guru TIDAK dikira sebagai pusat tugas.
+            show_flash()
+
+            def _bersih(v):
+                s = "" if v is None else str(v).strip()
+                return "" if s.lower() in ("", "nan", "none", "null", "nat") else s.upper()
+
+            def _kunci(r):
+                i = _bersih(r.get("id"))
+                return f"ID:{i}" if i else "IC:" + re.sub(r"\D", "", str(r.get("IC_GURU") or r.get("ic_guru") or ""))
+
+            cad_ikut_kunci, pusat_db, tugas = {}, {}, {}
             if not df_cad_all.empty:
                 for _, c in df_cad_all.iterrows():
-                    c_pusat = str(c.get("kod_pusat") or c.get("no_pusat_asal") or c.get("KOD_PUSAT") or "").upper().strip()
-                    c_data = c.get("data") or {}
-                    if isinstance(c_data, str):
-                        try: c_data = json.loads(c_data)
-                        except: c_data = {}
-                    c_pusat2 = str(c_data.get("KOD_PUSAT") or c_data.get("NO_PUSAT_ASAL") or "").upper().strip()
-                    
-                    if c_pusat == pilihan_pusat_hasil or c_pusat2 == pilihan_pusat_hasil or c_pusat == "" or c_pusat2 == "":
-                        # If not yet assigned, include if we are viewing all? For now, if assigned or if no assignment, show all that belong to PPD but not filtered
-                        # Better: show those assigned to this pusat OR if none assigned, show all for PPD to allow assignment
-                        if c_pusat == pilihan_pusat_hasil or c_pusat2 == pilihan_pusat_hasil:
-                            hasil_pusat.append(c)
-            
-            # If no hasil for this pusat yet, show all cadangan for PPD that haven't been assigned, to allow PPD to assign
+                    k_c = _kunci(c)
+                    cad_ikut_kunci[k_c] = c
+                    p_db = _bersih(c.get("kod_pusat")) or _bersih(c.get("KOD_PUSAT"))
+                    if p_db:
+                        pusat_db[k_c] = p_db
+                        tugas[k_c] = {"pusat": p_db, "sumber": "💾 Disimpan", "row": c}
+            pending_rows = list(st.session_state.get("jana_all_result", []) or [])
+            if st.session_state.get("jana_pusat_no"):
+                pending_rows += list(st.session_state.get("jana_pusat_result", []) or [])
+            for p in pending_rows:
+                p_baru = _bersih(p.get("NO_PUSAT_TUGAS"))
+                if not p_baru:
+                    continue
+                k_p = _kunci(p)
+                asal_row = cad_ikut_kunci.get(k_p)
+                if asal_row is None:
+                    asal_row = pd.Series(p)
+                tugas[k_p] = {"pusat": p_baru, "sumber": "💾 Disimpan" if pusat_db.get(k_p) == p_baru else "⏳ Belum disimpan", "row": asal_row}
+            belum_simpan = [v for v in tugas.values() if v["sumber"].startswith("⏳")]
+
+            def _kemas_pending(id_val, ic_val, pusat_baru, jawatan_baru):
+                """Selaraskan hasil janaan dalam sesi bila PPD edit manual (supaya tak ditimpa)."""
+                for kunci_ss in ("jana_all_result", "jana_pusat_result"):
+                    for p in st.session_state.get(kunci_ss, []) or []:
+                        sama = (str(p.get("id")) == str(id_val)) if _bersih(id_val) else (str(p.get("IC_GURU")) == str(ic_val))
+                        if sama:
+                            p["NO_PUSAT_TUGAS"] = pusat_baru
+                            p["JAWATAN_CADANGAN"] = jawatan_baru
+                            p["JAWATAN"] = jawatan_baru
+
+            def _buang_pending(baris):
+                for kunci_ss in ("jana_all_result", "jana_pusat_result"):
+                    lama = st.session_state.get(kunci_ss)
+                    if not lama:
+                        continue
+                    k_buang = {_kunci(r_) for r_ in baris}
+                    st.session_state[kunci_ss] = [p for p in lama if _kunci(p) not in k_buang]
+
+            if belum_simpan:
+                st.warning(f"⏳ Ada {len(belum_simpan)} penempatan hasil janaan yang BELUM disimpan ke pangkalan data (ditanda ⏳). Simpan supaya tak hilang bila muat semula.")
+                if st.button(f"💾 Simpan Semua Hasil Janaan ({len(belum_simpan)}) ke DB", type="primary", use_container_width=True, key="save_jana_dari_hasil"):
+                    items = [{"id": v["row"].get("id"), "ic": v["row"].get("IC_GURU") or v["row"].get("ic_guru"), "pusat": v["pusat"]} for v in belum_simpan]
+                    berjaya_s, gagal_s = simpan_penempatan_ppd(items)
+                    if berjaya_s:
+                        flash("success", f"✅ Berjaya simpan {berjaya_s} penempatan ke DB.")
+                    if gagal_s:
+                        flash("error", "Sebahagian gagal disimpan: " + "; ".join(gagal_s[:3]))
+                    st.rerun()
+
+            with st.expander("📊 Ringkasan semua pusat (bilangan guru ditempatkan)", expanded=False):
+                ringkas = []
+                for _, pr in df_pusat_list.iterrows():
+                    dlm = [v for v in tugas.values() if v["pusat"] == pr["NO_PUSAT"]]
+                    perlu_r = kira_petugas_dari_kelas(kira_kelas_dari_calon(pr["CALON"]))
+                    ringkas.append({"NO_PUSAT": pr["NO_PUSAT"], "NAMA_PUSAT": str(pr["NAMA_PUSAT"])[:30], "PERLU": perlu_r, "DITEMPATKAN": len(dlm),
+                                    "BELUM DISIMPAN": sum(1 for v in dlm if v["sumber"].startswith("⏳"))})
+                st.dataframe(pd.DataFrame(ringkas), use_container_width=True, hide_index=True)
+
+            hasil_pusat = []
+            for v in tugas.values():
+                if v["pusat"] == pilihan_pusat_hasil:
+                    r_ = v["row"].copy()
+                    r_["SUMBER"] = v["sumber"]
+                    hasil_pusat.append(r_)
+
             if not hasil_pusat:
-                # Check if there are any with kod_pusat == pilihan_pusat_hasil
-                # If empty, show message and option to view all
                 st.info(f"Belum ada hasil janaan untuk pusat {pilihan_pusat_hasil}. Sila pergi ke **Jana Keseluruhan** untuk jana dahulu, atau lihat semua cadangan PPD di bawah untuk assign manual.")
-                
                 with st.expander(f"📋 Lihat Semua {len(df_cad_all)} Cadangan PPD {kod_ppd} untuk Assign Manual", expanded=False):
                     st.dataframe(df_cad_all, use_container_width=True, hide_index=True)
-            
+
             df_hasil = pd.DataFrame(hasil_pusat)
             
             if df_hasil.empty:
@@ -1998,11 +2083,12 @@ elif st.session_state.role == "PPD":
                             "KOD_SEKOLAH_ASAL": g.get("KOD_SEKOLAH_ASAL", ""),
                             "NAMA_SEKOLAH_ASAL": str(g.get("NAMA_SEKOLAH_ASAL", ""))[:30],
                             "TELEFON": g.get("TELEFON_GURU", "") or g.get("telefon_guru", ""),
+                            "SUMBER": g.get("SUMBER", ""),
                             "id": g.get("id", "")
                         })
                     
                     df_j = pd.DataFrame(rows_j)
-                    st.dataframe(df_j[["NAMA_GURU", "IC_GURU", "JAWATAN", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "TELEFON"]], use_container_width=True, hide_index=True)
+                    st.dataframe(df_j[["NAMA_GURU", "IC_GURU", "JAWATAN", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "TELEFON", "SUMBER"]], use_container_width=True, hide_index=True)
                     
                     # Edit jawatan if tak sesuai
                     with st.expander(f"✏️ Edit Jawatan - {jawatan} (Jika Tak Sesuai)", expanded=False):
@@ -2019,7 +2105,7 @@ elif st.session_state.role == "PPD":
                         
                         if pilih_guru_edit:
                             curr_guru = next((g for g in guru_list if str(g.get("id") or g.get("IC_GURU")) == pilih_guru_edit), None)
-                            if curr_guru:
+                            if curr_guru is not None:
                                 col_e1, col_e2 = st.columns(2)
                                 with col_e1:
                                     st.text_input("NAMA GURU", value=curr_guru.get("NAMA_GURU", ""), disabled=True, key=f"nama_{pilih_guru_edit}")
@@ -2050,7 +2136,8 @@ elif st.session_state.role == "PPD":
                                             supa.table("cadangan_sup").update(update_payload).eq("id", curr_guru.get("id")).execute()
                                         else:
                                             supa.table("cadangan_sup").update(update_payload).eq("ic_guru", curr_guru.get("IC_GURU")).execute()
-                                        st.success(f"✅ Berjaya tukar {curr_guru.get('NAMA_GURU')} kepada {jawatan_baru} di pusat {pusat_baru}")
+                                        _kemas_pending(curr_guru.get("id"), curr_guru.get("IC_GURU"), pusat_baru, jawatan_baru)
+                                        flash("success", f"✅ Berjaya tukar {curr_guru.get('NAMA_GURU')} kepada {jawatan_baru} di pusat {pusat_baru}")
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Gagal update: {e}")
@@ -2080,7 +2167,8 @@ elif st.session_state.role == "PPD":
                             for _, r in df_hasil.iterrows():
                                 if r.get("id"):
                                     supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", r.get("id")).execute()
-                            st.success(f"✅ Clear hasil {pilihan_pusat_hasil}")
+                            _buang_pending([r for _, r in df_hasil.iterrows()])
+                            flash("success", f"✅ Clear hasil {pilihan_pusat_hasil}")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Gagal clear: {e}")
