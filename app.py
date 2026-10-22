@@ -2972,9 +2972,9 @@ elif st.session_state.role == "PPD":
             except:
                 df_sek_list = pd.DataFrame()
             
-            # Build sekolah groups dari cadangan
+            # Build sekolah groups dari cadangan (ikut filter)
             sekolah_groups = {}
-            for _, r in df_cad_all.iterrows():
+            for _, r in df_cad_filtered.iterrows():
                 kod_sek = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or r.get("KOD_SEKOLAH") or r.get("kod_sekolah") or "TIADA KOD").upper().strip()
                 nama_sek = str(r.get("NAMA_SEKOLAH_ASAL") or r.get("nama_sekolah_asal") or r.get("NAMA_SEKOLAH") or kod_sek)[:50]
                 key = f"{kod_sek} - {nama_sek}"
@@ -2996,10 +2996,64 @@ elif st.session_state.role == "PPD":
                 belum = df_cad_all[df_cad_all.apply(is_belum, axis=1)]
                 st.metric("✅ Belum Dilantik", len(belum), delta=f"{len(df_cad_all)-len(belum)} telah dilantik")
             
+            # ===== FILTER IKUT JAWATAN (BARU) =====
+            st.markdown("### 🔍 Filter Ikut Jawatan")
+            st.caption("Filter untuk tengok siapa Penyelia Kawasan, Ketua Pengawas, Timbalan, Pengawas Peperiksaan - senang PPD semak")
+            
+            # Get unique jawatan
+            jawatan_list_all = []
+            for _, r in df_cad_all.iterrows():
+                j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip()
+                if j and j not in jawatan_list_all:
+                    jawatan_list_all.append(j)
+            
+            # Sort ikut kepentingan
+            order_jawatan = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Selenggara Bilik Kebal"]
+            jawatan_sorted = sorted(jawatan_list_all, key=lambda x: (order_jawatan.index(x) if x in order_jawatan else 99, x))
+            
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            with col_f1:
+                filter_jawatan = st.multiselect("Filter Jawatan", jawatan_sorted, default=[], key="filter_jawatan_cad", placeholder="Pilih jawatan - kosong = semua")
+            with col_f2:
+                # Count per jawatan
+                if filter_jawatan:
+                    st.metric(f"Filter: {len(filter_jawatan)} jawatan", f"{len(df_cad_all[df_cad_all.apply(lambda r: str(r.get('JAWATAN_CADANGAN') or r.get('jawatan_cadangan') or '').strip() in filter_jawatan, axis=1)])} guru")
+                else:
+                    st.metric("Semua Jawatan", f"{len(df_cad_all)} guru")
+            with col_f3:
+                # Quick buttons
+                if st.button("🔐 Hanya Penyelia Kawasan", use_container_width=True, key="btn_filter_pk"):
+                    st.session_state["filter_jawatan_cad"] = ["Penyelia Kawasan"]
+                    st.rerun()
+            with col_f4:
+                if st.button("🔄 Clear Filter", use_container_width=True, key="btn_clear_filter"):
+                    st.session_state["filter_jawatan_cad"] = []
+                    st.rerun()
+            
+            # Apply filter if selected
+            df_cad_filtered = df_cad_all
+            if filter_jawatan:
+                df_cad_filtered = df_cad_all[df_cad_all.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan, axis=1)].copy()
+                st.success(f"✅ Filter aktif: {', '.join(filter_jawatan)} - Jumpa {len(df_cad_filtered)} guru")
+            
+            # Show breakdown by jawatan
+            st.markdown("#### 📊 Pecahan Ikut Jawatan")
+            jawatan_counts = {}
+            for _, r in df_cad_filtered.iterrows():
+                j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or "TIADA").strip()
+                jawatan_counts[j] = jawatan_counts.get(j, 0) + 1
+            
+            if jawatan_counts:
+                cols_j = st.columns(len(jawatan_counts))
+                for idx, (j, cnt) in enumerate(sorted(jawatan_counts.items(), key=lambda x: (order_jawatan.index(x[0]) if x[0] in order_jawatan else 99, x[0]))):
+                    with cols_j[idx % len(cols_j)]:
+                        icon = "👑" if "Ketua Pengawas" in j and "Timbalan" not in j else "🎖️" if "Timbalan" in j else "🔐" if "Penyelia" in j else "👨‍🏫" if "Pengawas" in j else "🔧"
+                        st.metric(f"{icon} {j}", cnt)
+            
             st.markdown("---")
             
             # Ringkasan ikut sekolah
-            st.markdown("### 📋 Ringkasan Cadangan Mengikut Sekolah")
+            st.markdown("### 📋 Ringkasan Cadangan Mengikut Sekolah (Ikut Filter Jawatan)")
             summary_rows = []
             for key, guru_list in sorted(sekolah_groups.items()):
                 kod = key.split(" - ")[0]
@@ -3020,7 +3074,9 @@ elif st.session_state.role == "PPD":
             st.download_button("📥 Export Ringkasan Cadangan Ikut Sekolah", to_excel(df_summary), file_name=f"ringkasan_cadangan_{kod_ppd}.xlsx", use_container_width=True)
             
             st.markdown("---")
-            st.markdown("### 🔍 Detail Cadangan Ikut Sekolah - Pilih Sekolah")
+            st.markdown("### 🔍 Detail Cadangan Ikut Sekolah - Pilih Sekolah (Ikut Filter Jawatan)")
+            if filter_jawatan:
+                st.info(f"📋 Menunjukkan guru dengan jawatan: {', '.join(filter_jawatan)} sahaja. Clear filter untuk lihat semua.")
             
             # Pilih sekolah dropdown
             pilih_sek_cad = st.selectbox(
@@ -3053,9 +3109,28 @@ elif st.session_state.role == "PPD":
                     return pd.DataFrame(rows)
                 
                 with tab_all:
-                    df_all_guru = make_df_from_list(guru_list)
+                    # Additional filter inside school view by jawatan
+                    if filter_jawatan:
+                        guru_list_filtered_j = [g for g in guru_list if str(g.get("JAWATAN_CADANGAN") or g.get("jawatan_cadangan") or "").strip() in filter_jawatan]
+                    else:
+                        guru_list_filtered_j = guru_list
+                    
+                    df_all_guru = make_df_from_list(guru_list_filtered_j)
+                    if filter_jawatan:
+                        st.caption(f"Filter aktif: {', '.join(filter_jawatan)} - {len(guru_list_filtered_j)} guru dalam sekolah ini")
                     st.dataframe(df_all_guru, use_container_width=True, hide_index=True)
                     st.download_button(f"📥 Export {pilih_sek_cad.split(' - ')[0]} - Semua", to_excel(df_all_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_semua.xlsx", use_container_width=True, key="exp_all")
+                    
+                    # Show jawatan breakdown for this school
+                    if guru_list_filtered_j:
+                        j_count_school = {}
+                        for g in guru_list_filtered_j:
+                            jj = str(g.get("JAWATAN_CADANGAN") or g.get("jawatan_cadangan") or "TIADA").strip()
+                            j_count_school[jj] = j_count_school.get(jj, 0) + 1
+                        cols_js = st.columns(len(j_count_school))
+                        for idx, (jj, cnt) in enumerate(j_count_school.items()):
+                            with cols_js[idx]:
+                                st.metric(jj, cnt)
                 
                 with tab_belum:
                     belum_list = [g for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat")]
