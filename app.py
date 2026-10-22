@@ -947,20 +947,16 @@ if st.session_state.role == "SUP":
                 order_j = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
                 jawatan_sup_sorted = sorted(jawatan_sup_list, key=lambda x: (order_j.index(x) if x in order_j else 99, x))
                 
-                # SAFE SYNC FOR SUP
-                if "filter_jawatan_sup_senarai" in st.session_state:
-                    if st.session_state.get("filter_jawatan_sup_senarai_ui", None) != st.session_state["filter_jawatan_sup_senarai"]:
-                        st.session_state["filter_jawatan_sup_senarai_ui"] = st.session_state["filter_jawatan_sup_senarai"]
-                else:
+                if "filter_jawatan_sup_senarai" not in st.session_state:
                     st.session_state["filter_jawatan_sup_senarai"] = []
-                    if "filter_jawatan_sup_senarai_ui" not in st.session_state:
-                        st.session_state["filter_jawatan_sup_senarai_ui"] = []
                 
                 col_f1_sup, col_f2_sup, col_f3_sup, col_f4_sup = st.columns([2,1,1,1])
                 with col_f1_sup:
-                    filter_jawatan_sup = st.multiselect("Filter Jawatan", jawatan_sup_sorted, default=st.session_state.get("filter_jawatan_sup_senarai", []), key="filter_jawatan_sup_senarai_ui", placeholder="Kosong = semua jawatan")
+                    filter_jawatan_sup = st.multiselect("Filter Jawatan", jawatan_sup_sorted, default=st.session_state["filter_jawatan_sup_senarai"], placeholder="Kosong = semua jawatan")
+                    if filter_jawatan_sup != st.session_state["filter_jawatan_sup_senarai"]:
+                        st.session_state["filter_jawatan_sup_senarai"] = filter_jawatan_sup
                 with col_f2_sup:
-                    current_sup_filter = st.session_state.get("filter_jawatan_sup_senarai", [])
+                    current_sup_filter = filter_jawatan_sup if filter_jawatan_sup else st.session_state.get("filter_jawatan_sup_senarai", [])
                     if current_sup_filter:
                         filtered_count = len(df_guru[df_guru[col_jawatan_sup].astype(str).str.strip().isin(current_sup_filter)]) if col_jawatan_sup else 0
                         st.metric(f"Filter: {len(current_sup_filter)}", f"{filtered_count} guru")
@@ -974,10 +970,6 @@ if st.session_state.role == "SUP":
                     if st.button("🔄 Clear", use_container_width=True, key="btn_clear_sup"):
                         st.session_state["filter_jawatan_sup_senarai"] = []
                         st.rerun()
-                
-                # Sync after widget
-                if filter_jawatan_sup != st.session_state.get("filter_jawatan_sup_senarai", []):
-                    st.session_state["filter_jawatan_sup_senarai"] = filter_jawatan_sup
                 
                 current_sup_filter2 = st.session_state.get("filter_jawatan_sup_senarai", [])
                 df_guru_filtered = df_guru
@@ -3102,23 +3094,18 @@ elif st.session_state.role == "PPD":
             st.markdown("### 🔍 Filter Ikut Jawatan")
             st.caption("Filter untuk tengok siapa Penyelia Kawasan, Ketua Pengawas, Timbalan, Pengawas Peperiksaan - senang PPD semak")
             
-            # SAFE SYNC: Set widget key BEFORE widget creation to avoid AlreadyInstantiated error
-            # This must happen before multiselect is created
-            if "filter_jawatan_cad" in st.session_state:
-                # Sync logical filter to widget key before widget creation
-                if st.session_state.get("filter_jawatan_cad_ui", None) != st.session_state["filter_jawatan_cad"]:
-                    st.session_state["filter_jawatan_cad_ui"] = st.session_state["filter_jawatan_cad"]
-            else:
+            # V20: SIMPLE - no widget key manipulation at all, use direct variable
+            if "filter_jawatan_cad" not in st.session_state:
                 st.session_state["filter_jawatan_cad"] = []
-                if "filter_jawatan_cad_ui" not in st.session_state:
-                    st.session_state["filter_jawatan_cad_ui"] = []
             
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             with col_f1:
-                filter_jawatan_ui = st.multiselect("Filter Jawatan", jawatan_sorted, default=st.session_state.get("filter_jawatan_cad", []), key="filter_jawatan_cad_ui", placeholder="Pilih jawatan - kosong = semua")
+                # No key with _ui that we set - use simple key and rely on default param only via session_state logical
+                # To avoid AlreadyInstantiated, we do NOT set session_state[key] after widget, we only read
+                filter_jawatan_ui = st.multiselect("Filter Jawatan", jawatan_sorted, default=st.session_state["filter_jawatan_cad"], placeholder="Pilih jawatan - kosong = semua")
             with col_f2:
-                if st.session_state.get("filter_jawatan_cad"):
-                    st.metric(f"Filter: {len(st.session_state.get('filter_jawatan_cad', []))} jawatan", f"{len(df_cad_filtered)} guru")
+                if filter_jawatan_ui:
+                    st.metric(f"Filter: {len(filter_jawatan_ui)} jawatan", f"{len(df_cad_valid[df_cad_valid.apply(lambda r: str(r.get('JAWATAN_CADANGAN') or r.get('jawatan_cadangan') or r.get('JAWATAN') or '').strip() in filter_jawatan_ui, axis=1)]) if filter_jawatan_ui else len(df_cad_all)} guru")
                 else:
                     st.metric("Semua Jawatan", f"{len(df_cad_all)} guru")
             with col_f3:
@@ -3130,13 +3117,17 @@ elif st.session_state.role == "PPD":
                     st.session_state["filter_jawatan_cad"] = []
                     st.rerun()
             
-            # After widget, sync UI back to logical if user changed via multiselect
-            if filter_jawatan_ui != st.session_state.get("filter_jawatan_cad", []):
-                st.session_state["filter_jawatan_cad"] = filter_jawatan_ui
-                # Don't rerun here to avoid double rerun, just update df_cad_filtered will use new value on next run
-                # But we need immediate effect, so update df_cad_filtered locally
-                if filter_jawatan_ui:
-                    df_cad_filtered = df_cad_valid[df_cad_valid.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan_ui, axis=1)].copy()
+            # Use UI value directly as filter - no extra session_state sync that causes error
+            if filter_jawatan_ui:
+                df_cad_filtered = df_cad_valid[df_cad_valid.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan_ui, axis=1)].copy()
+                # Save for next run default
+                if filter_jawatan_ui != st.session_state["filter_jawatan_cad"]:
+                    st.session_state["filter_jawatan_cad"] = filter_jawatan_ui
+            else:
+                # If button set filter, use session_state filter
+                if st.session_state["filter_jawatan_cad"]:
+                    df_cad_filtered = df_cad_valid[df_cad_valid.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in st.session_state["filter_jawatan_cad"], axis=1)].copy()
+                    filter_jawatan_ui = st.session_state["filter_jawatan_cad"]
                 else:
                     df_cad_filtered = df_cad_valid.copy()
             
