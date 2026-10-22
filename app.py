@@ -4030,7 +4030,23 @@ elif st.session_state.role == "PPD":
                                             existing_data["pusat_jagaan_str"] = pusat_str
                                             existing_data["pusat_bawah_bilik_kebal"] = saved_pusat_bawah
                                             
-                                            supa.table("cadangan_sup").update({"kod_pusat": pilih_bk_tempat, "status": "DITEMPATKAN BILIK KEBAL", "data": existing_data}).eq("id", pid).execute()
+                                            # V31 FIX: Simpan terus ke column kod_bilik_kebal (text) yang ada dalam table, bukan dalam data JSON je
+                                            existing_data["kod_bilik_kebal"] = pilih_bk_tempat
+                                            existing_data["kod_bilik_kebal_explicit"] = pilih_bk_tempat
+                                            payload_update = {
+                                                "kod_pusat": pilih_bk_tempat,
+                                                "kod_bilik_kebal": pilih_bk_tempat,
+                                                "status": "DITEMPATKAN BILIK KEBAL",
+                                                "STATUS": "DITEMPATKAN BILIK KEBAL",
+                                                "data": existing_data
+                                            }
+                                            # Also save no_surat if available
+                                            try:
+                                                if "no_surat" not in existing_data:
+                                                    existing_data["no_surat"] = f"JPN.SEL/SPM/2026/{pid}"
+                                            except:
+                                                pass
+                                            supa.table("cadangan_sup").update(payload_update).eq("id", pid).execute()
                                         st.success(f"✅ {len([v for v in penyelia_pusat_map.values() if v])} Penyelia berjaya ditempatkan ke {pilih_bk_tempat}")
                                         st.balloons()
                                         st.rerun()
@@ -4048,13 +4064,13 @@ elif st.session_state.role == "PPD":
                     ringkas_bk = []
                     df_cad_all_bk2 = get_cadangan_df(kod_ppd=kod_ppd)
                     for _, bk_row in df_bk.iterrows():
-                        kod_bk_r = bk_row.get("kod_bilik_kebal","")
+                        kod_bk_r = bk_row.get("kod_bilik_kebal","") or bk_row.get("KOD_BILIK_KEBAL","")
                         nama_bk_r = str(bk_row.get("nama_bilik_kebal",""))[:30]
                         alamat_bk_r = str(bk_row.get("alamat",""))[:40]
                         penyelia_assigned = []
                         if not df_cad_all_bk2.empty:
                             for _, c in df_cad_all_bk2.iterrows():
-                                p = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper()
+                                p = str(c.get("kod_bilik_kebal") or c.get("kod_pusat") or c.get("KOD_PUSAT") or c.get("KOD_BILIK_KEBAL") or "").upper()
                                 if p == kod_bk_r.upper():
                                     jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "").upper()
                                     if "PENYELIA" in jaw:
@@ -4156,7 +4172,7 @@ elif st.session_state.role == "PPD":
                                 df_cad_batal = get_cadangan_df(kod_ppd=kod_ppd)
                                 count_batal = 0
                                 for _, c in df_cad_batal.iterrows():
-                                    p = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper()
+                                    p = str(c.get("kod_bilik_kebal") or c.get("kod_pusat") or c.get("KOD_PUSAT") or c.get("KOD_BILIK_KEBAL") or "").upper()
                                     if p == pilih_bk_batal.upper():
                                         jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "").upper()
                                         if "PENYELIA" in jaw:
@@ -4176,7 +4192,7 @@ elif st.session_state.role == "PPD":
                         df_cad_batal_ind = get_cadangan_df(kod_ppd=kod_ppd)
                         df_batal_list = []
                         for _, c in df_cad_batal_ind.iterrows():
-                            p = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper()
+                            p = str(c.get("kod_bilik_kebal") or c.get("kod_pusat") or c.get("KOD_PUSAT") or c.get("KOD_BILIK_KEBAL") or "").upper()
                             if p == pilih_bk_batal.upper():
                                 jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "").upper()
                                 if "PENYELIA" in jaw:
@@ -4220,7 +4236,7 @@ elif st.session_state.role == "PPD":
                     df_surat = []
                     seen_ids_surat = set()
                     for _, c in df_cad_all_surat.iterrows():
-                        p = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper()
+                        p = str(c.get("kod_bilik_kebal") or c.get("kod_pusat") or c.get("KOD_PUSAT") or c.get("KOD_BILIK_KEBAL") or "").upper()
                         jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "").upper()
                         c_id = str(c.get("id") or c.get("IC_GURU") or c.get("ic_guru") or "") + "_" + str(c.get("KOD_SEKOLAH_ASAL") or "")
                         # Check if already added
