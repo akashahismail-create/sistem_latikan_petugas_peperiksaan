@@ -27,7 +27,7 @@ PPD_MAP = {
     "BG": "Gombak", "BH": "Petaling Perdana", "BJ": "Sepang", "BK": "Petaling Utama"
 }
 
-# ================= CSS UNTUK CUSTOM SIDEBAR =================
+# ================= CSS UNTUK CUSTOM SIDEBAR - FIX DARK MODE =================
 st.markdown("""
 <style>
 [data-testid="stSidebar"] {display: none !important;}
@@ -35,24 +35,68 @@ st.markdown("""
 .stSidebar {display: none !important;}
 section[data-testid="stSidebar"] {display: none !important;}
 
-/* Custom left panel that looks like sidebar */
+/* Custom left panel that looks like sidebar - FIX DARK MODE */
 .custom-sidebar {
-    background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     border-radius: 12px;
     padding: 16px;
-    border: 1px solid #e9ecef;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 2px solid #0d47a1;
+    box-shadow: 0 4px 12px rgba(13, 71, 161, 0.15);
     height: fit-content;
     position: sticky;
     top: 10px;
 }
 .custom-sidebar h3 {
-    font-size: 18px;
-    color: #0d47a1;
+    font-size: 20px;
+    color: #0d47a1 !important;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+/* Caption nama sekolah - buat lebih gelap dan visible */
+.custom-sidebar .caption, .custom-sidebar [data-testid="stCaptionContainer"] {
+    color: #212121 !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    opacity: 1 !important;
+}
+/* NO PUSAT box - high contrast, visible in both light and dark */
+.no-pusat-box {
+    background: #ffeb3b;
+    border: 2px solid #f57f17;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 10px 0;
+}
+.no-pusat-label {
+    font-size: 11px;
+    color: #bf360c;
+    font-weight: 700;
     margin-bottom: 2px;
 }
-.sidebar-menu .stRadio > div {
-    gap: 4px;
+.no-pusat-value {
+    font-size: 18px;
+    color: #000000 !important;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    word-break: break-all;
+}
+/* Dark mode fix - ensure custom sidebar stays light with dark text */
+@media (prefers-color-scheme: dark) {
+    .custom-sidebar {
+        background: #ffffff !important;
+        border-color: #1565c0 !important;
+    }
+    .custom-sidebar h3 {
+        color: #0d47a1 !important;
+    }
+    .custom-sidebar p, .custom-sidebar span, .custom-sidebar div {
+        color: #212121 !important;
+    }
+}
+/* Force Streamlit caption to be visible */
+[data-testid="stCaptionContainer"] p {
+    color: #212121 !important;
+    font-weight: 600 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -489,7 +533,30 @@ if st.session_state.role == "SUP":
     with col_menu:
         st.markdown('<div class="custom-sidebar">', unsafe_allow_html=True)
         st.markdown(f"### 🏫 SUP {kod}")
-        st.caption(f"{info.get('nama_sekolah', '')} | {info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}")
+        # Nama sekolah - buat lebih visible, bukan caption cair
+        st.markdown(f"<div style='color:#212121; font-weight:700; font-size:13px; margin-bottom:4px;'>{info.get('nama_sekolah', '')}</div><div style='color:#424242; font-size:12px; margin-bottom:8px;'>{info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}</div>", unsafe_allow_html=True)
+        # ===== PAPARKAN NO PUSAT DI BAWAH NAMA SEKOLAH =====
+        try:
+            df_pusat_sidebar = get_pusat_df()
+            no_pusat_list_sidebar = []
+            for _, r in df_pusat_sidebar.iterrows():
+                d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                if isinstance(d, str):
+                    try: d = json.loads(d)
+                    except: d = {}
+                ks_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or r.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH") or d.get("KOD SEKOLAH") or "").upper().strip()
+                ks_biasa = str(r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or "").upper().strip()
+                if ks_tuan == kod.upper().strip() or ks_biasa == kod.upper().strip():
+                    no_p = str(r.get("no_pusat") or r.get("kod_pusat") or r.get("NO_PUSAT") or d.get("NO_PUSAT") or d.get("NO PUSAT") or "").upper().strip()
+                    if no_p and no_p not in no_pusat_list_sidebar:
+                        no_pusat_list_sidebar.append(no_p)
+            if no_pusat_list_sidebar:
+                no_pusat_str = ", ".join(no_pusat_list_sidebar)
+                st.markdown(f'''<div class="no-pusat-box"><div class="no-pusat-label">📍 NO PUSAT SEKOLAH:</div><div class="no-pusat-value">{no_pusat_str}</div></div>''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'''<div class="no-pusat-box" style="background:#ffccbc; border-color:#d32f2f;"><div class="no-pusat-label" style="color:#b71c1c;">⚠️ TIADA NO PUSAT:</div><div class="no-pusat-value" style="font-size:12px;">Tiada pusat dijumpai untuk {kod}<br>Hubungi PPD</div></div>''', unsafe_allow_html=True)
+        except Exception as e:
+            st.markdown(f"<div style='background:#fff3e0; padding:8px; border-radius:6px; font-size:11px;'>Error load pusat: {e}</div>", unsafe_allow_html=True)
         add_refresh_button()
         
         MENU_SUP = [('dashboard', '📊 Dashboard'), ('senarai', '📋 Senarai Guru'), ('tambah', '➕ Tambah Guru'), 
