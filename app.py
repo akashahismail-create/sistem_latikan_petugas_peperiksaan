@@ -8,7 +8,7 @@ import json
 import re
 
 # ================= CONFIGURATION =================
-st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="ðŸ“š", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 
 SUPABASE_URL = "https://gnmaijhugkkvxejvsotk.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamh1Z2trdnhlanZzb3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0ODc4OTcsImV4cCI6MjEwODA2Mzg5N30.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
@@ -24,7 +24,7 @@ def clear_all_cache():
     st.cache_data.clear()
     st.cache_resource.clear()
 
-# âœ… FIX: Buang trailing space dari KOD_DAERAH & PPD_MAP
+# ✅ FIX: Buang trailing space dari KOD_DAERAH & PPD_MAP
 KOD_DAERAH = ["BA", "BB", "BC", "BD", "BE", "BF", "BG", "BH", "BJ", "BK"]
 PPD_MAP = {
     "BA": "Klang", "BB": "Kuala Langat", "BC": "Kuala Selangor",
@@ -213,6 +213,58 @@ def kira_sekolah_perlu_calonkan(jumlah_kelas):
     """Sekolah perlu calonkan = petugas (kelas+9) + 1 KP +1 TKP +1 Penyelia = kelas+12"""
     try: return kira_petugas_dari_kelas(jumlah_kelas) + 3
     except: return 0
+
+
+def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh):
+    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan SPM 2026</title>'
+    html += '<style>body{font-family:Times New Roman,serif;margin:40px;color:#000;}'
+    html += '.surat{border:2px solid #000;padding:30px;margin-bottom:30px;page-break-after:always;background:white;}'
+    html += '.header{text-align:center;border-bottom:3px double #000;padding-bottom:15px;margin-bottom:20px;}'
+    html += '.kandungan{line-height:1.6;}'
+    html += 'table.info{width:100%;border-collapse:collapse;margin:15px 0;}'
+    html += 'table.info td{padding:5px 10px;}'
+    html += 'table.info td:first-child{width:180px;font-weight:bold;}'
+    html += '.tandatangan{margin-top:60px;display:flex;justify-content:space-between;}'
+    html += '</style></head><body>'
+    html += '<div class="surat"><div class="header">'
+    html += '<h2>JABATAN PENDIDIKAN NEGERI SELANGOR</h2>'
+    html += f'<h3>PEJABAT PENDIDIKAN DAERAH {kod_ppd} - {ppd_name}</h3>'
+    html += f'<p>No Surat: {no_surat}</p></div>'
+    html += '<div class="kandungan">'
+    html += f'<p>Tarikh: {tarikh}</p>'
+    html += '<p><strong>Tuan/Puan,</strong></p>'
+    html += f'<p><strong>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM TAHUN 2026</strong></p>'
+    html += '<p>Dengan hormatnya saya merujuk kepada perkara di atas.</p>'
+    html += '<p>2. Sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai petugas peperiksaan SPM 2026 seperti butiran berikut:</p>'
+    html += '<table class="info">'
+    html += f'<tr><td>Nama</td><td>: {nama}</td></tr>'
+    html += f'<tr><td>No. IC</td><td>: {ic}</td></tr>'
+    html += f'<tr><td>Jawatan</td><td>: {jawatan}</td></tr>'
+    html += f'<tr><td>Sekolah Asal</td><td>: {sek_asal} - {nama_sek_asal}</td></tr>'
+    html += f'<tr><td>Pusat Ditugaskan</td><td>: {pusat} - {nama_pusat}</td></tr>'
+    html += f'<tr><td>No Surat Lantikan</td><td>: {no_surat}</td></tr>'
+    html += '</table>'
+    html += '<p>3. Tuan/puan dikehendaki hadir bertugas di pusat peperiksaan yang telah ditetapkan mengikut jadual yang akan dimaklumkan kemudian.</p>'
+    html += '<p>4. Kerjasama dan komitmen tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai dan didahului dengan ucapan terima kasih.</p>'
+    html += '<p>Sekian.</p>'
+    html += '<div class="footer"><p><strong>MALAYSIA MADANI</strong><br><strong>BERKHIDMAT UNTUK NEGARA</strong></p>'
+    html += '<div class="tandatangan"><div><p>Yang benar,</p><br><br><br>'
+    html += f'<p>_________________________<br><strong>Pegawai Pendidikan Daerah<br>PPD {kod_ppd} - {ppd_name}</strong></p></div>'
+    html += '<div style="text-align:right;"><p>b.p Pengarah Pendidikan<br>Jabatan Pendidikan Negeri Selangor</p></div></div></div></div></div>'
+    html += '</body></html>'
+    return html
+
+def generate_surat_kolektif_html(guru_list, kod_ppd, ppd_name, tarikh, prefix):
+    # guru_list is list of dicts with NAMA, IC, etc
+    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan Kolektif</title>'
+    html += '<style>body{font-family:Arial,sans-serif;margin:20px;} .surat{border:1px solid #ccc;padding:20px;margin:10px 0;} h2{text-align:center;}</style></head><body>'
+    html += f'<h2>SURAT LANTIKAN PETUGAS SPM 2026 - PPD {kod_ppd}</h2>'
+    html += f'<p>Tarikh: {tarikh} | Jumlah: {len(guru_list)} guru</p><hr>'
+    for g in guru_list:
+        html += generate_surat_html(g["NAMA GURU"], g["IC"], g["JAWATAN"], g["SEKOLAH ASAL"], g["NAMA SEKOLAH ASAL"], g["PUSAT DITEMPATKAN"], g["NAMA PUSAT DITEMPATKAN"], g["NO SURAT"], kod_ppd, ppd_name, tarikh)
+    html += '</body></html>'
+    return html
+
 
 def safe_count(table_name):
     """Count dengan fallback kalau RLS block count exact"""
@@ -487,12 +539,12 @@ def get_template_guru():
 # ================= REFRESH COMPONENT =================
 def add_refresh_button():
     st.markdown("---")
-    st.markdown("### ðŸ”„ Refresh Data")
+    st.markdown("### 🔄 Refresh Data")
     st.caption(f"Last: {datetime.datetime.now().strftime('%d/%m %H:%M:%S')}")
-    if st.button("ðŸ”„ REFRESH - Baca Data Baru", use_container_width=True, type="primary", key=f"refresh_main_{st.session_state.role}_{st.session_state.kod if hasattr(st.session_state, 'kod') else 'x'}"):
+    if st.button("🔄 REFRESH - Baca Data Baru", use_container_width=True, type="primary", key=f"refresh_main_{st.session_state.role}_{st.session_state.kod if hasattr(st.session_state, 'kod') else 'x'}"):
         st.cache_data.clear()
         # Jangan clear resource (supabase client) - itu yang buat buffering lama
-        st.toast("âœ… Data refreshed! Baca perubahan terbaru")
+        st.toast("✅ Data refreshed! Baca perubahan terbaru")
         st.rerun()
     st.caption("Tekan selepas SUP buat pertukaran / cadangan")
 
@@ -502,7 +554,7 @@ if "role" not in st.session_state:
 
 # ================= LOGIN PAGE =================
 if st.session_state.role is None:
-    st.markdown("<h1 style='text-align:center; color:#0d47a1;'>ðŸ« SISTEM PELANTIKAN PETUGAS PEPERIKSAAN SPM SELANGOR 2026</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center; color:#0d47a1;'>🏫 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN SPM SELANGOR 2026</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align:center;'>369 Sekolah | 506 Pusat | 71,064 Calon</p>", unsafe_allow_html=True)
     
     @st.cache_data(ttl=600)
@@ -531,13 +583,13 @@ if st.session_state.role is None:
             return pd.DataFrame()
 
     df_sekolah_all = load_sekolah_list()
-    tab1, tab2, tab3 = st.tabs(["SUP - Sekolah", "ðŸ¢ PPD - Daerah", "ðŸ›ï¸ JPN - Negeri"])
+    tab1, tab2, tab3 = st.tabs(["SUP - Sekolah", "🏢 PPD - Daerah", "🏛️ JPN - Negeri"])
     
     with tab1:
-        st.markdown("### ðŸ« Log Masuk SUP - Penyelia Sekolah")
+        st.markdown("### 🏫 Log Masuk SUP - Penyelia Sekolah")
         col_a, col_b = st.columns(2)
         with col_a:
-            pilih_ppd_label = st.selectbox("1ï¸âƒ£ Pilih Daerah (PPD)", options=[f"{k} - {PPD_MAP[k]}" for k in KOD_DAERAH], key="sup_daerah")
+            pilih_ppd_label = st.selectbox("1️⃣ Pilih Daerah (PPD)", options=[f"{k} - {PPD_MAP[k]}" for k in KOD_DAERAH], key="sup_daerah")
             pilih_ppd_code = pilih_ppd_label.split(" - ")[0] if pilih_ppd_label else "BA"
             if not df_sekolah_all.empty:
                 df_filtered = df_sekolah_all[df_sekolah_all["KOD_PPD"] == pilih_ppd_code]
@@ -553,7 +605,7 @@ if st.session_state.role is None:
                 sup_password_expected = "1"
             else:
                 sekolah_options = [f"{row['KOD_SEKOLAH']} - {row['NAMA_SEKOLAH']}" for _, row in df_filtered.iterrows()]
-                pilih_sekolah_str = st.selectbox(f"2ï¸âƒ£ Pilih Sekolah ({len(df_filtered)} sekolah di {PPD_MAP[pilih_ppd_code]})", options=sekolah_options, key="sup_sekolah_list")
+                pilih_sekolah_str = st.selectbox(f"2️⃣ Pilih Sekolah ({len(df_filtered)} sekolah di {PPD_MAP[pilih_ppd_code]})", options=sekolah_options, key="sup_sekolah_list")
                 pilih_sekolah_kod = pilih_sekolah_str.split(" - ")[0] if pilih_sekolah_str else ""
                 row_sel = df_filtered[df_filtered["KOD_SEKOLAH"] == pilih_sekolah_kod].iloc[0] if not df_filtered[df_filtered["KOD_SEKOLAH"] == pilih_sekolah_kod].empty else None
                 if row_sel is not None:
@@ -571,14 +623,14 @@ if st.session_state.role is None:
             st.markdown(f"**Sekolah Dipilih:** `{pilih_sekolah_kod}` - {pilih_sekolah_nama}")
             st.markdown(f"**ID Sekolah:** {sup_id} | **PPD:** {pilih_ppd_code} - {PPD_MAP.get(pilih_ppd_code, '')}")
             with st.container(border=True):
-                st.markdown("ðŸ”‘ **Password Untuk Testing**")
+                st.markdown("🔑 **Password Untuk Testing**")
                 if not df_filtered.empty and 'sup_password_expected' in locals():
                     st.code(f"ID: {sup_id}\nPassword Baru: {sup_password_expected}\nPassword Lama: {sup_password_lama}", language="text")
                 else:
                     st.code(f"Password: {sup_id} atau 12345{sup_id}", language="text")
             
-            pwd_input = st.text_input("3ï¸âƒ£ Masuk Password", type="password", key="sup_pwd", placeholder=f"Contoh: {sup_password_expected if 'sup_password_expected' in locals() else '1'}")
-            if st.button("ðŸš€ Masuk SUP Sekolah", use_container_width=True, type="primary", key="btn_sup"):
+            pwd_input = st.text_input("3️⃣ Masuk Password", type="password", key="sup_pwd", placeholder=f"Contoh: {sup_password_expected if 'sup_password_expected' in locals() else '1'}")
+            if st.button("🚀 Masuk SUP Sekolah", use_container_width=True, type="primary", key="btn_sup"):
                 valid_pw = [str(sup_id), f"12345{sup_id}", sup_password_expected if 'sup_password_expected' in locals() else str(sup_id)]
                 if not df_sekolah_all.empty and 'sup_password_lama' in locals():
                     valid_pw.append(sup_password_lama)
@@ -600,7 +652,7 @@ if st.session_state.role is None:
                     st.error(f"Password salah! Sepatutnya: {sup_password_expected} atau {sup_password_lama}")
 
     with tab2:
-        st.markdown("### ðŸ¢ Log Masuk PPD - Pejabat Pendidikan Daerah")
+        st.markdown("### 🏢 Log Masuk PPD - Pejabat Pendidikan Daerah")
         col1, col2 = st.columns(2)
         with col1:
             ppd_labels = [f"{i+1}. {KOD_DAERAH[i]} - {PPD_MAP[KOD_DAERAH[i]]} (ID:{i+1} Pwd:{chr(97+i)})" for i in range(len(KOD_DAERAH))]
@@ -611,10 +663,10 @@ if st.session_state.role is None:
         
         with col2:
             with st.container(border=True):
-                st.markdown("ðŸ”‘ **Password PPD Untuk Testing**")
+                st.markdown("🔑 **Password PPD Untuk Testing**")
                 st.code(f"ID PPD: {ppd_id}\nPPD: {ppd_code} - {PPD_MAP.get(ppd_code, '')}\nPassword: {ppd_pwd_expected}", language="text")
             ppd_pwd = st.text_input("Masuk Password PPD", type="password", key="ppd_pwd", placeholder=f"Contoh: {ppd_pwd_expected}")
-            if st.button("ðŸš€ Masuk PPD", use_container_width=True, type="primary", key="btn_ppd"):
+            if st.button("🚀 Masuk PPD", use_container_width=True, type="primary", key="btn_ppd"):
                 valid = [ppd_pwd_expected, str(ppd_id), f"12345{ppd_id}", chr(96 + ppd_id).upper(), ppd_code.lower(), "a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
                 if ppd_pwd.strip().lower() in [v.lower() for v in valid] or ppd_pwd.strip() == "":
                     st.session_state.role = "PPD"
@@ -625,14 +677,14 @@ if st.session_state.role is None:
                     st.error(f"Password salah! Cuba {ppd_pwd_expected} atau {ppd_id}")
 
     with tab3:
-        st.markdown("### ðŸ›ï¸ Log Masuk JPN - Jabatan Pendidikan Negeri")
+        st.markdown("### 🏛️ Log Masuk JPN - Jabatan Pendidikan Negeri")
         col1, col2 = st.columns(2)
         with col1:
             jpn_id = st.text_input("ID JPN", value="1", key="jpn_id")
             jpn_pwd = st.text_input("Password JPN", type="password", key="jpn_pwd", placeholder="a")
             with st.container(border=True):
                 st.code("ID: 1\nPassword: a atau 1 atau 123451", language="text")
-            if st.button("ðŸš€ Masuk JPN", use_container_width=True, type="primary", key="btn_jpn"):
+            if st.button("🚀 Masuk JPN", use_container_width=True, type="primary", key="btn_jpn"):
                 if jpn_id == "1" and jpn_pwd.strip().lower() in ["a", "1", "123451", "12345", ""]:
                     st.session_state.role = "JPN"
                     st.rerun()
@@ -654,7 +706,7 @@ if st.session_state.role == "SUP":
     
     with col_menu:
         st.markdown('<div class="custom-sidebar">', unsafe_allow_html=True)
-        st.markdown(f"### ðŸ« SUP {kod}")
+        st.markdown(f"### 🏫 SUP {kod}")
         # Nama sekolah - buat lebih visible, bukan caption cair
         st.markdown(f"<div style='color:#212121; font-weight:700; font-size:13px; margin-bottom:4px;'>{info.get('nama_sekolah', '')}</div><div style='color:#424242; font-size:12px; margin-bottom:8px;'>{info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}</div>", unsafe_allow_html=True)
         # ===== PAPARKAN NO PUSAT DI BAWAH NAMA SEKOLAH =====
@@ -674,16 +726,16 @@ if st.session_state.role == "SUP":
                         no_pusat_list_sidebar.append(no_p)
             if no_pusat_list_sidebar:
                 no_pusat_str = ", ".join(no_pusat_list_sidebar)
-                st.markdown(f'''<div class="no-pusat-box"><div class="no-pusat-label">ðŸ“ NO PUSAT SEKOLAH:</div><div class="no-pusat-value">{no_pusat_str}</div></div>''', unsafe_allow_html=True)
+                st.markdown(f'''<div class="no-pusat-box"><div class="no-pusat-label">📍 NO PUSAT SEKOLAH:</div><div class="no-pusat-value">{no_pusat_str}</div></div>''', unsafe_allow_html=True)
             else:
-                st.markdown(f'''<div class="no-pusat-box" style="background:#ffccbc; border-color:#d32f2f;"><div class="no-pusat-label" style="color:#b71c1c;">âš ï¸ TIADA NO PUSAT:</div><div class="no-pusat-value" style="font-size:12px;">Tiada pusat dijumpai untuk {kod}<br>Hubungi PPD</div></div>''', unsafe_allow_html=True)
+                st.markdown(f'''<div class="no-pusat-box" style="background:#ffccbc; border-color:#d32f2f;"><div class="no-pusat-label" style="color:#b71c1c;">⚠️ TIADA NO PUSAT:</div><div class="no-pusat-value" style="font-size:12px;">Tiada pusat dijumpai untuk {kod}<br>Hubungi PPD</div></div>''', unsafe_allow_html=True)
         except Exception as e:
             st.markdown(f"<div style='background:#fff3e0; padding:8px; border-radius:6px; font-size:11px;'>Error load pusat: {e}</div>", unsafe_allow_html=True)
         add_refresh_button()
         
-        MENU_SUP = [('dashboard', 'ðŸ“Š Dashboard'), ('senarai', 'ðŸ“‹ Senarai Guru'), ('tambah', 'âž• Tambah Guru'), 
-                    ('import', 'ðŸ“¤ Import Excel'), ('buang', 'ðŸ—‘ï¸ Buang Guru'), ('cadangan', 'ðŸ“ Cadangan Lantikan'), 
-                    ('hantar', 'ðŸ“¤ Hantar ke PPD'), ('keluar', 'ðŸšª Log Keluar')]
+        MENU_SUP = [('dashboard', '📊 Dashboard'), ('senarai', '📋 Senarai Guru'), ('tambah', '➕ Tambah Guru'), 
+                    ('import', '📤 Import Excel'), ('buang', '🗑️ Buang Guru'), ('cadangan', '📝 Cadangan Lantikan'), 
+                    ('hantar', '📤 Hantar ke PPD'), ('petugas', '👥 Petugas Hadir di Sekolah Saya'), ('surat', '📄 Surat Lantikan Saya'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu SUP", [k for k, _ in MENU_SUP], format_func=dict(MENU_SUP).get, label_visibility="collapsed", key="sup_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -733,13 +785,13 @@ if st.session_state.role == "SUP":
                 no_pusat_list = ", ".join([f"{p['NO_PUSAT']}" for p in pusat_sekolah if p['NO_PUSAT']])
                 st.markdown(f"""
                 <div style="background: #ffffff; padding:20px; border-radius:12px; border:3px solid #1565c0; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px;">
-                    <h3 style="margin:0; color:#0d47a1 !important; font-weight:800;">ðŸ« KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
+                    <h3 style="margin:0; color:#0d47a1 !important; font-weight:800;">🏫 KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
                     <p style="margin:8px 0; font-size:16px;">
                         Sekolah anda ada <b>{len(pusat_sekolah)} pusat</b> | <b>{total_calon} calon</b> | <b>{total_kelas} kelas</b> (1 kelas=20 calon)<br>
                         Formula: Kelas = CEIL(Calon/20), Petugas = Kelas+9, Sekolah Perlu = Kelas+12
                     </p>
                     <div style="background:#fff3e0; padding:12px 16px; border-radius:8px; border-left:4px solid #ff9800; margin:10px 0;">
-                        <div style="font-size:14px; color:#e65100; font-weight:700;">ðŸ“ NO PUSAT SEKOLAH ANDA:</div>
+                        <div style="font-size:14px; color:#e65100; font-weight:700;">📍 NO PUSAT SEKOLAH ANDA:</div>
                         <div style="font-size:22px; font-weight:800; color:#bf360c; letter-spacing:1px;">{no_pusat_list}</div>
                     </div>
                     <div style="display:flex; gap:15px; margin-top:12px; flex-wrap:wrap;">
@@ -763,10 +815,10 @@ if st.session_state.role == "SUP":
                 # Reorder columns: NO_PUSAT first
                 cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
                 df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
-                st.markdown("### ðŸ“ Senarai Pusat Sekolah Anda (NO PUSAT)")
+                st.markdown("### 📍 Senarai Pusat Sekolah Anda (NO PUSAT)")
                 st.dataframe(df_pusat_display, use_container_width=True, hide_index=True)
             else:
-                st.warning(f"âš ï¸ Tiada pusat dijumpai untuk sekolah {kod}")
+                st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
                 st.info("Sistem cuba cari pusat dengan kod_sekolah_tuan_rumah = kod sekolah anda. Hubungi PPD untuk semak pusat sekolah anda di table pusat_master.")
                 # Show all pusat for debugging
                 try:
@@ -809,11 +861,11 @@ if st.session_state.role == "SUP":
                     st.dataframe(df_guru[cols_to_show], use_container_width=True, hide_index=True)
                     kosong = df_guru[df_guru["JANTINA"].isin(["", "KOSONG"]) | df_guru["POSKOD_RUMAH"].isin(["", "KOSONG"]) | df_guru["TELEFON_GURU"].isin(["", "KOSONG"])]
                     if not kosong.empty:
-                        st.warning(f"âš ï¸ Ada {len(kosong)} guru dengan data KOSONG (JANTINA/POSKOD/ALAMAT/TELEFON/EMAIL). Sila edit di bawah.")
+                        st.warning(f"⚠️ Ada {len(kosong)} guru dengan data KOSONG (JANTINA/POSKOD/ALAMAT/TELEFON/EMAIL). Sila edit di bawah.")
                 
                 st.download_button(" Export Excel Lengkap", to_excel(df_guru), file_name=f"guru_{kod}_lengkap.xlsx", use_container_width=True)
                 st.markdown("---")
-                st.subheader("âœï¸ Edit Data Guru (Lengkapkan yang kosong)")
+                st.subheader("✏️ Edit Data Guru (Lengkapkan yang kosong)")
                 edit_ic = st.selectbox("Pilih IC guru untuk edit", df_guru["IC"].tolist(), format_func=lambda x: f"{x} - {df_guru[df_guru['IC']==x]['NAMA GURU'].values[0] if not df_guru[df_guru['IC']==x].empty else x}")
                 if edit_ic:
                     guru_edit = df_guru[df_guru["IC"] == edit_ic].iloc[0] if not df_guru[df_guru["IC"] == edit_ic].empty else None
@@ -833,7 +885,7 @@ if st.session_state.role == "SUP":
                                 e_pengalaman = st.text_input("PENGALAMAN SPM", value=guru_edit.get("PENGALAMAN_SPM", ""))
                                 e_no_pusat = st.text_input("NO PUSAT ASAL", value=guru_edit.get("NO_PUSAT_ASAL", ""))
                             
-                            if st.form_submit_button("ðŸ’¾ Update Guru", type="primary"):
+                            if st.form_submit_button("💾 Update Guru", type="primary"):
                                 try:
                                     res = supa.table("guru_master").select("id,data").eq("ic_guru", edit_ic).eq("kod_sekolah", kod).execute()
                                     if not res.data:
@@ -845,7 +897,7 @@ if st.session_state.role == "SUP":
                                             except: old_data = {}
                                         new_data = {**old_data, **{"NAMA GURU": e_nama.upper(), "IC": edit_ic, "JANTINA": e_jantina, "POSKOD_RUMAH": e_poskod, "ALAMAT_RUMAH": e_alamat, "TELEFON_GURU": e_tel, "EMAIL_GURU": e_email, "JAWATAN_CADANGAN": e_jawatan, "PENGALAMAN_SPM": e_pengalaman, "NO_PUSAT_ASAL": e_no_pusat, "KOD_SEKOLAH": kod, "KOD_PPD": info.get("kod_ppd", "BH"), "NAMA_SEKOLAH_ASAL": info.get("nama_sekolah", ""), "KOD_SEKOLAH_ASAL": kod}}
                                         supa.table("guru_master").update({"nama_guru": e_nama.upper(), "ic_guru": edit_ic, "data": new_data}).eq("id", row["id"]).execute()
-                                    st.success(f"âœ… {e_nama} berjaya update!")
+                                    st.success(f"✅ {e_nama} berjaya update!")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Gagal update: {e}")
@@ -867,7 +919,7 @@ if st.session_state.role == "SUP":
                     pengalaman = st.text_input("PENGALAMAN SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun")
                     no_pusat_asal = st.text_input("NO PUSAT ASAL", placeholder="Contoh: BA142")
                 
-                submit = st.form_submit_button("ðŸ’¾ Simpan Guru Lengkap", use_container_width=True, type="primary")
+                submit = st.form_submit_button("💾 Simpan Guru Lengkap", use_container_width=True, type="primary")
                 if submit:
                     if not nama or not ic or not tel or not alamat:
                         st.error("Nama, IC, Telefon, Alamat wajib isi!")
@@ -875,12 +927,12 @@ if st.session_state.role == "SUP":
                         data = {"NAMA GURU": nama.upper(), "IC": ic, "JANTINA": jantina, "POSKOD_RUMAH": poskod, "ALAMAT_RUMAH": alamat, "NO TELEFON GURU": tel, "TELEFON_GURU": tel, "EMAIL_GURU": email, "JAWATAN_CADANGAN": jaw, "JAWATAN CADANGAN": jaw, "PENGALAMAN_SPM": pengalaman, "PENGALAMAN": pengalaman, "NO_PUSAT_ASAL": no_pusat_asal, "KOD_SEKOLAH": kod, "KOD_SEKOLAH_ASAL": kod, "NAMA_SEKOLAH_ASAL": info.get("nama_sekolah", ""), "KOD_PPD": info.get("kod_ppd", "BH"), "KOD_PPD_ASAL": info.get("kod_ppd", "BH"), "TARIKH DAFTAR": str(datetime.date.today())}
                         try:
                             supa.table("guru_master").insert({"kod_ppd": info.get("kod_ppd", "BH").lower(), "kod_sekolah": kod, "nama_guru": nama.upper(), "ic_guru": ic, "jantina": jantina, "poskod_rumah": poskod, "alamat_rumah": alamat, "telefon_guru": tel, "email_guru": email, "jawatan_cadangan": jaw, "pengalaman_spm": pengalaman, "no_pusat_asal": no_pusat_asal, "kod_ppd_asal": info.get("kod_ppd", "BH"), "kod_sekolah_asal": kod, "nama_sekolah_asal": info.get("nama_sekolah", ""), "data": data}).execute()
-                            st.success(f"âœ… {nama.upper()} berjaya tambah ke {kod} dengan data lengkap!")
+                            st.success(f"✅ {nama.upper()} berjaya tambah ke {kod} dengan data lengkap!")
                             st.balloons()
                         except Exception as e:
                             try:
                                 supa.table("guru_master").insert({"kod_ppd": info.get("kod_ppd", "BH").lower(), "kod_sekolah": kod, "nama_guru": nama.upper(), "ic_guru": ic, "data": data}).execute()
-                                st.success(f"âœ… {nama.upper()} berjaya tambah (fallback)!")
+                                st.success(f"✅ {nama.upper()} berjaya tambah (fallback)!")
                                 st.balloons()
                             except Exception as e2:
                                 st.error(f"Gagal: {e2}")
@@ -888,7 +940,7 @@ if st.session_state.role == "SUP":
         elif menu == "import":
             st.header(f"Import Excel Guru - {kod}")
             st.info("Format Excel: NAMA GURU, IC, JANTINA, NO TELEFON GURU, EMAIL GURU, ALAMAT RUMAH, KOD SEKOLAH, KOD PPD")
-            st.download_button("ðŸ“¥ Download Template Guru (Excel Sah)", to_excel(get_template_guru()), file_name="template_guru.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button("📥 Download Template Guru (Excel Sah)", to_excel(get_template_guru()), file_name="template_guru.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             uploaded = st.file_uploader("Upload Excel Guru", type=["xlsx", "xls"])
             if uploaded:
                 try:
@@ -937,7 +989,7 @@ if st.session_state.role == "SUP":
                                 except Exception as e:
                                     st.warning(f"Baris {i}: {e}")
                                 bar.progress((i + 1) / len(df_up))
-                        st.success(f"âœ… Berjaya import {ok}/{len(df_up)} guru!")
+                        st.success(f"✅ Berjaya import {ok}/{len(df_up)} guru!")
                         st.balloons()
                 except Exception as e:
                     st.error(f"Excel error: {e}")
@@ -951,7 +1003,7 @@ if st.session_state.role == "SUP":
                 pilih = st.multiselect("Pilih IC untuk buang (boleh pilih banyak)", df_guru["IC"].tolist(), format_func=lambda x: f"{x} - {df_guru[df_guru['IC']==x]['NAMA GURU'].values[0] if not df_guru[df_guru['IC']==x].empty else x}")
                 if pilih:
                     st.warning(f"Kau nak buang {len(pilih)} guru: {', '.join(pilih)}")
-                    if st.button(f"ðŸ—‘ï¸ Confirm Buang {len(pilih)} Guru", type="primary"):
+                    if st.button(f"🗑️ Confirm Buang {len(pilih)} Guru", type="primary"):
                         for ic in pilih:
                             try:
                                 res = supa.table("guru_master").select("id").eq("ic_guru", ic).eq("kod_sekolah", kod).execute()
@@ -959,7 +1011,7 @@ if st.session_state.role == "SUP":
                                     supa.table("guru_master").delete().eq("id", r["id"]).execute()
                             except Exception as e:
                                 st.error(f"{ic}: {e}")
-                        st.success(f"âœ… Berjaya buang {len(pilih)} guru")
+                        st.success(f"✅ Berjaya buang {len(pilih)} guru")
                         st.rerun()
 
         elif menu == "cadangan":
@@ -987,7 +1039,7 @@ if st.session_state.role == "SUP":
                 if pusat_sek:
                     st.markdown(f"""
                     <div style="background:#fff8e1; padding:15px; border-radius:10px; border-left:5px solid #ff8f00; margin-bottom:20px;">
-                        <h4 style="margin:0; color:#e65100;">ðŸ“¢ KEPERLUAN WAJIB SEKOLAH ANDA - {kod}</h4>
+                        <h4 style="margin:0; color:#e65100;">📢 KEPERLUAN WAJIB SEKOLAH ANDA - {kod}</h4>
                         <p style="margin:5px 0;">Pusat: {len(pusat_sek)} | Calon: {total_calon_alert} | Kelas: {total_kelas_alert} (1 kelas=20 calon)</p>
                         <p style="margin:5px 0; font-size:15px;">
                             <b style="color:#c62828;">WAJIB:</b> Ketua Pengawas 1 orang + Timbalan Ketua 1 orang<br>
@@ -1093,11 +1145,11 @@ if st.session_state.role == "SUP":
                                         continue
                                 
                                 if not inserted:
-                                    st.error(f"âŒ Gagal {ic} - {nama}: {fail_msg[:500]}")
+                                    st.error(f"❌ Gagal {ic} - {nama}: {fail_msg[:500]}")
                                     st.code(fail_msg[:1000])
                             
                             if ok_count > 0:
-                                st.success(f"âœ… Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih} - SEMUA maklumat lengkap!")
+                                st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih} - SEMUA maklumat lengkap!")
                                 st.balloons()
                                 st.rerun()
                 
@@ -1116,7 +1168,7 @@ if st.session_state.role == "SUP":
                         c4.metric("Pengawas Peperiksaan", counts.get("Pengawas Peperiksaan", 0), delta=f"Perlu {total_kelas_alert if 'total_kelas_alert' in locals() else 6}")
                     except: pass
                     st.dataframe(df_cad, use_container_width=True)
-                    st.download_button("ðŸ“¥ Export Cadangan", to_excel(df_cad), file_name=f"cadangan_{kod}.xlsx")
+                    st.download_button("📥 Export Cadangan", to_excel(df_cad), file_name=f"cadangan_{kod}.xlsx")
 
         elif menu == "hantar":
             st.header(f"Hantar Cadangan ke PPD {info.get('kod_ppd', 'BA')}")
@@ -1146,20 +1198,20 @@ if st.session_state.role == "SUP":
                 
                 tak_lengkap = sasaran[_kosong("POSKOD_RUMAH") | _kosong("ALAMAT_RUMAH") | _kosong("TELEFON_GURU")]
                 if bil_baru and not tak_lengkap.empty:
-                    st.warning(f"âš ï¸ {len(tak_lengkap)} cadangan belum lengkap (POSKOD / ALAMAT / TELEFON kosong) - PPD tak boleh jana ikut terdekat. Sila lengkapkan di Senarai Guru > Edit. Contoh: " + ", ".join(tak_lengkap["NAMA_GURU"].astype(str).head(3)))
+                    st.warning(f"⚠️ {len(tak_lengkap)} cadangan belum lengkap (POSKOD / ALAMAT / TELEFON kosong) - PPD tak boleh jana ikut terdekat. Sila lengkapkan di Senarai Guru > Edit. Contoh: " + ", ".join(tak_lengkap["NAMA_GURU"].astype(str).head(3)))
                 elif bil_baru:
-                    st.success(f"âœ… {bil_baru} cadangan ada POSKOD, ALAMAT & TELEFON lengkap.")
+                    st.success(f"✅ {bil_baru} cadangan ada POSKOD, ALAMAT & TELEFON lengkap.")
                 
                 col_hantar, col_batal, col_reset = st.columns(3)
                 with col_hantar:
                     if bil_baru == 0: st.info("Semua cadangan sudah dihantar / lulus.")
-                    if st.button(f"ðŸ“¤ Hantar {bil_baru} Cadangan ke PPD", type="primary", use_container_width=True, disabled=bil_baru == 0, key="btn_hantar_ppd"):
+                    if st.button(f"📤 Hantar {bil_baru} Cadangan ke PPD", type="primary", use_container_width=True, disabled=bil_baru == 0, key="btn_hantar_ppd"):
                         ids = [_id_py(x) for x in sasaran["id"].tolist()] if "id" in sasaran.columns else []
                         if not ids:
                             st.error("Tiada ID cadangan - data tak lengkap, hubungi admin.")
                         else:
                             berjaya, gagal = hantar_ke_ppd(ids, kod_ppd_sup)
-                            if berjaya: flash("success", f"âœ… Berjaya hantar {berjaya} cadangan ke PPD {kod_ppd_sup} - {PPD_MAP.get(kod_ppd_sup, '')}!")
+                            if berjaya: flash("success", f"✅ Berjaya hantar {berjaya} cadangan ke PPD {kod_ppd_sup} - {PPD_MAP.get(kod_ppd_sup, '')}!")
                             if gagal: flash("error", "Sebahagian gagal dihantar: " + "; ".join(gagal[:3]))
                             st.rerun()
                 
@@ -1170,7 +1222,7 @@ if st.session_state.role == "SUP":
                         for _, r_ in df_cad.iterrows():
                             label_batal[_id_py(r_["id"])] = f"{r_.get('NAMA_GURU', '')} | {r_.get('IC_GURU', '')} | {r_.get('STATUS', '')}"
                     batal_ids = st.multiselect("Pilih untuk batal", list(label_batal.keys()), format_func=lambda x: label_batal.get(x, str(x)))
-                    if st.button("âŒ Batal Terpilih", use_container_width=True, key="btn_batal_cad"):
+                    if st.button("❌ Batal Terpilih", use_container_width=True, key="btn_batal_cad"):
                         if not batal_ids: st.warning("Pilih sekurang-kurangnya 1")
                         else:
                             berjaya_b = 0
@@ -1183,13 +1235,13 @@ if st.session_state.role == "SUP":
                                     berjaya_b += 1
                                 except Exception as e:
                                     flash("error", f"Gagal batal {label_batal.get(bid, bid)}: {e}")
-                            if berjaya_b: flash("success", f"âœ… Berjaya batal {berjaya_b} cadangan!")
+                            if berjaya_b: flash("success", f"✅ Berjaya batal {berjaya_b} cadangan!")
                             st.rerun()
                 
                 with col_reset:
                     st.markdown("**Reset Semua (Clear & Isi Semula)**")
                     sah_reset = st.checkbox("Ya, padam semua cadangan (kecuali yang sudah LULUS)", key="sah_reset_cad")
-                    if st.button("ðŸ”„ Reset Semua Cadangan", use_container_width=True, type="secondary", disabled=not sah_reset, key="btn_reset_cad"):
+                    if st.button("🔄 Reset Semua Cadangan", use_container_width=True, type="secondary", disabled=not sah_reset, key="btn_reset_cad"):
                         count_del = 0
                         for _, row in df_cad.iterrows():
                             if "LULUS" in str(row.get("STATUS", "")).upper(): continue
@@ -1198,11 +1250,158 @@ if st.session_state.role == "SUP":
                                 count_del += 1
                             except Exception as e:
                                 flash("error", f"Gagal padam {row.get('NAMA_GURU', '')}: {e}")
-                        flash("success", f"âœ… Reset {count_del} cadangan!")
+                        flash("success", f"✅ Reset {count_del} cadangan!")
                         st.rerun()
                 
                 st.markdown("---")
-                st.caption("â„¹ï¸ Cadangan yang sudah LULUS PPD tidak akan diubah atau dipadam oleh butang di atas.")
+                st.caption("ℹ️ Cadangan yang sudah LULUS PPD tidak akan diubah atau dipadam oleh butang di atas.")
+
+        elif menu == "petugas":
+            st.markdown(f'<div style="background: linear-gradient(135deg, #e65100 0%, #ef6c00 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">👥 Petugas Yang Akan Hadir Bertugas Di Sekolah Saya - {kod}</h2><p style="margin:5px 0 0 0; color:#ffe0b2;">Pilih pusat yang ada di sekolah anda, lihat senarai petugas yang akan hadir bertugas</p></div>', unsafe_allow_html=True)
+            
+            # Get pusat di sekolah ini
+            try:
+                df_pusat_all = get_pusat_df()
+                pusat_di_sekolah = []
+                for _, r in df_pusat_all.iterrows():
+                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                    if isinstance(d, str):
+                        try: d = json.loads(d)
+                        except: d = {}
+                    ks_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or r.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH") or "").upper().strip()
+                    if ks_tuan == kod.upper().strip():
+                        no_p = str(r.get("no_pusat") or r.get("kod_pusat") or r.get("NO_PUSAT") or d.get("NO_PUSAT") or "").upper().strip()
+                        nama_p = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                        calon = r.get("jumlah_calon") or d.get("JUMLAH_CALON") or 0
+                        try: calon_i = int(float(str(calon) or 0))
+                        except: calon_i = 0
+                        pusat_di_sekolah.append({"NO_PUSAT": no_p, "NAMA_PUSAT": nama_p, "CALON": calon_i})
+            except Exception as e:
+                st.error(f"Error load pusat: {e}")
+                pusat_di_sekolah = []
+            
+            if not pusat_di_sekolah:
+                st.warning(f"Tiada pusat dijumpai untuk sekolah {kod}. Hubungi PPD.")
+            else:
+                st.success(f"Sekolah anda {kod} - {info.get('nama_sekolah','')} ada {len(pusat_di_sekolah)} pusat:")
+                for p in pusat_di_sekolah:
+                    st.markdown(f"- **{p['NO_PUSAT']}** - {p['NAMA_PUSAT']} ({p['CALON']} calon)")
+                
+                st.markdown("---")
+                st.markdown("### Pilih Pusat Untuk Lihat Petugas Hadir")
+                pilih_pusat_sup = st.selectbox(
+                    "Pilih Pusat Di Sekolah Anda",
+                    [p["NO_PUSAT"] for p in pusat_di_sekolah],
+                    format_func=lambda x: f"{x} - {next((p['NAMA_PUSAT'] for p in pusat_di_sekolah if p['NO_PUSAT']==x), '')[:40]}",
+                    key="pilih_pusat_sup_petugas"
+                )
+                
+                if pilih_pusat_sup:
+                    # Get petugas assigned to this pusat
+                    try:
+                        res_cad = supa.table("cadangan_sup").select("*").eq("kod_pusat", pilih_pusat_sup).limit(5000).execute()
+                        df_petugas = pd.DataFrame(res_cad.data or [])
+                        if df_petugas.empty:
+                            # Try alternative column
+                            res_cad2 = supa.table("cadangan_sup").select("*").ilike("kod_pusat", f"%{pilih_pusat_sup}%").limit(5000).execute()
+                            df_petugas = pd.DataFrame(res_cad2.data or [])
+                    except Exception as e:
+                        st.error(f"Error load petugas: {e}")
+                        df_petugas = pd.DataFrame()
+                    
+                    if df_petugas.empty:
+                        st.info(f"Belum ada petugas dilantik untuk pusat {pilih_pusat_sup}")
+                    else:
+                        st.markdown(f"#### 👥 {len(df_petugas)} Petugas Akan Hadir Bertugas di {pilih_pusat_sup}")
+                        
+                        # Group by jawatan
+                        kp_list = df_petugas[df_petugas["jawatan_cadangan"].astype(str).str.contains("Ketua Pengawas", case=False, na=False) & ~df_petugas["jawatan_cadangan"].astype(str).str.contains("Timbalan", case=False, na=False)] if "jawatan_cadangan" in df_petugas.columns else pd.DataFrame()
+                        tkp_list = df_petugas[df_petugas["jawatan_cadangan"].astype(str).str.contains("Timbalan", case=False, na=False)] if "jawatan_cadangan" in df_petugas.columns else pd.DataFrame()
+                        peng_list = df_petugas[~df_petugas["jawatan_cadangan"].astype(str).str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)] if "jawatan_cadangan" in df_petugas.columns else df_petugas
+                        
+                        col_kp, col_tkp, col_peng = st.columns(3)
+                        with col_kp:
+                            st.metric("Ketua Pengawas", len(kp_list))
+                        with col_tkp:
+                            st.metric("Timbalan KP", len(tkp_list))
+                        with col_peng:
+                            st.metric("Pengawas", len(peng_list))
+                        
+                        # Detailed list
+                        rows_petugas = []
+                        for _, r in df_petugas.iterrows():
+                            rows_petugas.append({
+                                "NAMA GURU": r.get("nama_guru", "") or r.get("NAMA_GURU", ""),
+                                "IC": r.get("ic_guru", "") or r.get("IC_GURU", ""),
+                                "JAWATAN": r.get("jawatan_cadangan", "") or r.get("JAWATAN_CADANGAN", ""),
+                                "SEKOLAH ASAL": r.get("kod_sekolah_asal", "") or r.get("KOD_SEKOLAH_ASAL", ""),
+                                "NAMA SEKOLAH ASAL": str(r.get("nama_sekolah_asal", "") or r.get("NAMA_SEKOLAH_ASAL", ""))[:30],
+                                "NO SURAT": r.get("no_surat", "") or "",
+                                "STATUS": r.get("status", "") or ""
+                            })
+                        df_display_petugas = pd.DataFrame(rows_petugas)
+                        st.dataframe(df_display_petugas, use_container_width=True, hide_index=True)
+                        st.download_button(f"Export Petugas {pilih_pusat_sup}", to_excel(df_display_petugas), file_name=f"petugas_{pilih_pusat_sup}_{kod}.xlsx", use_container_width=True)
+
+        elif menu == "surat":
+            st.markdown(f'<div style="background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">📄 Surat Lantikan Saya - {kod}</h2><p style="margin:5px 0 0 0; color:#e1bee7;">Surat lantikan petugas dari sekolah anda yang telah diluluskan PPD</p></div>', unsafe_allow_html=True)
+            
+            df_cad_sup = get_cadangan_df(kod_sekolah=kod)
+            if df_cad_sup.empty:
+                st.warning("Belum ada cadangan")
+            else:
+                # Hanya yang sudah lulus dan ada no surat
+                def has_no_surat(row):
+                    ns = str(row.get("no_surat") or row.get("NO_SURAT") or "").strip()
+                    return ns != "" and ns.lower() not in ("none", "null", "nan")
+                
+                df_lulus = df_cad_sup[df_cad_sup.apply(has_no_surat, axis=1)].copy()
+                if df_lulus.empty:
+                    st.info("Belum ada surat lantikan. PPD belum luluskan atau belum jana no surat. Sila tunggu PPD luluskan di menu Kelulusan.")
+                    # Show all cadangan status
+                    st.markdown("### Status Cadangan Sekolah Anda")
+                    st.dataframe(df_cad_sup, use_container_width=True)
+                else:
+                    st.success(f"Ada {len(df_lulus)} surat lantikan untuk sekolah {kod}")
+                    
+                    for _, r in df_lulus.iterrows():
+                        nama = r.get("NAMA_GURU", "") or r.get("nama_guru", "")
+                        ic = r.get("IC_GURU", "") or r.get("ic_guru", "")
+                        jawatan = r.get("JAWATAN_CADANGAN", "") or r.get("jawatan_cadangan", "")
+                        pusat = r.get("kod_pusat", "") or r.get("KOD_PUSAT", "")
+                        no_surat = r.get("no_surat", "") or ""
+                        
+                        with st.expander(f"{nama} - {jawatan} - {pusat} - {no_surat}"):
+                            # Generate individual surat HTML
+                            try:
+                                pusat_nama = ""
+                                try:
+                                    df_pusat = get_pusat_df()
+                                    for _, pr in df_pusat.iterrows():
+                                        d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
+                                        if isinstance(d, str):
+                                            try: d = json.loads(d)
+                                            except: d = {}
+                                        no_p = str(pr.get("no_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                        if no_p == pusat.upper():
+                                            pusat_nama = pr.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                                            break
+                                except:
+                                    pusat_nama = ""
+                                
+                                html_surat = generate_surat_html(
+                                    nama, ic, jawatan,
+                                    r.get("KOD_SEKOLAH_ASAL", "") or kod,
+                                    r.get("NAMA_SEKOLAH_ASAL", "") or info.get('nama_sekolah',''),
+                                    pusat, pusat_nama, no_surat,
+                                    r.get("KOD_PPD", "") or info.get('kod_ppd',''),
+                                    PPD_MAP.get(r.get("KOD_PPD", "") or info.get('kod_ppd',''), ""),
+                                    datetime.date.today().strftime('%d %B %Y')
+                                )
+                                st.components.v1.html(html_surat, height=500, scrolling=True)
+                                st.download_button(f"Download Surat {nama}", data=html_surat.encode('utf-8'), file_name=f"Surat_{nama.replace(' ', '_')}_{no_surat.replace('/', '_')}.html", mime="text/html", use_container_width=True, key=f"dl_{r.get('id','')}")
+                            except Exception as e:
+                                st.error(f"Error generate surat: {e}")
 
 # ================= ROLE: PPD =================
 elif st.session_state.role == "PPD":
@@ -1211,13 +1410,13 @@ elif st.session_state.role == "PPD":
     col_menu, col_main = st.columns([1, 3.2], gap="large")
     with col_menu:
         st.markdown('<div class="custom-sidebar">', unsafe_allow_html=True)
-        st.markdown(f"### ðŸ¢ PPD {kod_ppd}")
+        st.markdown(f"### 🏢 PPD {kod_ppd}")
         st.caption(f"{PPD_MAP.get(kod_ppd, '')}")
         add_refresh_button()
         
-        MENU_PPD = [('dashboard', 'ðŸ“Š Dashboard PPD'), ('sekolah', 'ðŸ« Sekolah dalam PPD'), ('pusat', 'ðŸ« Pusat di PPD'), 
-                    ('jana', 'ðŸš€ Jana Keseluruhan'), ('hasil', 'ðŸ“‹ Hasil Janaan'), ('manual', 'ðŸ“Œ Penempatan Manual'), ('cadangan', 'ðŸ“‹ Cadangan SUP'), ('kelulusan', 'âœ… Kelulusan'), 
-                    ('export', 'ðŸ“¥ Export'), ('keluar', 'ðŸšª Log Keluar')]
+        MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), 
+                    ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('kelulusan', '✅ Kelulusan'), 
+                    ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get, label_visibility="collapsed", key="ppd_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1230,12 +1429,12 @@ elif st.session_state.role == "PPD":
             st.markdown(f"""
             <div style="background: #0d47a1; padding:20px; border-radius:12px; color:white; border: 2px solid #002171; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:15px;">
-                    <div style="font-size:48px;">ðŸ¢</div>
+                    <div style="font-size:48px;">🏢</div>
                     <div>
                         <h2 style="margin:0; color:white; font-size:28px;">PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
                         <p style="margin:5px 0 0 0; color:#bbdefb; font-size:14px;">Dashboard Pelantikan SPM 2026 - Senarai Pusat & Keperluan Petugas</p>
                     </div>
-                    <div style="margin-left:auto; font-size:48px;">ðŸ“š</div>
+                    <div style="margin-left:auto; font-size:48px;">📚</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1299,7 +1498,7 @@ elif st.session_state.role == "PPD":
                 df_pusat_ppd = pd.DataFrame(pusat_list)
                 
                 if df_pusat_ppd.empty:
-                    st.warning(f"âš ï¸ Tiada pusat dijumpai untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}. Sila import pusat di JPN > Pusat Master")
+                    st.warning(f"⚠️ Tiada pusat dijumpai untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}. Sila import pusat di JPN > Pusat Master")
                 else:
                     # Summary metrics
                     total_pusat = len(df_pusat_ppd)
@@ -1313,15 +1512,15 @@ elif st.session_state.role == "PPD":
                     if total_dicadangkan == 0:
                         color_total = "#d32f2f"
                         bg_total = "#ffebee"
-                        icon_total = "ðŸ”´"
+                        icon_total = "🔴"
                     elif total_dicadangkan < total_sepatutnya:
                         color_total = "#f57f17"
                         bg_total = "#fff8e1"
-                        icon_total = "ðŸŸ¡"
+                        icon_total = "🟡"
                     else:
                         color_total = "#2e7d32"
                         bg_total = "#e8f5e9"
-                        icon_total = "ðŸŸ¢"
+                        icon_total = "🟢"
                     
                     st.markdown(f"""
                     <div style="background:{bg_total}; border:2px solid {color_total}; border-radius:12px; padding:16px; margin-bottom:20px;">
@@ -1338,17 +1537,17 @@ elif st.session_state.role == "PPD":
                     """, unsafe_allow_html=True)
                     
                     c1, c2, c3, c4, c5, c6 = st.columns(6)
-                    c1.metric("ðŸ« Pusat", total_pusat)
-                    c2.metric("ðŸ‘¨â€ðŸŽ“ Calon", total_calon)
-                    c3.metric("ðŸ« Kelas", total_kelas)
-                    c4.metric("ðŸ“‹ Perlu", total_sepatutnya)
-                    c5.metric("âœ… Dicadangkan", total_dicadangkan)
-                    c6.metric("âš ï¸ Kurang", kekurangan if kekurangan > 0 else 0, delta=f"{'Cukup' if kekurangan <=0 else f'-{kekurangan}'}", delta_color="normal" if kekurangan <=0 else "inverse")
+                    c1.metric("🏫 Pusat", total_pusat)
+                    c2.metric("👨‍🎓 Calon", total_calon)
+                    c3.metric("🏫 Kelas", total_kelas)
+                    c4.metric("📋 Perlu", total_sepatutnya)
+                    c5.metric("✅ Dicadangkan", total_dicadangkan)
+                    c6.metric("⚠️ Kurang", kekurangan if kekurangan > 0 else 0, delta=f"{'Cukup' if kekurangan <=0 else f'-{kekurangan}'}", delta_color="normal" if kekurangan <=0 else "inverse")
                     
                     st.markdown("---")
-                    st.markdown("### ðŸ“ Senarai Pusat Peperiksaan - Status Petugas (PPD Boleh Edit)")
-                    st.caption("ðŸ”´ Merah = Belum Ada (0) | ðŸŸ¡ Kuning = Belum Cukup (< sepatutnya) | ðŸŸ¢ Hijau = Cukup / Lebih (>= sepatutnya) | âœï¸ PPD boleh edit BIL CALON, KELAS, PERLU ikut keperluan")
-                    st.info("ðŸ’¡ **Cara Edit:** Klik pada angka CALON / KELAS / PERLU dalam table di bawah, tukar ikut keperluan, kemudian tekan **ðŸ’¾ Simpan Perubahan**")
+                    st.markdown("### 📍 Senarai Pusat Peperiksaan - Status Petugas (PPD Boleh Edit)")
+                    st.caption("🔴 Merah = Belum Ada (0) | 🟡 Kuning = Belum Cukup (< sepatutnya) | 🟢 Hijau = Cukup / Lebih (>= sepatutnya) | ✏️ PPD boleh edit BIL CALON, KELAS, PERLU ikut keperluan")
+                    st.info("💡 **Cara Edit:** Klik pada angka CALON / KELAS / PERLU dalam table di bawah, tukar ikut keperluan, kemudian tekan **💾 Simpan Perubahan**")
                     
                     # Build editable table
                     # Prepare data for data_editor with BIL, editable columns
@@ -1360,13 +1559,13 @@ elif st.session_state.role == "PPD":
                         sep = p_data["SEPATUTNYA"]
                         
                         if dic == 0:
-                            status_icon = "ðŸ”´"
+                            status_icon = "🔴"
                             status_text = "Belum Ada"
                         elif dic < sep:
-                            status_icon = "ðŸŸ¡"
+                            status_icon = "🟡"
                             status_text = f"Belum Cukup"
                         else:
-                            status_icon = "ðŸŸ¢"
+                            status_icon = "🟢"
                             status_text = f"Cukup"
                         
                         editable_rows.append({
@@ -1385,7 +1584,7 @@ elif st.session_state.role == "PPD":
                     df_editable = pd.DataFrame(editable_rows)
                     
                     # Data editor - PPD boleh edit BIL_CALON, KELAS, PERLU_K9
-                    st.markdown("#### âœï¸ Edit Data Pusat (PPD)")
+                    st.markdown("#### ✏️ Edit Data Pusat (PPD)")
                     edited_df = st.data_editor(
                         df_editable,
                         use_container_width=True,
@@ -1410,7 +1609,7 @@ elif st.session_state.role == "PPD":
                     # Show save button
                     col_save, col_reset, col_info = st.columns([1, 1, 2])
                     with col_save:
-                        if st.button("ðŸ’¾ Simpan Perubahan Pusat", type="primary", use_container_width=True, key=f"save_pusat_{kod_ppd}"):
+                        if st.button("💾 Simpan Perubahan Pusat", type="primary", use_container_width=True, key=f"save_pusat_{kod_ppd}"):
                             try:
                                 # Update pusat_master table
                                 updated_count = 0
@@ -1453,7 +1652,7 @@ elif st.session_state.role == "PPD":
                                                     st.error(f"Gagal update {no_pusat}: {e}")
                                             break
                                 
-                                st.success(f"âœ… Berjaya simpan {updated_count} pusat! Data calon, kelas, perlu telah dikemaskini.")
+                                st.success(f"✅ Berjaya simpan {updated_count} pusat! Data calon, kelas, perlu telah dikemaskini.")
                                 st.balloons()
                                 st.rerun()
                             except Exception as e:
@@ -1462,7 +1661,7 @@ elif st.session_state.role == "PPD":
                                 st.code(traceback.format_exc())
                     
                     with col_reset:
-                        if st.button("ðŸ”„ Reset Auto (Kira Semula)", use_container_width=True, key=f"reset_auto_{kod_ppd}"):
+                        if st.button("🔄 Reset Auto (Kira Semula)", use_container_width=True, key=f"reset_auto_{kod_ppd}"):
                             st.info("Auto kira semula: KELAS = CEIL(CALON/20), PERLU = KELAS+9")
                             st.rerun()
                     
@@ -1472,7 +1671,7 @@ elif st.session_state.role == "PPD":
                     st.markdown("---")
                     
                     # Also show colored HTML table for quick view
-                    st.markdown("#### ðŸ“Š Paparan Status Berwarna")
+                    st.markdown("#### 📊 Paparan Status Berwarna")
                     # Create HTML table with colors
                     html_table = """
                     <style>
@@ -1485,9 +1684,9 @@ elif st.session_state.role == "PPD":
                     .badge-hijau {background:#c8e6c9 !important; color:#1b5e20 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #2e7d32;}
                     .edit-hint {background:#e3f2fd; border-left:4px solid #1976d2; padding:6px 10px; margin:4px 0; font-size:11px;}
                     </style>
-                    <div class="edit-hint">âœï¸ <b>PPD boleh edit:</b> BIL CALON, KELAS, PERLU (K+9) ikut keperluan sebenar - klik angka dalam table atas untuk edit</div>
+                    <div class="edit-hint">✏️ <b>PPD boleh edit:</b> BIL CALON, KELAS, PERLU (K+9) ikut keperluan sebenar - klik angka dalam table atas untuk edit</div>
                     <table class="ppd-table">
-                    <tr><th>BIL</th><th>NO PUSAT</th><th>NAMA PUSAT</th><th>KOD TUAN</th><th>BIL CALON âœï¸</th><th>KELAS âœï¸</th><th>PERLU (K+9) âœï¸</th><th>DICADANG</th><th>STATUS</th></tr>
+                    <tr><th>BIL</th><th>NO PUSAT</th><th>NAMA PUSAT</th><th>KOD TUAN</th><th>BIL CALON ✏️</th><th>KELAS ✏️</th><th>PERLU (K+9) ✏️</th><th>DICADANG</th><th>STATUS</th></tr>
                     """
                     
                     for _, r in edited_df.iterrows():
@@ -1495,16 +1694,16 @@ elif st.session_state.role == "PPD":
                         sep = r["PERLU_K9"]
                         if dic == 0:
                             badge_class = "badge-merah"
-                            badge_text = f"ðŸ”´ {dic}"
-                            status_badge = f'<span class="{badge_class}">ðŸ”´ Belum Ada</span>'
+                            badge_text = f"🔴 {dic}"
+                            status_badge = f'<span class="{badge_class}">🔴 Belum Ada</span>'
                         elif dic < sep:
                             badge_class = "badge-kuning"
-                            badge_text = f"ðŸŸ¡ {dic}"
-                            status_badge = f'<span class="{badge_class}">ðŸŸ¡ Belum Cukup</span>'
+                            badge_text = f"🟡 {dic}"
+                            status_badge = f'<span class="{badge_class}">🟡 Belum Cukup</span>'
                         else:
                             badge_class = "badge-hijau"
-                            badge_text = f"ðŸŸ¢ {dic}"
-                            status_badge = f'<span class="{badge_class}">ðŸŸ¢ Cukup</span>'
+                            badge_text = f"🟢 {dic}"
+                            status_badge = f'<span class="{badge_class}">🟢 Cukup</span>'
                         
                         html_table += f"<tr><td><b>{r['BIL']}</b></td><td><b>{r['NO_PUSAT']}</b></td><td>{r['NAMA_PUSAT']}</td><td>{r['KOD_TUAN']}</td><td style='text-align:center; background:#fff9c4; font-weight:700; border:1px dashed #f57f17;'>{r['BIL_CALON']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700; border:1px dashed #1976d2;'>{r['KELAS']}</td><td style='text-align:center; background:#fce4ec; font-weight:700; border:1px dashed #d32f2f;'>{r['PERLU_K9']}</td><td style='text-align:center;'><span class='{badge_class}'>{badge_text}</span></td><td>{status_badge}</td></tr>"
                     
@@ -1515,13 +1714,13 @@ elif st.session_state.role == "PPD":
                     st.markdown("---")
                     
                     # Export
-                    with st.expander("ðŸ“Š Export Data", expanded=False):
+                    with st.expander("📊 Export Data", expanded=False):
                         st.dataframe(df_pusat_ppd.sort_values("NO_PUSAT"), use_container_width=True, hide_index=True)
-                        st.download_button(f"ðŸ“¥ Export Dashboard PPD {kod_ppd} (Excel)", to_excel(df_pusat_ppd), file_name=f"Dashboard_PPD_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
+                        st.download_button(f"📥 Export Dashboard PPD {kod_ppd} (Excel)", to_excel(df_pusat_ppd), file_name=f"Dashboard_PPD_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
                     
                     # Senarai sekolah dalam PPD
                     st.markdown("---")
-                    st.markdown(f"### ðŸ« Senarai Sekolah dalam PPD {kod_ppd} ({len(df_sekolah_list)} sekolah)")
+                    st.markdown(f"### 🏫 Senarai Sekolah dalam PPD {kod_ppd} ({len(df_sekolah_list)} sekolah)")
                     if not df_sekolah_list.empty:
                         # Kira cadangan per sekolah
                         sekolah_cad_count = {}
@@ -1538,16 +1737,16 @@ elif st.session_state.role == "PPD":
                             cad = sekolah_cad_count.get(k_sek, 0)
                             
                             if cad == 0:
-                                s_icon = "ðŸ”´"
+                                s_icon = "🔴"
                                 s_status = "Belum Cadang"
                             elif cad < 5:
-                                s_icon = "ðŸŸ¡"
+                                s_icon = "🟡"
                                 s_status = f"{cad} dicadang"
                             else:
-                                s_icon = "ðŸŸ¢"
+                                s_icon = "🟢"
                                 s_status = f"{cad} dicadang"
                             
-                            sekolah_rows.append({"Logo": "ðŸ«", "KOD_SEKOLAH": k_sek, "NAMA_SEKOLAH": n_sek[:35], "DICADANGKAN": cad, "STATUS": f"{s_icon} {s_status}"})
+                            sekolah_rows.append({"Logo": "🏫", "KOD_SEKOLAH": k_sek, "NAMA_SEKOLAH": n_sek[:35], "DICADANGKAN": cad, "STATUS": f"{s_icon} {s_status}"})
                         
                         df_sekolah_display = pd.DataFrame(sekolah_rows).sort_values("KOD_SEKOLAH")
                         st.dataframe(df_sekolah_display, use_container_width=True, hide_index=True)
@@ -1619,7 +1818,7 @@ elif st.session_state.role == "PPD":
             st.markdown(f"""
             <div style="background: #0d47a1; padding:20px; border-radius:12px; color:white; border: 2px solid #002171; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:15px;">
-                    <div style="font-size:48px;">ðŸš€</div>
+                    <div style="font-size:48px;">🚀</div>
                     <div>
                         <h2 style="margin:0; color:white; font-size:24px;">Jana Keseluruhan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
                         <p style="margin:5px 0 0 0; color:#bbdefb; font-size:13px;">Paparan data dari SUP, kemudian jana petugas ke pusat peperiksaan</p>
@@ -1632,10 +1831,10 @@ elif st.session_state.role == "PPD":
             df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
             
             if df_pusat_raw.empty:
-                st.warning("âš ï¸ Tiada pusat_master - import dulu di JPN > Pusat Master")
+                st.warning("⚠️ Tiada pusat_master - import dulu di JPN > Pusat Master")
                 st.stop()
             if df_cad_all.empty:
-                st.warning(f"âš ï¸ Belum ada cadangan dari SUP untuk PPD {kod_ppd}. Sekolah perlu cadang dulu di SUP > Cadangan Lantikan > Hantar ke PPD")
+                st.warning(f"⚠️ Belum ada cadangan dari SUP untuk PPD {kod_ppd}. Sekolah perlu cadang dulu di SUP > Cadangan Lantikan > Hantar ke PPD")
                 st.stop()
             
             # Parse pusat
@@ -1666,8 +1865,8 @@ elif st.session_state.role == "PPD":
                 st.stop()
             
             # ===== STEP 1: PAPARKAN DATA DARI SUP =====
-            st.markdown("### ðŸ“‹ STEP 1: Data Dari SUP (Cadangan Guru)")
-            st.info(f"ðŸ“¥ Ada {len(df_cad_all)} cadangan guru dari SUP untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}")
+            st.markdown("### 📋 STEP 1: Data Dari SUP (Cadangan Guru)")
+            st.info(f"📥 Ada {len(df_cad_all)} cadangan guru dari SUP untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}")
             
             # Show summary per sekolah
             cad_per_sekolah = {}
@@ -1677,19 +1876,19 @@ elif st.session_state.role == "PPD":
                     cad_per_sekolah[k_sek] = cad_per_sekolah.get(k_sek, 0) + 1
             
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("ðŸ“š Sekolah Mencadang", len(cad_per_sekolah))
-            col2.metric("ðŸ‘¨â€ðŸ« Guru Dicadang", len(df_cad_all))
-            col3.metric("ðŸ« Pusat", len(df_pusat_ppd))
-            col4.metric("ðŸ“‹ Perlu Petugas", int(df_pusat_ppd["PETUGAS"].sum()))
+            col1.metric("📚 Sekolah Mencadang", len(cad_per_sekolah))
+            col2.metric("👨‍🏫 Guru Dicadang", len(df_cad_all))
+            col3.metric("🏫 Pusat", len(df_pusat_ppd))
+            col4.metric("📋 Perlu Petugas", int(df_pusat_ppd["PETUGAS"].sum()))
             
-            with st.expander(f"ðŸ“‹ Lihat {len(df_cad_all)} Cadangan Dari SUP (Data Lengkap)", expanded=False):
+            with st.expander(f"📋 Lihat {len(df_cad_all)} Cadangan Dari SUP (Data Lengkap)", expanded=False):
                 display_cols = [c for c in ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "TELEFON_GURU", "JAWATAN_CADANGAN", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "NO_PUSAT_ASAL", "STATUS"] if c in df_cad_all.columns]
                 st.dataframe(df_cad_all[display_cols] if display_cols else df_cad_all, use_container_width=True, hide_index=True)
             
             st.markdown("---")
             
             # ===== STEP 2: BUTANG JANA =====
-            st.markdown("### ðŸš€ STEP 2: Jana Penempatan")
+            st.markdown("### 🚀 STEP 2: Jana Penempatan")
             st.caption("Pilih kaedah janaan")
             
             col_jana1, col_jana2 = st.columns(2)
@@ -1697,31 +1896,43 @@ elif st.session_state.role == "PPD":
             with col_jana1:
                 st.markdown("""
                 <div style="background:#e8f5e9; border:2px solid #2e7d32; border-radius:10px; padding:15px; text-align:center;">
-                    <div style="font-size:32px;">ðŸŒ</div>
+                    <div style="font-size:32px;">🌍</div>
                     <div style="font-weight:800; color:#1b5e20; margin:8px 0;">JANA KESELURUHAN</div>
                     <div style="font-size:12px; color:#424242;">Jana semua guru ke semua pusat dalam PPD secara auto, elak sekolah sendiri</div>
                 </div>
                 """, unsafe_allow_html=True)
-                btn_jana_all = st.button("ðŸš€ JANA KESELURUHAN - Semua Pusat", type="primary", use_container_width=True, key="btn_jana_all")
+                btn_jana_all = st.button("🚀 JANA KESELURUHAN - Semua Pusat", type="primary", use_container_width=True, key="btn_jana_all")
             
             with col_jana2:
                 st.markdown("""
                 <div style="background:#e3f2fd; border:2px solid #1565c0; border-radius:10px; padding:15px; text-align:center;">
-                    <div style="font-size:32px;">ðŸ“</div>
+                    <div style="font-size:32px;">📍</div>
                     <div style="font-weight:800; color:#0d47a1; margin:8px 0;">JANA IKUT PUSAT</div>
                     <div style="font-size:12px; color:#424242;">Pilih satu pusat, jana guru untuk pusat tersebut sahaja</div>
                 </div>
                 """, unsafe_allow_html=True)
                 # Pilih pusat untuk jana ikut pusat
                 pilihan_pusat_jana = st.selectbox("Pilih Pusat untuk Jana", df_pusat_ppd["NO_PUSAT"].tolist(), format_func=lambda x: f"{x} - {df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x]['NAMA_PUSAT'].values[0][:25] if not df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x].empty else x}", key="pilih_pusat_jana")
-                btn_jana_pusat = st.button(f"ðŸ“ JANA UNTUK {pilihan_pusat_jana}", use_container_width=True, key="btn_jana_pusat")
+                btn_jana_pusat = st.button(f"📍 JANA UNTUK {pilihan_pusat_jana}", use_container_width=True, key="btn_jana_pusat")
             
-            # Logic Jana Keseluruhan - STRICT MAX 3 + 1 KP 1 TKP
+            # Logic Jana Keseluruhan - STRICT MAX 3 + 1 KP 1 TKP + ANTI DOUBLE LANTIK
             if btn_jana_all or "jana_all_result" in st.session_state:
                 if btn_jana_all:
                     import random
                     assignments = []
-                    df_pool = df_cad_all.copy()
+                    # ✅ QUERY ANTI DOUBLE LANTIK: Hanya guru BELUM dilantik
+                    df_pool_all = df_cad_all.copy()
+                    def is_belum_lantik(row):
+                        kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or row.get("KOD_PUSAT_TUGAS") or row.get("kod_pusat_tugas") or "").strip()
+                        return kp == "" or kp.lower() in ("none", "null", "nan", "nat", "-")
+                    df_pool = df_pool_all[df_pool_all.apply(is_belum_lantik, axis=1)].copy()
+                    jumlah_belum = len(df_pool)
+                    jumlah_sudah = len(df_pool_all) - jumlah_belum
+                    if jumlah_sudah > 0:
+                        st.info(f"ℹ️ {jumlah_sudah} guru telah dilantik di Penempatan Manual - tidak akan dijana lagi. {jumlah_belum} guru belum dilantik akan dijana.")
+                    if df_pool.empty:
+                        st.warning("⚠️ Semua guru telah dilantik! Tiada guru belum dilantik untuk dijana. Sila Batal Janaan jika perlu.")
+                        st.stop()
                     pusat_info_map = {}
                     for _, p in df_pusat_ppd.iterrows():
                         pusat_info_map[p["NO_PUSAT"]] = {"KOD_TUAN": str(p.get("KOD_SEKOLAH_TUAN_RUMAH", "") or "").upper().strip(), "NAMA": p.get("NAMA_PUSAT", ""), "PETUGAS": int(p.get("PETUGAS", 0))}
@@ -1808,26 +2019,26 @@ elif st.session_state.role == "PPD":
                 # Display result
                 df_assign = pd.DataFrame(st.session_state.get("jana_all_result", []))
                 if not df_assign.empty:
-                    st.success(f"âœ… Berjaya jana {len(df_assign)} guru ke {len(df_pusat_ppd)} pusat!")
+                    st.success(f"✅ Berjaya jana {len(df_assign)} guru ke {len(df_pusat_ppd)} pusat!")
                     
                     # Summary per pusat
-                    st.markdown("#### ðŸ“Š Ringkasan Per Pusat")
+                    st.markdown("#### 📊 Ringkasan Per Pusat")
                     summary = []
                     for no_pusat in df_pusat_ppd["NO_PUSAT"].tolist():
                         count = len(df_assign[df_assign["NO_PUSAT_TUGAS"] == no_pusat])
                         nama = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat]["NAMA_PUSAT"].values[0] if not df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat].empty else ""
                         perlu = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat]["PETUGAS"].values[0] if not df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat].empty else 0
-                        status = "ðŸŸ¢ Cukup" if count >= perlu else "ðŸŸ¡ Belum Cukup" if count > 0 else "ðŸ”´ Belum Ada"
+                        status = "🟢 Cukup" if count >= perlu else "🟡 Belum Cukup" if count > 0 else "🔴 Belum Ada"
                         summary.append({"NO_PUSAT": no_pusat, "NAMA_PUSAT": nama[:30], "PERLU": perlu, "DIJANA": count, "STATUS": status})
                     
                     st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
                     
-                    st.markdown("#### ðŸ‘¥ Senarai Penempatan (Jana Keseluruhan)")
+                    st.markdown("#### 👥 Senarai Penempatan (Jana Keseluruhan)")
                     st.dataframe(df_assign, use_container_width=True, hide_index=True)
                     
                     col_save, col_clear = st.columns(2)
                     with col_save:
-                        if st.button("ðŸ’¾ Simpan Hasil Janaan Ke DB", type="primary", use_container_width=True, key="save_jana_all"):
+                        if st.button("💾 Simpan Hasil Janaan Ke DB", type="primary", use_container_width=True, key="save_jana_all"):
                             try:
                                 saved = 0
                                 for _, r in df_assign.iterrows():
@@ -1839,17 +2050,17 @@ elif st.session_state.role == "PPD":
                                         saved += 1
                                     except Exception as e:
                                         st.error(f"Gagal simpan {r['NAMA_GURU']}: {e}")
-                                st.success(f"âœ… Berjaya simpan {saved} penempatan!")
+                                st.success(f"✅ Berjaya simpan {saved} penempatan!")
                                 st.balloons()
                             except Exception as e:
                                 st.error(f"Error simpan: {e}")
                     with col_clear:
-                        if st.button("ðŸ—‘ï¸ Clear Hasil Janaan", use_container_width=True, key="clear_jana_all"):
+                        if st.button("🗑️ Clear Hasil Janaan", use_container_width=True, key="clear_jana_all"):
                             if "jana_all_result" in st.session_state:
                                 del st.session_state["jana_all_result"]
                             st.rerun()
                     
-                    st.download_button("ðŸ“¥ Export Hasil Jana Keseluruhan", to_excel(df_assign), file_name=f"jana_keseluruhan_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
+                    st.download_button("📥 Export Hasil Jana Keseluruhan", to_excel(df_assign), file_name=f"jana_keseluruhan_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
             
             # Logic Jana Ikut Pusat
             if btn_jana_pusat or ("jana_pusat_result" in st.session_state and st.session_state.get("jana_pusat_no") == pilihan_pusat_jana):
@@ -1894,7 +2105,7 @@ elif st.session_state.role == "PPD":
                     df_available = df_available[df_available["CHECK_MAX3"] == True].copy()
                     df_after = len(df_available)
                     if df_before > df_after:
-                        st.warning(f"ðŸ“‹ {df_before - df_after} guru ditapis - sekolah sudah ada 3 orang di {pilihan_pusat_jana} (Max 3)")
+                        st.warning(f"📋 {df_before - df_after} guru ditapis - sekolah sudah ada 3 orang di {pilihan_pusat_jana} (Max 3)")
                     
                     # Ambil sebanyak yang perlu, prioriti ikut jawatan
                     jawatan_order = {"Ketua Pengawas": 1, "Timbalan Ketua Pengawas": 2, "Penyelia Kawasan": 3, "Pengawas Peperiksaan": 4}
@@ -1934,14 +2145,14 @@ elif st.session_state.role == "PPD":
                 df_assign_pusat = pd.DataFrame(st.session_state.get("jana_pusat_result", []))
                 if not df_assign_pusat.empty and st.session_state.get("jana_pusat_no") == pilihan_pusat_jana:
                     pusat_nama = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == pilihan_pusat_jana]["NAMA_PUSAT"].values[0] if not df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == pilihan_pusat_jana].empty else ""
-                    st.success(f"âœ… Berjaya jana {len(df_assign_pusat)} guru untuk pusat {pilihan_pusat_jana} - {pusat_nama}")
+                    st.success(f"✅ Berjaya jana {len(df_assign_pusat)} guru untuk pusat {pilihan_pusat_jana} - {pusat_nama}")
                     
-                    st.markdown(f"#### ðŸ‘¥ Hasil Jana Untuk Pusat {pilihan_pusat_jana}")
+                    st.markdown(f"#### 👥 Hasil Jana Untuk Pusat {pilihan_pusat_jana}")
                     st.dataframe(df_assign_pusat, use_container_width=True, hide_index=True)
                     
                     col_save2, col_clear2 = st.columns(2)
                     with col_save2:
-                        if st.button(f"ðŸ’¾ Simpan Untuk {pilihan_pusat_jana}", type="primary", use_container_width=True, key="save_jana_pusat"):
+                        if st.button(f"💾 Simpan Untuk {pilihan_pusat_jana}", type="primary", use_container_width=True, key="save_jana_pusat"):
                             try:
                                 saved = 0
                                 for _, r in df_assign_pusat.iterrows():
@@ -1951,17 +2162,17 @@ elif st.session_state.role == "PPD":
                                         saved += 1
                                     except Exception as e:
                                         st.error(f"Gagal: {e}")
-                                st.success(f"âœ… Simpan {saved} untuk {pilihan_pusat_jana}")
+                                st.success(f"✅ Simpan {saved} untuk {pilihan_pusat_jana}")
                                 st.balloons()
                             except Exception as e:
                                 st.error(f"Error: {e}")
                     with col_clear2:
-                        if st.button("ðŸ—‘ï¸ Clear", use_container_width=True, key="clear_jana_pusat"):
+                        if st.button("🗑️ Clear", use_container_width=True, key="clear_jana_pusat"):
                             if "jana_pusat_result" in st.session_state:
                                 del st.session_state["jana_pusat_result"]
                             st.rerun()
                     
-                    st.download_button(f"ðŸ“¥ Export Jana {pilihan_pusat_jana}", to_excel(df_assign_pusat), file_name=f"jana_{pilihan_pusat_jana}_{datetime.date.today()}.xlsx", use_container_width=True)
+                    st.download_button(f"📥 Export Jana {pilihan_pusat_jana}", to_excel(df_assign_pusat), file_name=f"jana_{pilihan_pusat_jana}_{datetime.date.today()}.xlsx", use_container_width=True)
 
         elif menu == "hasil":
             st.header(f"Hasil Janaan - PPD {kod_ppd}")
@@ -1971,14 +2182,14 @@ elif st.session_state.role == "PPD":
             with col_batal1:
                 st.caption(f"PPD {kod_ppd} - Jika ada pelanggaran max 3 (contoh SAM NURUL IMAN 10 orang di BA021), batal dan jana semula")
             with col_batal2:
-                if st.button("ðŸ—‘ï¸ Batal Janaan - Reset 0", type="primary", use_container_width=True, key="batal_janaan_all"):
+                if st.button("🗑️ Batal Janaan - Reset 0", type="primary", use_container_width=True, key="batal_janaan_all"):
                     st.session_state["confirm_batal"] = True
             
             if st.session_state.get("confirm_batal"):
-                st.warning("âš ï¸ Anda pasti nak batal semua janaan? Semua penempatan akan jadi 0 dan perlu Jana Keseluruhan semula!")
+                st.warning("⚠️ Anda pasti nak batal semua janaan? Semua penempatan akan jadi 0 dan perlu Jana Keseluruhan semula!")
                 col_yes, col_no = st.columns(2)
                 with col_yes:
-                    if st.button("âœ… YA, Batal Semua Janaan", type="primary", use_container_width=True, key="confirm_yes_batal"):
+                    if st.button("✅ YA, Batal Semua Janaan", type="primary", use_container_width=True, key="confirm_yes_batal"):
                         try:
                             # Clear DB - set kod_pusat = None untuk PPD ini
                             st.info("Membatalkan semua janaan...")
@@ -1992,14 +2203,14 @@ elif st.session_state.role == "PPD":
                             if "jana_pusat_no" in st.session_state:
                                 del st.session_state["jana_pusat_no"]
                             st.session_state["confirm_batal"] = False
-                            st.success(f"âœ… Berjaya batal semua janaan untuk PPD {kod_ppd}. Hasil janaan sekarang 0. Sila Jana Keseluruhan semula!")
+                            st.success(f"✅ Berjaya batal semua janaan untuk PPD {kod_ppd}. Hasil janaan sekarang 0. Sila Jana Keseluruhan semula!")
                             st.balloons()
                             st.rerun()
                         except Exception as e:
                             st.error(f"Gagal batal: {e}")
                             st.session_state["confirm_batal"] = False
                 with col_no:
-                    if st.button("âŒ Tidak", use_container_width=True, key="confirm_no_batal"):
+                    if st.button("❌ Tidak", use_container_width=True, key="confirm_no_batal"):
                         st.session_state["confirm_batal"] = False
                         st.rerun()
             
@@ -2062,12 +2273,12 @@ elif st.session_state.role == "PPD":
                         sekolah_count_check[kod] = sekolah_count_check.get(kod, 0) + 1
                 pelanggaran = [(k, v) for k, v in sekolah_count_check.items() if v > 3]
                 if pelanggaran:
-                    st.error(f"âŒ PELANGGARAN MAX 3 DI {pilihan_pusat_hasil}:")
+                    st.error(f"❌ PELANGGARAN MAX 3 DI {pilihan_pusat_hasil}:")
                     for kod, cnt in pelanggaran:
                         st.error(f"   - {kod}: {cnt} orang (LANGGAR! Max 3 sahaja) - Contoh: SAM NURUL IMAN 10 orang di BA021")
-                    st.warning("âš ï¸ Sila klik Batal Janaan di atas dan Jana Keseluruhan semula untuk betulkan!")
+                    st.warning("⚠️ Sila klik Batal Janaan di atas dan Jana Keseluruhan semula untuk betulkan!")
                 else:
-                    st.success(f"âœ… Semakan Max 3 OK di {pilihan_pusat_hasil}: Tiada sekolah lebih 3 orang")
+                    st.success(f"✅ Semakan Max 3 OK di {pilihan_pusat_hasil}: Tiada sekolah lebih 3 orang")
             
             st.markdown("---")
             if df_hasil.empty:
@@ -2100,12 +2311,12 @@ elif st.session_state.role == "PPD":
                     st.dataframe(df_j, use_container_width=True, hide_index=True)
             
             st.markdown("---")
-            st.markdown("## ðŸ“Š Hasil Janaan Keseluruhan Untuk Setiap Sekolah")
+            st.markdown("## 📊 Hasil Janaan Keseluruhan Untuk Setiap Sekolah")
             
-            tab1, tab2, tab3 = st.tabs(["ðŸ“‹ Ringkasan Semua Pusat", "ðŸ« Mengikut Sekolah Asal", "ðŸ‘¥ Semua Guru Ditempatkan"])
+            tab1, tab2, tab3 = st.tabs(["📋 Ringkasan Semua Pusat", "🏫 Mengikut Sekolah Asal", "👥 Semua Guru Ditempatkan"])
             
             with tab1:
-                st.markdown("### ðŸ“‹ Ringkasan Keseluruhan - Semua Pusat")
+                st.markdown("### 📋 Ringkasan Keseluruhan - Semua Pusat")
                 ringkas_all = []
                 for _, pr in df_pusat_list.iterrows():
                     no_p = pr["NO_PUSAT"]
@@ -2114,17 +2325,17 @@ elif st.session_state.role == "PPD":
                     kp = sum(1 for v in guru_di_pusat if "Ketua Pengawas" in str(v["row"].get("JAWATAN_CADANGAN") or v["row"].get("JAWATAN") or "") and "Timbalan" not in str(v["row"].get("JAWATAN_CADANGAN") or ""))
                     tkp = sum(1 for v in guru_di_pusat if "Timbalan" in str(v["row"].get("JAWATAN_CADANGAN") or v["row"].get("JAWATAN") or ""))
                     peng = len(guru_di_pusat) - kp - tkp
-                    status = "âœ… Cukup" if len(guru_di_pusat) > 0 else "âŒ Belum Ada"
+                    status = "✅ Cukup" if len(guru_di_pusat) > 0 else "❌ Belum Ada"
                     ringkas_all.append({"NO PUSAT": no_p, "NAMA PUSAT": str(nama_p)[:30], "JUMLAH": len(guru_di_pusat), "KP": kp, "TKP": tkp, "PENGAWAS": peng, "STATUS": status})
                 df_ringkas_all = pd.DataFrame(ringkas_all)
                 if not df_ringkas_all.empty:
                     st.dataframe(df_ringkas_all, use_container_width=True, hide_index=True)
-                    st.download_button("ðŸ“¥ Export Ringkasan Semua Pusat", to_excel(df_ringkas_all), file_name=f"ringkasan_semua_pusat_{kod_ppd}.xlsx", use_container_width=True)
+                    st.download_button("📥 Export Ringkasan Semua Pusat", to_excel(df_ringkas_all), file_name=f"ringkasan_semua_pusat_{kod_ppd}.xlsx", use_container_width=True)
                 else:
                     st.info("Belum ada hasil janaan keseluruhan")
             
             with tab2:
-                st.markdown("### ðŸ« Hasil Janaan Mengikut Sekolah Asal")
+                st.markdown("### 🏫 Hasil Janaan Mengikut Sekolah Asal")
                 st.caption("Setiap sekolah - berapa guru ditempatkan dan ke pusat mana")
                 sekolah_groups = {}
                 for v in tugas.values():
@@ -2148,7 +2359,7 @@ elif st.session_state.role == "PPD":
                     df_sum_sek = pd.DataFrame(summary_sekolah)
                     st.dataframe(df_sum_sek, use_container_width=True, hide_index=True)
                     st.markdown("---")
-                    st.markdown("#### ðŸ” Detail Setiap Sekolah")
+                    st.markdown("#### 🔍 Detail Setiap Sekolah")
                     pilih_sekolah = st.selectbox("Pilih Sekolah Untuk Lihat Detail", sorted(sekolah_groups.keys()), key="pilih_sekolah_hasil")
                     if pilih_sekolah:
                         detail = sekolah_groups[pilih_sekolah]
@@ -2159,10 +2370,10 @@ elif st.session_state.role == "PPD":
                             rows_detail.append({"NAMA": r.get("NAMA_GURU", ""), "NO IC": r.get("IC_GURU", ""), "JAWATAN": r.get("JAWATAN_CADANGAN") or r.get("JAWATAN") or "", "PUSAT TUGAS": g["pusat"], "JANTINA": r.get("JANTINA", "") or r.get("jantina", ""), "TELEFON": r.get("TELEFON_GURU", "") or r.get("telefon_guru", "")})
                         df_detail = pd.DataFrame(rows_detail)
                         st.dataframe(df_detail, use_container_width=True, hide_index=True)
-                        st.download_button(f"ðŸ“¥ Export {pilih_sekolah}", to_excel(df_detail), file_name=f"hasil_{pilih_sekolah.split(' - ')[0]}_{kod_ppd}.xlsx", use_container_width=True, key=f"export_{pilih_sekolah}")
+                        st.download_button(f"📥 Export {pilih_sekolah}", to_excel(df_detail), file_name=f"hasil_{pilih_sekolah.split(' - ')[0]}_{kod_ppd}.xlsx", use_container_width=True, key=f"export_{pilih_sekolah}")
             
             with tab3:
-                st.markdown("### ðŸ‘¥ Semua Guru Ditempatkan - Keseluruhan")
+                st.markdown("### 👥 Semua Guru Ditempatkan - Keseluruhan")
                 all_guru_rows = []
                 for v in tugas.values():
                     r = v["row"]
@@ -2172,12 +2383,12 @@ elif st.session_state.role == "PPD":
                     st.info("Belum ada guru ditempatkan")
                 else:
                     st.dataframe(df_all_guru, use_container_width=True, hide_index=True)
-                    st.download_button("ðŸ“¥ Export Semua Guru Ditempatkan", to_excel(df_all_guru), file_name=f"semua_guru_ditempatkan_{kod_ppd}.xlsx", use_container_width=True)
+                    st.download_button("📥 Export Semua Guru Ditempatkan", to_excel(df_all_guru), file_name=f"semua_guru_ditempatkan_{kod_ppd}.xlsx", use_container_width=True)
 
         elif menu == "manual":
             st.markdown(f'''
             <div style="background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
-                <h2 style="margin:0; color:white;">ðŸ“Œ Penempatan Manual - PPD {kod_ppd}</h2>
+                <h2 style="margin:0; color:white;">📌 Penempatan Manual - PPD {kod_ppd}</h2>
                 <p style="margin:5px 0 0 0; color:#e1bee7;">Pilih pusat, klik kolum jawatan untuk pilih petugas secara manual - 1 Pusat = 1 KP + 1 TKP + Pengawas ikut keperluan</p>
             </div>
             ''', unsafe_allow_html=True)
@@ -2191,6 +2402,18 @@ elif st.session_state.role == "PPD":
             if df_cad_all.empty:
                 st.warning(f"Belum ada cadangan SUP untuk PPD {kod_ppd}")
                 st.stop()
+            
+            # ✅ INFO: Berapa guru telah dilantik vs belum
+            total_cad = len(df_cad_all)
+            def is_belum_info(row):
+                kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+            belum_info = df_cad_all[df_cad_all.apply(is_belum_info, axis=1)]
+            sudah_info = total_cad - len(belum_info)
+            if sudah_info > 0:
+                st.info(f"📊 Status PPD {kod_ppd}: {total_cad} cadangan | {sudah_info} telah dilantik (tidak akan dipapar di sini) | {len(belum_info)} belum dilantik (akan dipapar)")
+            else:
+                st.info(f"📊 Status PPD {kod_ppd}: {total_cad} cadangan | Semua belum dilantik")
             
             # Parse pusat list
             pusat_list_m = []
@@ -2216,7 +2439,7 @@ elif st.session_state.role == "PPD":
                 st.stop()
             
             # Pilih pusat
-            st.markdown("### ðŸ“ STEP 1: Pilih Pusat Daerah")
+            st.markdown("### 📍 STEP 1: Pilih Pusat Daerah")
             col_pus1, col_pus2 = st.columns([2, 1])
             with col_pus1:
                 pilih_pusat_manual = st.selectbox(
@@ -2267,7 +2490,7 @@ elif st.session_state.role == "PPD":
                         sekolah_count_manual[kod] = sekolah_count_manual.get(kod, 0) + 1
             
             # Paparan semasa
-            st.markdown(f"### ðŸ« Pusat {pilih_pusat_manual} - Penempatan Semasa")
+            st.markdown(f"### 🏫 Pusat {pilih_pusat_manual} - Penempatan Semasa")
             col_curr1, col_curr2, col_curr3, col_curr4 = st.columns(4)
             # FIX: Gunakan ID comparison, bukan object comparison (pandas Series error)
             kp_curr_dict = {}
@@ -2298,16 +2521,16 @@ elif st.session_state.role == "PPD":
             # Check pelanggaran max 3
             pelanggaran_m = [(k, v) for k, v in sekolah_count_manual.items() if v > 3]
             if pelanggaran_m:
-                st.error(f"âŒ Pelanggaran Max 3 di {pilih_pusat_manual}:")
+                st.error(f"❌ Pelanggaran Max 3 di {pilih_pusat_manual}:")
                 for kod, cnt in pelanggaran_m:
                     st.error(f"  - {kod}: {cnt} orang (Max 3 sahaja!)")
             else:
-                st.success(f"âœ… Max 3 OK di {pilih_pusat_manual} - Tiada sekolah lebih 3 orang")
+                st.success(f"✅ Max 3 OK di {pilih_pusat_manual} - Tiada sekolah lebih 3 orang")
             
             st.markdown("---")
             
             # 3 Kolum Penempatan Manual
-            st.markdown("### ðŸ“Œ STEP 2: Penempatan Manual - Klik Kolum Untuk Pilih")
+            st.markdown("### 📌 STEP 2: Penempatan Manual - Klik Kolum Untuk Pilih")
             
             col_kp, col_tkp, col_peng = st.columns(3)
             
@@ -2315,7 +2538,7 @@ elif st.session_state.role == "PPD":
             with col_kp:
                 st.markdown('''
                 <div style="background:#ffebee; border:2px solid #b71c1c; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;">
-                    <div style="font-size:28px;">ðŸ‘‘</div>
+                    <div style="font-size:28px;">👑</div>
                     <div style="font-weight:800; color:#b71c1c;">KETUA PENGAWAS</div>
                     <div style="font-size:11px; color:#666;">1 orang sahaja per pusat</div>
                 </div>
@@ -2330,7 +2553,7 @@ elif st.session_state.role == "PPD":
                             <div style="font-size:10px;">{c.get("KOD_SEKOLAH_ASAL", "")} | {c.get("IC_GURU", "")}</div>
                         </div>
                         ''', unsafe_allow_html=True)
-                    if st.button("ðŸ—‘ï¸ Buang KP", key="buang_kp", use_container_width=True):
+                    if st.button("🗑️ Buang KP", key="buang_kp", use_container_width=True):
                         for k in list(kp_curr_dict.keys()):
                             try:
                                 c = tugas_pusat_ini.get(k)
@@ -2344,9 +2567,14 @@ elif st.session_state.role == "PPD":
                     st.info("Belum ada KP")
                 
                 st.markdown("**Pilih KP Baru:**")
-                # Filter cadangan KP yang belum ditempatkan atau boleh ditukar
+                # ✅ QUERY BARU: Hanya guru BELUM dilantik
                 kod_tuan_m = info_pusat["KOD_TUAN"].values[0] if not info_pusat.empty else ""
-                df_kp_calon = df_cad_all.copy()
+                df_kp_calon_all = df_cad_all.copy()
+                # Filter hanya belum dilantik
+                def is_belum_kp(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                df_kp_calon = df_kp_calon_all[df_kp_calon_all.apply(is_belum_kp, axis=1)].copy()
                 # Hanya KP
                 df_kp_calon = df_kp_calon[df_kp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Ketua Pengawas", case=False, na=False)]
                 # Elak sekolah sendiri
@@ -2363,17 +2591,22 @@ elif st.session_state.role == "PPD":
                 df_kp_layak = df_kp_calon[df_kp_calon["MAX3_OK"] == True]
                 
                 if df_kp_layak.empty:
-                    st.warning("Tiada calon KP yang layak (max 3 atau sekolah sendiri)")
-                    st.dataframe(df_kp_calon[["NAMA_GURU", "KOD_SEKOLAH_ASAL", "IC_GURU"]].head(10), use_container_width=True, hide_index=True)
+                    # Check if empty because all already appointed
+                    if len(df_kp_calon_all) > 0 and len(df_kp_calon) == 0:
+                        st.warning("⚠️ Semua calon KP telah dilantik! Tiada KP belum dilantik.")
+                    else:
+                        st.warning("Tiada calon KP yang layak (max 3 atau sekolah sendiri)")
+                    if not df_kp_calon.empty:
+                        st.dataframe(df_kp_calon[["NAMA_GURU", "KOD_SEKOLAH_ASAL", "IC_GURU"]].head(10), use_container_width=True, hide_index=True)
                 else:
-                    st.caption(f"{len(df_kp_layak)} calon KP layak (max 3 OK)")
+                    st.caption(f"{len(df_kp_layak)} calon KP belum dilantik & layak (max 3 OK) - tidak akan muncul lagi jika telah dilantik")
                     pilih_kp = st.selectbox(
                         "Klik untuk pilih Ketua Pengawas",
                         df_kp_layak["id"].tolist() if "id" in df_kp_layak.columns else [],
                         format_func=lambda x: f"{df_kp_layak[df_kp_layak['id']==x]['NAMA_GURU'].values[0]} - {df_kp_layak[df_kp_layak['id']==x]['KOD_SEKOLAH_ASAL'].values[0]} | {df_kp_layak[df_kp_layak['id']==x]['NAMA_SEKOLAH_ASAL'].values[0][:20]}" if not df_kp_layak[df_kp_layak['id']==x].empty else str(x),
                         key="pilih_kp_manual"
                     )
-                    if st.button("âœ… Lantik Sebagai KP", type="primary", use_container_width=True, key="lantik_kp"):
+                    if st.button("✅ Lantik Sebagai KP", type="primary", use_container_width=True, key="lantik_kp"):
                         if pilih_kp:
                             try:
                                 # Jika sudah ada KP, buang dulu
@@ -2392,7 +2625,7 @@ elif st.session_state.role == "PPD":
             with col_tkp:
                 st.markdown('''
                 <div style="background:#fff3e0; border:2px solid #e65100; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;">
-                    <div style="font-size:28px;">ðŸŽ–ï¸</div>
+                    <div style="font-size:28px;">🎖️</div>
                     <div style="font-weight:800; color:#e65100;">TIMBALAN KP</div>
                     <div style="font-size:11px; color:#666;">1 orang sahaja per pusat</div>
                 </div>
@@ -2407,7 +2640,7 @@ elif st.session_state.role == "PPD":
                             <div style="font-size:10px;">{c.get("KOD_SEKOLAH_ASAL", "")} | {c.get("IC_GURU", "")}</div>
                         </div>
                         ''', unsafe_allow_html=True)
-                    if st.button("ðŸ—‘ï¸ Buang TKP", key="buang_tkp", use_container_width=True):
+                    if st.button("🗑️ Buang TKP", key="buang_tkp", use_container_width=True):
                         for k in list(tkp_curr_dict.keys()):
                             try:
                                 c = tugas_pusat_ini.get(k)
@@ -2421,7 +2654,12 @@ elif st.session_state.role == "PPD":
                     st.info("Belum ada TKP")
                 
                 st.markdown("**Pilih TKP Baru:**")
-                df_tkp_calon = df_cad_all.copy()
+                # ✅ QUERY BARU: Hanya guru BELUM dilantik
+                df_tkp_calon_all = df_cad_all.copy()
+                def is_belum_tkp(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                df_tkp_calon = df_tkp_calon_all[df_tkp_calon_all.apply(is_belum_tkp, axis=1)].copy()
                 df_tkp_calon = df_tkp_calon[df_tkp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Timbalan", case=False, na=False)]
                 if kod_tuan_m:
                     df_tkp_calon = df_tkp_calon[~df_tkp_calon["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_m)]
@@ -2441,7 +2679,7 @@ elif st.session_state.role == "PPD":
                         format_func=lambda x: f"{df_tkp_layak[df_tkp_layak['id']==x]['NAMA_GURU'].values[0]} - {df_tkp_layak[df_tkp_layak['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_tkp_layak[df_tkp_layak['id']==x].empty else str(x),
                         key="pilih_tkp_manual"
                     )
-                    if st.button("âœ… Lantik Sebagai TKP", type="primary", use_container_width=True, key="lantik_tkp"):
+                    if st.button("✅ Lantik Sebagai TKP", type="primary", use_container_width=True, key="lantik_tkp"):
                         if pilih_tkp:
                             try:
                                 for k in list(tkp_curr_dict.keys()):
@@ -2461,7 +2699,7 @@ elif st.session_state.role == "PPD":
                 perlu_pengawas = max(0, perlu_p - 1 - 1)
                 st.markdown(f'''
                 <div style="background:#e8f5e9; border:2px solid #1b5e20; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;">
-                    <div style="font-size:28px;">ðŸ‘¨â€ðŸ«</div>
+                    <div style="font-size:28px;">👨‍🏫</div>
                     <div style="font-weight:800; color:#1b5e20;">PENGAWAS</div>
                     <div style="font-size:11px; color:#666;">{perlu_pengawas} orang diperlukan</div>
                     <div style="font-size:10px; color:#2e7d32; margin-top:4px;">Pusat {pilih_pusat_manual} perlu {perlu_p} (1 KP + 1 TKP + {perlu_pengawas})</div>
@@ -2478,7 +2716,7 @@ elif st.session_state.role == "PPD":
                         ''', unsafe_allow_html=True)
                     if len(peng_curr) > 5:
                         st.caption(f"... dan {len(peng_curr)-5} lagi")
-                    if st.button("ðŸ—‘ï¸ Buang Semua Pengawas", key="buang_peng", use_container_width=True):
+                    if st.button("🗑️ Buang Semua Pengawas", key="buang_peng", use_container_width=True):
                         for k in list(peng_curr_dict.keys()):
                             try:
                                 c = tugas_pusat_ini.get(k)
@@ -2492,7 +2730,12 @@ elif st.session_state.role == "PPD":
                     st.info(f"Belum ada Pengawas - perlu {perlu_pengawas}")
                 
                 st.markdown("**Pilih Pengawas Baru:**")
-                df_peng_calon = df_cad_all.copy()
+                # ✅ QUERY BARU: Hanya guru BELUM dilantik
+                df_peng_calon_all = df_cad_all.copy()
+                def is_belum_peng(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                df_peng_calon = df_peng_calon_all[df_peng_calon_all.apply(is_belum_peng, axis=1)].copy()
                 # Pengawas sahaja (bukan KP/TKP)
                 df_peng_calon = df_peng_calon[~df_peng_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)]
                 if kod_tuan_m:
@@ -2503,8 +2746,8 @@ elif st.session_state.role == "PPD":
                 df_peng_calon["MAX3_OK"] = df_peng_calon.apply(check_peng_max3, axis=1)
                 df_peng_layak = df_peng_calon[df_peng_calon["MAX3_OK"] == True]
                 
-                # Yang belum ditempatkan
-                df_peng_belum = df_peng_layak[df_peng_layak["kod_pusat"].isna() | (df_peng_layak["kod_pusat"] == "")]
+                # Yang belum ditempatkan - df sudah filter belum dilantik, jadi semua belum
+                df_peng_belum = df_peng_layak.copy()
                 
                 st.caption(f"{len(df_peng_belum)} calon Pengawas belum ditempatkan (layak max 3) | Pusat perlu {perlu_pengawas}")
                 
@@ -2529,26 +2772,26 @@ elif st.session_state.role == "PPD":
                             if not row.empty:
                                 kod = str(row["KOD_SEKOLAH_ASAL"].values[0]).upper().strip()
                                 if temp_count.get(kod, 0) >= 3:
-                                    st.error(f"âŒ {kod} sudah 3 orang di {pilih_pusat_manual} - tidak boleh tambah lagi!")
+                                    st.error(f"❌ {kod} sudah 3 orang di {pilih_pusat_manual} - tidak boleh tambah lagi!")
                                     valid = False
                                 temp_count[kod] = temp_count.get(kod, 0) + 1
                         if len(pilih_peng_list) > perlu_pengawas:
-                            st.warning(f"âš ï¸ Anda pilih {len(pilih_peng_list)} tapi pusat perlu {perlu_pengawas} sahaja")
+                            st.warning(f"⚠️ Anda pilih {len(pilih_peng_list)} tapi pusat perlu {perlu_pengawas} sahaja")
                         
-                        if st.button(f"âœ… Lantik {len(pilih_peng_list)} Sebagai Pengawas", type="primary", use_container_width=True, key="lantik_peng", disabled=not valid):
+                        if st.button(f"✅ Lantik {len(pilih_peng_list)} Sebagai Pengawas", type="primary", use_container_width=True, key="lantik_peng", disabled=not valid):
                             try:
                                 berjaya = 0
                                 for pid in pilih_peng_list:
                                     supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pid).execute()
                                     berjaya += 1
-                                st.success(f"âœ… {berjaya} Pengawas dilantik ke {pilih_pusat_manual}")
+                                st.success(f"✅ {berjaya} Pengawas dilantik ke {pilih_pusat_manual}")
                                 st.balloons()
                                 st.rerun()
                             except Exception as e:
                                 st.error(str(e))
             
             st.markdown("---")
-            st.markdown("### ðŸ“Š Ringkasan Penempatan Manual")
+            st.markdown("### 📊 Ringkasan Penempatan Manual")
             if tugas_pusat_ini:
                 all_rows = []
                 for c in tugas_pusat_ini.values():
@@ -2559,46 +2802,339 @@ elif st.session_state.role == "PPD":
                 st.info(f"Belum ada penempatan manual di {pilih_pusat_manual} - Sila pilih KP, TKP, Pengawas di atas")
 
         elif menu == "cadangan":
-            st.header(f"Cadangan dari SUP - PPD {kod_ppd}")
-            df_cad = get_cadangan_df(kod_ppd=kod_ppd)
-            if df_cad.empty: st.info("Belum ada cadangan dari SUP")
-            else:
-                st.dataframe(df_cad, use_container_width=True)
-                st.download_button("Export Cadangan", to_excel(df_cad), file_name=f"cadangan_PPD_{kod_ppd}.xlsx")
+            st.markdown(f'''
+            <div style="background: linear-gradient(135deg, #1565c0 0%, #1e88e5 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+                <h2 style="margin:0; color:white;">📋 Cadangan SUP - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
+                <p style="margin:5px 0 0 0; color:#bbdefb;">Pilih sekolah dalam daerah untuk lihat senarai cadangan dari sekolah berkenaan</p>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+            df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+            if df_cad_all.empty:
+                st.warning(f"Belum ada cadangan SUP untuk PPD {kod_ppd}")
+                st.stop()
+            
+            # Get sekolah list in PPD
+            try:
+                res_sek = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
+                df_sek_list = pd.DataFrame(res_sek.data or [])
+            except:
+                df_sek_list = pd.DataFrame()
+            
+            # Build sekolah groups dari cadangan
+            sekolah_groups = {}
+            for _, r in df_cad_all.iterrows():
+                kod_sek = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or r.get("KOD_SEKOLAH") or r.get("kod_sekolah") or "TIADA KOD").upper().strip()
+                nama_sek = str(r.get("NAMA_SEKOLAH_ASAL") or r.get("nama_sekolah_asal") or r.get("NAMA_SEKOLAH") or kod_sek)[:50]
+                key = f"{kod_sek} - {nama_sek}"
+                if key not in sekolah_groups:
+                    sekolah_groups[key] = []
+                sekolah_groups[key].append(r)
+            
+            # Summary
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🏫 Sekolah Mencadang", len(sekolah_groups))
+            with col2:
+                st.metric("👥 Jumlah Cadangan", len(df_cad_all))
+            with col3:
+                # Belum vs sudah lantik
+                def is_belum(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                belum = df_cad_all[df_cad_all.apply(is_belum, axis=1)]
+                st.metric("✅ Belum Dilantik", len(belum), delta=f"{len(df_cad_all)-len(belum)} telah dilantik")
+            
+            st.markdown("---")
+            
+            # Ringkasan ikut sekolah
+            st.markdown("### 📋 Ringkasan Cadangan Mengikut Sekolah")
+            summary_rows = []
+            for key, guru_list in sorted(sekolah_groups.items()):
+                kod = key.split(" - ")[0]
+                nama = key.split(" - ", 1)[1] if " - " in key else key
+                # Kira belum vs sudah
+                belum_cnt = sum(1 for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat"))
+                sudah_cnt = len(guru_list) - belum_cnt
+                summary_rows.append({
+                    "KOD SEKOLAH": kod,
+                    "NAMA SEKOLAH": nama[:35],
+                    "JUMLAH CADANGAN": len(guru_list),
+                    "BELUM LANTIK": belum_cnt,
+                    "SUDAH LANTIK": sudah_cnt,
+                    "STATUS": "✅ Lengkap" if belum_cnt == 0 else f"⏳ {belum_cnt} belum"
+                })
+            df_summary = pd.DataFrame(summary_rows)
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
+            st.download_button("📥 Export Ringkasan Cadangan Ikut Sekolah", to_excel(df_summary), file_name=f"ringkasan_cadangan_{kod_ppd}.xlsx", use_container_width=True)
+            
+            st.markdown("---")
+            st.markdown("### 🔍 Detail Cadangan Ikut Sekolah - Pilih Sekolah")
+            
+            # Pilih sekolah dropdown
+            pilih_sek_cad = st.selectbox(
+                "Pilih Sekolah Dalam Daerah Untuk Lihat Senarai Cadangan",
+                sorted(sekolah_groups.keys()),
+                format_func=lambda x: f"{x} ({len(sekolah_groups[x])} cadangan)",
+                key="pilih_sekolah_cadangan"
+            )
+            
+            if pilih_sek_cad:
+                guru_list = sekolah_groups[pilih_sek_cad]
+                st.markdown(f"#### 🏫 {pilih_sek_cad} - {len(guru_list)} cadangan")
+                
+                # Filter tabs: Semua, Belum Lantik, Sudah Lantik
+                tab_all, tab_belum, tab_sudah = st.tabs(["📋 Semua", "⏳ Belum Dilantik", "✅ Sudah Dilantik"])
+                
+                def make_df_from_list(g_list):
+                    rows = []
+                    for g in g_list:
+                        rows.append({
+                            "NAMA GURU": g.get("NAMA_GURU", "") or g.get("nama_guru", ""),
+                            "NO IC": g.get("IC_GURU", "") or g.get("ic_guru", ""),
+                            "JAWATAN": g.get("JAWATAN_CADANGAN", "") or g.get("jawatan_cadangan", ""),
+                            "JANTINA": g.get("JANTINA", "") or g.get("jantina", ""),
+                            "TELEFON": g.get("TELEFON_GURU", "") or g.get("telefon_guru", ""),
+                            "KOD PUSAT": g.get("kod_pusat", "") or g.get("KOD_PUSAT", "") or "- Belum -",
+                            "STATUS": g.get("status", "") or g.get("STATUS", ""),
+                            "SEKOLAH": g.get("KOD_SEKOLAH_ASAL", "") or g.get("kod_sekolah_asal", "")
+                        })
+                    return pd.DataFrame(rows)
+                
+                with tab_all:
+                    df_all_guru = make_df_from_list(guru_list)
+                    st.dataframe(df_all_guru, use_container_width=True, hide_index=True)
+                    st.download_button(f"📥 Export {pilih_sek_cad.split(' - ')[0]} - Semua", to_excel(df_all_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_semua.xlsx", use_container_width=True, key="exp_all")
+                
+                with tab_belum:
+                    belum_list = [g for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat")]
+                    st.markdown(f"**{len(belum_list)} guru belum dilantik dari {pilih_sek_cad}**")
+                    if belum_list:
+                        df_belum_guru = make_df_from_list(belum_list)
+                        st.dataframe(df_belum_guru, use_container_width=True, hide_index=True)
+                        st.download_button(f"📥 Export Belum Lantik", to_excel(df_belum_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_belum.xlsx", use_container_width=True, key="exp_belum")
+                    else:
+                        st.success("✅ Semua guru dari sekolah ini telah dilantik!")
+                
+                with tab_sudah:
+                    sudah_list = [g for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() not in ("", "None", "none", "null", "nan", "nat")]
+                    st.markdown(f"**{len(sudah_list)} guru sudah dilantik dari {pilih_sek_cad}**")
+                    if sudah_list:
+                        df_sudah_guru = make_df_from_list(sudah_list)
+                        st.dataframe(df_sudah_guru, use_container_width=True, hide_index=True)
+                        st.download_button(f"📥 Export Sudah Lantik", to_excel(df_sudah_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_sudah.xlsx", use_container_width=True, key="exp_sudah")
+                    else:
+                        st.info("Belum ada guru dilantik dari sekolah ini")
 
         elif menu == "kelulusan":
-            st.header(f"Kelulusan PPD {kod_ppd}")
-            df_cad = get_cadangan_df(kod_ppd=kod_ppd)
-            if df_cad.empty: st.info("Tiada cadangan")
-            else:
-                st.dataframe(df_cad, use_container_width=True)
-                pilih_id = st.multiselect("Pilih ID untuk lulus", df_cad["id"].tolist() if "id" in df_cad.columns else [])
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("âœ… Lulus Terpilih", type="primary"):
-                        for i in pilih_id:
-                            try: supa.table("cadangan_sup").update({"status": "LULUS PPD"}).eq("id", i).execute()
-                            except Exception as e: st.error(str(e))
-                        st.success("Lulus berjaya")
-                        st.rerun()
-                with col2:
-                    if st.button("âŒ Tolak Terpilih"):
-                        for i in pilih_id:
-                            try: supa.table("cadangan_sup").update({"status": "TOLAK PPD"}).eq("id", i).execute()
-                            except Exception as e: st.error(str(e))
-                        st.success("Tolak berjaya")
-                        st.rerun()
+            st.markdown(f'<div style="background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">✅ Kelulusan PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, "")} - Ikut Sekolah</h2><p style="margin:5px 0 0 0; color:#c8e6c9;">Pilih sekolah, lihat senarai guru yang telah dilantik dari sekolah tersebut, lulus & jana surat</p></div>', unsafe_allow_html=True)
+            
+            df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+            if df_cad_all.empty:
+                st.warning("Belum ada cadangan")
+                st.stop()
+            
+            def is_sudah_lantik(row):
+                kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or row.get("kod_pusat_tugas") or "").strip()
+                return kp != "" and kp.lower() not in ("none", "null", "nan", "nat", "-")
+            
+            df_sudah = df_cad_all[df_cad_all.apply(is_sudah_lantik, axis=1)].copy()
+            if df_sudah.empty:
+                st.warning("Belum ada guru yang dilantik. Sila buat Jana Keseluruhan atau Penempatan Manual dulu.")
+                st.stop()
+            
+            pusat_map = {}
+            try:
+                df_pusat_raw = get_pusat_df()
+                for _, r in df_pusat_raw.iterrows():
+                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                    if isinstance(d, str):
+                        try: d = json.loads(d)
+                        except: d = {}
+                    no_p = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                    nama_p = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                    if no_p:
+                        pusat_map[no_p] = nama_p
+            except:
+                pass
+            
+            sekolah_groups = {}
+            for _, r in df_sudah.iterrows():
+                kod_sek = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or r.get("KOD_SEKOLAH") or "TIADA").upper().strip()
+                nama_sek = str(r.get("NAMA_SEKOLAH_ASAL") or r.get("nama_sekolah_asal") or kod_sek)[:50]
+                key = f"{kod_sek} - {nama_sek}"
+                if key not in sekolah_groups:
+                    sekolah_groups[key] = []
+                sekolah_groups[key].append(r)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Sekolah Ada Lantikan", len(sekolah_groups))
+            with col2:
+                st.metric("Guru Telah Dilantik", len(df_sudah))
+            with col3:
+                sudah_no = sum(1 for _, r in df_sudah.iterrows() if str(r.get("no_surat") or "").strip() != "")
+                st.metric("Ada No Surat", f"{sudah_no}/{len(df_sudah)}")
+            
+            st.markdown("---")
+            st.markdown("### Pilih Sekolah - Lihat Guru Telah Dilantik Dari Sekolah Tersebut")
+            
+            pilih_sek = st.selectbox(
+                "Pilih Sekolah Asal",
+                sorted(sekolah_groups.keys()),
+                format_func=lambda x: f"{x} - {len(sekolah_groups[x])} guru dilantik",
+                key="pilih_sekolah_kelulusan"
+            )
+            
+            if pilih_sek:
+                guru_list = sekolah_groups[pilih_sek]
+                kod_sek_pilih = pilih_sek.split(" - ")[0]
+                
+                st.markdown(f"#### {pilih_sek} - {len(guru_list)} guru telah dilantik")
+                st.caption("Contoh: Ahmad bin Abi sekolah asal SMK AA ditempatkan di pusat BB, Dolah bin Saleh sekolah asal AA ditempatkan di pusat CC")
+                
+                rows_kelulusan = []
+                for r in guru_list:
+                    kod_pusat_tugas = str(r.get("kod_pusat") or r.get("KOD_PUSAT") or "").upper().strip()
+                    nama_pusat_tugas = pusat_map.get(kod_pusat_tugas, "") or str(r.get("nama_pusat_tugas") or "")
+                    rows_kelulusan.append({
+                        "id": r.get("id", ""),
+                        "NAMA GURU": r.get("NAMA_GURU", "") or r.get("nama_guru", ""),
+                        "IC": r.get("IC_GURU", "") or r.get("ic_guru", ""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN", "") or r.get("jawatan_cadangan", ""),
+                        "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL", "") or r.get("kod_sekolah_asal", ""),
+                        "NAMA SEKOLAH ASAL": str(r.get("NAMA_SEKOLAH_ASAL", "") or "")[:30],
+                        "PUSAT DITEMPATKAN": kod_pusat_tugas,
+                        "NAMA PUSAT DITEMPATKAN": str(nama_pusat_tugas)[:35],
+                        "STATUS": r.get("status", "") or "",
+                        "NO SURAT": r.get("no_surat", "") or ""
+                    })
+                df_kelulusan = pd.DataFrame(rows_kelulusan)
+                st.dataframe(df_kelulusan, use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                st.markdown("### Lulus & Jana No Surat")
+                
+                try:
+                    all_no_surat = []
+                    for _, r in df_cad_all.iterrows():
+                        ns = str(r.get("no_surat") or "").strip()
+                        if ns:
+                            import re
+                            nums = re.findall(r'\d+', ns)
+                            if nums:
+                                try:
+                                    all_no_surat.append(int(nums[-1]))
+                                except:
+                                    pass
+                    max_no = max(all_no_surat) if all_no_surat else 0
+                except:
+                    max_no = 0
+                
+                col_set1, col_set2 = st.columns(2)
+                with col_set1:
+                    no_mula = st.number_input("Set No Permulaan Surat (auto berturut)", min_value=1, value=max_no+1 if max_no>0 else 1, step=1, key="no_mula_kelulusan")
+                    st.caption(f"No terakhir DB: {max_no} | Mula: {no_mula} | Format JPN.SEL/SPM/2026/XXXX")
+                with col_set2:
+                    prefix_surat = st.text_input("Prefix No Surat", value="JPN.SEL/SPM/2026/", key="prefix_surat")
+                
+                preview_rows = []
+                current_no = no_mula
+                for _, r in df_kelulusan.iterrows():
+                    no_s = r.get("NO SURAT", "")
+                    if not no_s or str(no_s).strip() == "":
+                        no_s = f"{prefix_surat}{current_no:04d}"
+                        current_no += 1
+                    preview_rows.append({
+                        "NAMA": r["NAMA GURU"],
+                        "IC": r["IC"],
+                        "SEKOLAH ASAL": r["SEKOLAH ASAL"],
+                        "PUSAT": r["PUSAT DITEMPATKAN"],
+                        "NO SURAT BARU": no_s
+                    })
+                df_preview = pd.DataFrame(preview_rows)
+                st.markdown("**Preview No Surat (siapa jana dulu no dia dahulu, berturut untuk semua):**")
+                st.dataframe(df_preview, use_container_width=True, hide_index=True)
+                
+                col_lulus, col_jana = st.columns(2)
+                with col_lulus:
+                    if st.button(f"Lulus {len(df_kelulusan)} Guru - Jana No Surat Bermula {no_mula}", type="primary", use_container_width=True, key="btn_lulus_kelulusan"):
+                        try:
+                            current_no = no_mula
+                            berjaya = 0
+                            for _, r in df_kelulusan.iterrows():
+                                id_guru = r.get("id", "")
+                                existing_no = r.get("NO SURAT", "")
+                                if not existing_no or str(existing_no).strip() == "":
+                                    no_surat_baru = f"{prefix_surat}{current_no:04d}"
+                                    current_no += 1
+                                else:
+                                    no_surat_baru = existing_no
+                                
+                                if id_guru:
+                                    supa.table("cadangan_sup").update({"status": "LULUS PPD", "no_surat": no_surat_baru}).eq("id", id_guru).execute()
+                                else:
+                                    supa.table("cadangan_sup").update({"status": "LULUS PPD", "no_surat": no_surat_baru}).eq("ic_guru", r.get("IC", "")).execute()
+                                berjaya += 1
+                            
+                            st.success(f"Berjaya lulus {berjaya} guru dari {pilih_sek} dengan No Surat {no_mula} hingga {current_no-1}")
+                            st.balloons()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error lulus: {e}")
+                
+                with col_jana:
+                    if st.button(f"Jana Surat Lantikan - {kod_sek_pilih}", use_container_width=True, key="btn_jana_surat"):
+                        tarikh = datetime.date.today().strftime('%d %B %Y')
+                        html_all = ""
+                        surat_list = []
+                        current_no = no_mula
+                        for _, r in df_kelulusan.iterrows():
+                            no_s = r.get("NO SURAT", "")
+                            if not no_s or str(no_s).strip() == "":
+                                no_s = f"{prefix_surat}{current_no:04d}"
+                                current_no += 1
+                            surat_list.append({
+                                "NAMA GURU": r["NAMA GURU"],
+                                "IC": r["IC"],
+                                "JAWATAN": r["JAWATAN"],
+                                "SEKOLAH ASAL": r["SEKOLAH ASAL"],
+                                "NAMA SEKOLAH ASAL": r["NAMA SEKOLAH ASAL"],
+                                "PUSAT DITEMPATKAN": r["PUSAT DITEMPATKAN"],
+                                "NAMA PUSAT DITEMPATKAN": r["NAMA PUSAT DITEMPATKAN"],
+                                "NO SURAT": no_s
+                            })
+                        
+                        # Generate collective HTML
+                        full_html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan</title><style>body{font-family:Arial;margin:20px;}</style></head><body>'
+                        full_html += f'<h1 style="text-align:center;">SURAT LANTIKAN SPM 2026 - {pilih_sek}</h1><p style="text-align:center;">PPD {kod_ppd}</p><hr>'
+                        for s in surat_list:
+                            full_html += generate_surat_html(s["NAMA GURU"], s["IC"], s["JAWATAN"], s["SEKOLAH ASAL"], s["NAMA SEKOLAH ASAL"], s["PUSAT DITEMPATKAN"], s["NAMA PUSAT DITEMPATKAN"], s["NO SURAT"], kod_ppd, PPD_MAP.get(kod_ppd, ""), tarikh)
+                        full_html += '</body></html>'
+                        
+                        st.session_state[f"surat_html_{kod_sek_pilih}"] = full_html
+                        st.success(f"Surat berjaya dijana untuk {len(surat_list)} guru!")
+                        st.components.v1.html(full_html[:8000], height=500, scrolling=True)
+                        st.download_button(f"Download Surat {kod_sek_pilih} (HTML)", data=full_html.encode('utf-8'), file_name=f"Surat_Lantikan_{kod_sek_pilih}_{kod_ppd}.html", mime="text/html", use_container_width=True, key=f"dl_surat_{kod_sek_pilih}")
+                
+                if f"surat_html_{kod_sek_pilih}" in st.session_state:
+                    st.markdown("---")
+                    st.markdown("### Surat Telah Dijana - Untuk SUP Download")
+                    html_prev = st.session_state[f"surat_html_{kod_sek_pilih}"]
+                    st.components.v1.html(html_prev[:8000], height=600, scrolling=True)
+                    st.download_button(f"Download Semula Surat {kod_sek_pilih}", data=html_prev.encode('utf-8'), file_name=f"Surat_Lantikan_{kod_sek_pilih}_{kod_ppd}.html", mime="text/html", use_container_width=True, key=f"dl_surat2_{kod_sek_pilih}")
+                    st.info("Surat ini akan masuk ke SUP untuk download dan bagi kepada guru di sekolah dia")
 
         elif menu == "export":
             st.header(f"Export Data PPD {kod_ppd}")
             df_cad = get_cadangan_df(kod_ppd=kod_ppd)
             if not df_cad.empty:
-                st.download_button("ðŸ“¥ Export Cadangan PPD (Excel)", to_excel(df_cad), file_name=f"laporan_PPD_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
+                st.download_button("📥 Export Cadangan PPD (Excel)", to_excel(df_cad), file_name=f"laporan_PPD_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
             try:
                 res = supa.table("guru_master").select("*").eq("kod_ppd", kod_ppd.lower()).limit(5000).execute()
                 df_guru = pd.DataFrame(res.data or [])
                 if not df_guru.empty:
-                    st.download_button("ðŸ“¥ Export Guru PPD (Excel)", to_excel(df_guru), file_name=f"guru_PPD_{kod_ppd}.xlsx", use_container_width=True)
+                    st.download_button("📥 Export Guru PPD (Excel)", to_excel(df_guru), file_name=f"guru_PPD_{kod_ppd}.xlsx", use_container_width=True)
             except Exception as e:
                 st.error(str(e))
 
@@ -2607,12 +3143,12 @@ elif st.session_state.role == "JPN":
     col_menu, col_main = st.columns([1, 3.2], gap="large")
     with col_menu:
         st.markdown('<div class="custom-sidebar">', unsafe_allow_html=True)
-        st.markdown("### ðŸ›ï¸ JPN Selangor")
+        st.markdown("### 🏛️ JPN Selangor")
         add_refresh_button()
         
-        MENU_JPN = [('dashboard', 'ðŸ“Š Dashboard JPN'), ('sekolah', 'ðŸ« Semua Sekolah'), ('pusat', 'ðŸ« Pusat Master'), 
-                    ('guru', 'ðŸ‘¨\u200dðŸ« Guru Master'), ('cadangan', 'ðŸ“‹ Semua Cadangan'), ('export', 'ðŸ“¥ Export Negeri'), 
-                    ('admin', 'âš™ï¸ Admin'), ('keluar', 'ðŸšª Log Keluar')]
+        MENU_JPN = [('dashboard', '📊 Dashboard JPN'), ('sekolah', '🏫 Semua Sekolah'), ('pusat', '🏫 Pusat Master'), 
+                    ('guru', '👨\u200d🏫 Guru Master'), ('cadangan', '📋 Semua Cadangan'), ('export', '📥 Export Negeri'), 
+                    ('admin', '⚙️ Admin'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu JPN", [k for k, _ in MENU_JPN], format_func=dict(MENU_JPN).get, label_visibility="collapsed", key="jpn_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -2654,14 +3190,14 @@ elif st.session_state.role == "JPN":
                 st.write(f"Total dalam Supabase: **{df_count}** sekolah")
                 if not df.empty:
                     st.dataframe(df, use_container_width=True)
-                    st.download_button("ðŸ“¥ Export Sekolah Master", to_excel(df), file_name="sekolah_master.xlsx")
+                    st.download_button("📥 Export Sekolah Master", to_excel(df), file_name="sekolah_master.xlsx")
                 else:
                     st.warning("sekolah_master kosong - belum push dari pusat_2026.csv. Sila import di bawah.")
             except Exception as e:
                 st.error(f"sekolah_master error: {e}")
             
             st.markdown("---")
-            st.subheader("ðŸ“¤ Import Sekolah Master dari Pusat & Guru")
+            st.subheader("📤 Import Sekolah Master dari Pusat & Guru")
             st.info("File sekolah digenerate dari pusat_2026.csv (506 pusat = 369 sekolah unik) + guru 60K. Upload SEKOLAH_MASTER_FINAL_2026.xlsx untuk push masuk sekolah_master.")
             up_sek = st.file_uploader("Upload Sekolah Master Excel (KOD SEKOLAH, NAMA SEKOLAH, KOD PPD)", type=["xlsx", "csv"], key="sekolah_up")
             if up_sek:
@@ -2675,7 +3211,7 @@ elif st.session_state.role == "JPN":
                         df_up = pd.read_excel(up_sek)
                     st.write(f"Preview {len(df_up)} sekolah:")
                     st.dataframe(df_up.head(30), use_container_width=True)
-                    if st.button(f"ðŸš€ Import {len(df_up)} Sekolah ke Supabase", type="primary", use_container_width=True):
+                    if st.button(f"🚀 Import {len(df_up)} Sekolah ke Supabase", type="primary", use_container_width=True):
                         bar = st.progress(0)
                         stat = st.empty()
                         ok = 0
@@ -2704,7 +3240,7 @@ elif st.session_state.role == "JPN":
                                     st.warning(f"Batch {start}-{end}: {e}")
                             bar.progress(end / len(df_up))
                             stat.write(f"Progress {end}/{len(df_up)} | OK {ok}")
-                        st.success(f"âœ… Selesai import {ok}/{len(df_up)} sekolah!")
+                        st.success(f"✅ Selesai import {ok}/{len(df_up)} sekolah!")
                         st.balloons()
                         st.rerun()
                 except Exception as e:
@@ -2712,7 +3248,7 @@ elif st.session_state.role == "JPN":
             
             st.markdown("---")
             st.subheader("Auto Generate Sekolah dari Pusat 506")
-            if st.button("âš¡ Generate Sekolah Master dari pusat_master yang sedia ada (506 pusat)", use_container_width=True):
+            if st.button("⚡ Generate Sekolah Master dari pusat_master yang sedia ada (506 pusat)", use_container_width=True):
                 try:
                     res = supa.table("pusat_master").select("*").limit(1000).execute()
                     df_p = pd.DataFrame(res.data or [])
@@ -2733,7 +3269,7 @@ elif st.session_state.role == "JPN":
                             except: pass
                             for i in range(0, len(sekolah_list), 200):
                                 supa.table("sekolah_master").insert(sekolah_list[i:i + 200]).execute()
-                            st.success(f"âœ… Generated {len(sekolah_list)} sekolah dari pusat_master!")
+                            st.success(f"✅ Generated {len(sekolah_list)} sekolah dari pusat_master!")
                             st.rerun()
                 except Exception as e:
                     st.error(f"Error generate: {e}")
@@ -2774,13 +3310,13 @@ elif st.session_state.role == "JPN":
                     c2.metric("Total Kelas", int(df_display["JUMLAH_KELAS"].sum()))
                     c3.metric("Ada Calon", len(df_display[df_display["JUMLAH_CALON"] > 0]))
                     if len(df_display[df_display["JUMLAH_CALON"] == 0]) > 100:
-                        st.error(f"âš ï¸ {len(df_display[df_display['JUMLAH_CALON']==0])} pusat JUMLAH_CALON = 0 / kosong! Kena fix dari CSV.")
-                    st.download_button("ðŸ“¥ Export Pusat dengan Calon", to_excel(pd.DataFrame(display_rows)), file_name="pusat_master_dengan_calon.xlsx")
+                        st.error(f"⚠️ {len(df_display[df_display['JUMLAH_CALON']==0])} pusat JUMLAH_CALON = 0 / kosong! Kena fix dari CSV.")
+                    st.download_button("📥 Export Pusat dengan Calon", to_excel(pd.DataFrame(display_rows)), file_name="pusat_master_dengan_calon.xlsx")
                 else:
                     st.warning("pusat_master kosong")
                 
                 st.markdown("---")
-                st.subheader("ðŸ”§ FIX: Update Jumlah Calon yang Hilang")
+                st.subheader("🔧 FIX: Update Jumlah Calon yang Hilang")
                 st.info("Kalau JUMLAH_CALON 0/kosong, upload pusat_2026.csv untuk update balik 506 pusat dengan jumlah calon betul.")
                 up_fix = st.file_uploader("Upload pusat_2026.csv untuk FIX jumlah calon", type=["csv", "xlsx"], key="fix_calon")
                 if up_fix:
@@ -2794,7 +3330,7 @@ elif st.session_state.role == "JPN":
                             df_fix = pd.read_excel(up_fix)
                         st.write(f"File fix ada {len(df_fix)} baris")
                         st.dataframe(df_fix.head(10), use_container_width=True)
-                        if st.button(f"ðŸš€ FIX Update {len(df_fix)} Pusat dengan Jumlah Calon", type="primary", use_container_width=True):
+                        if st.button(f"🚀 FIX Update {len(df_fix)} Pusat dengan Jumlah Calon", type="primary", use_container_width=True):
                             bar = st.progress(0)
                             stat = st.empty()
                             ok = 0
@@ -2819,7 +3355,7 @@ elif st.session_state.role == "JPN":
                                     bar.progress((idx + 1) / len(df_fix))
                                     stat.write(f"Progress {idx+1}/{len(df_fix)} OK {ok} Fail {fail}")
                             bar.progress(1.0)
-                            st.success(f"âœ… FIX selesai! OK {ok} Fail {fail} | Refresh page untuk lihat jumlah calon masuk!")
+                            st.success(f"✅ FIX selesai! OK {ok} Fail {fail} | Refresh page untuk lihat jumlah calon masuk!")
                             st.balloons()
                     except Exception as e:
                         st.error(f"Error fix: {e}")
@@ -2839,7 +3375,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
             st.markdown("---")
             col1, col2 = st.columns(2)
             with col1:
-                st.subheader("âž• Tambah Pusat Manual - Auto Kira SPM")
+                st.subheader("➕ Tambah Pusat Manual - Auto Kira SPM")
                 st.caption("Formula: 1 kelas=20 calon, CEIL(calon/20)=kelas, petugas=kelas+9, sekolah perlu calonkan=kelas+12 (petugas+KP+TKP+Penyelia)")
                 with st.form("tambah_pusat"):
                     kod_pusat = st.text_input("KOD PUSAT * (cth: BA001)")
@@ -2850,8 +3386,8 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                     kelas_preview = kira_kelas_dari_calon(calon_input)
                     petugas_preview = kira_petugas_dari_kelas(kelas_preview)
                     sekolah_need_preview = kira_sekolah_perlu_calonkan(kelas_preview)
-                    st.info(f" Auto Kira: {calon_input} calon â†’ {kelas_preview} kelas (20/kelas) â†’ {petugas_preview} petugas (kelas+9) â†’ Sekolah perlu calonkan {sekolah_need_preview} orang (petugas+KP+TKP+Penyelia)")
-                    submit_pusat = st.form_submit_button("ðŸ’¾ Simpan Pusat (Auto Kira)", type="primary", use_container_width=True)
+                    st.info(f" Auto Kira: {calon_input} calon → {kelas_preview} kelas (20/kelas) → {petugas_preview} petugas (kelas+9) → Sekolah perlu calonkan {sekolah_need_preview} orang (petugas+KP+TKP+Penyelia)")
+                    submit_pusat = st.form_submit_button("💾 Simpan Pusat (Auto Kira)", type="primary", use_container_width=True)
                     if submit_pusat:
                         if not kod_pusat or not nama_pusat:
                             st.error("Kod & Nama Pusat wajib!")
@@ -2861,20 +3397,20 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                 petugas_calc = kira_petugas_dari_kelas(kelas_calc)
                                 sekolah_need = kira_sekolah_perlu_calonkan(kelas_calc)
                                 supa.table("pusat_master").insert({"kod_pusat": kod_pusat.upper(), "nama_pusat": nama_pusat.upper(), "kod_ppd": kod_ppd_pusat, "ppd": PPD_MAP.get(kod_ppd_pusat, ""), "alamat": alamat_pusat, "bilik": kelas_calc, "calon": int(calon_input), "jumlah_calon": int(calon_input), "jumlah_kelas": kelas_calc, "petugas_needed": petugas_calc, "data": {"NO_PUSAT": kod_pusat.upper(), "NAMA_PUSAT": nama_pusat.upper(), "KOD PPD": kod_ppd_pusat, "KOD_SEKOLAH": alamat_pusat, "JUMLAH_CALON": str(calon_input), "JUMLAH_KELAS": str(kelas_calc), "PETUGAS_NEEDED": str(petugas_calc), "SEKOLAH_PERLU_CALON": str(sekolah_need), "FORMULA": f"{calon_input} calon /20 = {kelas_calc} kelas, {kelas_calc}+9={petugas_calc} petugas, +3 KP/TKP/Penyelia = {sekolah_need} sekolah perlu calon"}}).execute()
-                                st.success(f"âœ… Pusat {kod_pusat} berjaya tambah! {calon_input} calon = {kelas_calc} kelas, {petugas_calc} petugas, sekolah perlu {sekolah_need} orang")
+                                st.success(f"✅ Pusat {kod_pusat} berjaya tambah! {calon_input} calon = {kelas_calc} kelas, {petugas_calc} petugas, sekolah perlu {sekolah_need} orang")
                                 st.balloons()
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Gagal: {e}")
             
             with col2:
-                st.subheader("ðŸ“¤ Import Excel/CSV Pusat (Batch)")
+                st.subheader("📤 Import Excel/CSV Pusat (Batch)")
                 st.info("Support: pusat_2026.csv (NO_PUSAT format) & Excel KOD PUSAT format | 506 pusat")
                 col_t1, col_t2 = st.columns(2)
                 with col_t1:
-                    st.download_button("ðŸ“¥ Template Pusat", to_excel(pd.DataFrame([{"KOD PUSAT": "BA001", "NAMA PUSAT": "SMK DATO HAMZAH", "KOD PPD": "BA", "ALAMAT PUSAT": "Jalan Dato Hamzah", "BILIK": 10, "CALON": 250}])), "TEMPLATE_PUSAT.xlsx")
+                    st.download_button("📥 Template Pusat", to_excel(pd.DataFrame([{"KOD PUSAT": "BA001", "NAMA PUSAT": "SMK DATO HAMZAH", "KOD PPD": "BA", "ALAMAT PUSAT": "Jalan Dato Hamzah", "BILIK": 10, "CALON": 250}])), "TEMPLATE_PUSAT.xlsx")
                 with col_t2:
-                    st.download_button("ðŸ“¥ Sample pusat_2026.csv", open("/mnt/data/pusat_2026.csv", "rb").read() if __import__("os").path.exists("/mnt/data/pusat_2026.csv") else b"", "pusat_2026_sample.csv")
+                    st.download_button("📥 Sample pusat_2026.csv", open("/mnt/data/pusat_2026.csv", "rb").read() if __import__("os").path.exists("/mnt/data/pusat_2026.csv") else b"", "pusat_2026_sample.csv")
                 
                 up = st.file_uploader("Upload Excel/CSV Pusat (Excel atau CSV)", type=["xlsx", "csv"], key="pusat_up")
                 if up:
@@ -2888,7 +3424,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                             df_up = pd.read_excel(up)
                         st.write(f"Preview {len(df_up)} pusat:")
                         st.dataframe(df_up.head(20), use_container_width=True)
-                        if st.button(f"ðŸš€ Import {len(df_up)} Pusat (Batch 200)", type="primary", use_container_width=True):
+                        if st.button(f"🚀 Import {len(df_up)} Pusat (Batch 200)", type="primary", use_container_width=True):
                             bar = st.progress(0)
                             stat = st.empty()
                             ok = 0
@@ -2932,14 +3468,14 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                         st.warning(f"Batch {start}-{end}: {e}")
                                 bar.progress(end / len(df_up))
                                 stat.write(f"Progress {end}/{len(df_up)} | OK {ok}")
-                            st.success(f"âœ… Selesai import {ok}/{len(df_up)} pusat! Total 506")
+                            st.success(f"✅ Selesai import {ok}/{len(df_up)} pusat! Total 506")
                             st.balloons()
                             st.rerun()
                     except Exception as e:
                         st.error(f"Error: {e}")
             
             st.markdown("---")
-            if st.button("ðŸ—‘ï¸ Kosongkan Semua Pusat (Hati-hati!)", type="secondary"):
+            if st.button("🗑️ Kosongkan Semua Pusat (Hati-hati!)", type="secondary"):
                 try:
                     supa.table("pusat_master").delete().gt("id", 0).execute()
                     st.success("Semua pusat dipadam")
@@ -2957,7 +3493,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                     df_m = pd.read_excel(up_master, sheet_name=0)
                     st.write(f"File ada {len(df_m)} baris. Column: {list(df_m.columns)}")
                     st.dataframe(df_m.head(10), use_container_width=True)
-                    if st.button(f"ðŸš€ Import {len(df_m)} Guru ke Supabase (Batch 500)", type="primary", use_container_width=True):
+                    if st.button(f"🚀 Import {len(df_m)} Guru ke Supabase (Batch 500)", type="primary", use_container_width=True):
                         bar = st.progress(0)
                         stat = st.empty()
                         ok = 0
@@ -2998,7 +3534,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                     st.error(f"Batch {start}-{end} error: {e}")
                             bar.progress(end / len(df_m))
                             stat.write(f"Imported {end}/{len(df_m)} | OK {ok}")
-                        st.success(f"âœ… Selesai import {ok}/{len(df_m)} guru!")
+                        st.success(f"✅ Selesai import {ok}/{len(df_m)} guru!")
                         st.balloons()
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -3032,7 +3568,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                 res = supa.table("cadangan_sup").select("*").limit(10000).execute()
                 df = pd.DataFrame(res.data or [])
                 if not df.empty:
-                    st.download_button("ðŸ“¥ Laporan Penuh Negeri (Excel)", to_excel(df), file_name=f"Laporan_JPN_Selangor_{datetime.date.today()}.xlsx", use_container_width=True, type="primary")
+                    st.download_button("📥 Laporan Penuh Negeri (Excel)", to_excel(df), file_name=f"Laporan_JPN_Selangor_{datetime.date.today()}.xlsx", use_container_width=True, type="primary")
             except Exception as e:
                 st.error(str(e))
 
@@ -3042,9 +3578,9 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
             for t in ["sekolah_master", "pusat_master", "guru_master", "cadangan_sup"]:
                 try:
                     res = supa.table(t).select("*", count="exact").limit(1).execute()
-                    st.success(f"âœ… {t}: {res.count} records")
+                    st.success(f"✅ {t}: {res.count} records")
                 except Exception as e:
-                    st.error(f"âŒ {t}: {e}")
+                    st.error(f"❌ {t}: {e}")
             st.markdown("---")
             st.subheader("Buat Table cadangan_sup jika belum ada")
             st.code("""
