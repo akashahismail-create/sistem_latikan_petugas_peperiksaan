@@ -2188,6 +2188,135 @@ elif st.session_state.role == "PPD":
                     st.download_button(f"📥 Export Jana {pilihan_pusat_jana}", to_excel(df_assign_pusat), file_name=f"jana_{pilihan_pusat_jana}_{datetime.date.today()}.xlsx", use_container_width=True)
 
         elif menu == "hasil":
+                elif menu == "hasil":
+        st.markdown(f"""
+        <div style="background: #1b5e20; padding:20px; border-radius:12px; color:white; border: 2px solid #0d3b0d; margin-bottom:20px;">
+            <div style="display:flex; align-items:center; gap:15px;">
+                <div style="font-size:48px;">📋</div>
+                <div>
+                    <h2 style="margin:0; color:white; font-size:24px;">Hasil Janaan - PPD {kod_ppd}</h2>
+                    <p style="margin:5px 0 0 0; color:#a5d6a7; font-size:13px;">Senarai petugas yang telah dijana ke pusat peperiksaan</p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+        
+        # Filter hanya yang sudah ada kod_pusat (sudah dijana)
+        df_hasil_semua = pd.DataFrame()
+        if not df_cad_all.empty:
+            # Cari baris yang ada nilai dalam kod_pusat
+            df_hasil_semua = df_cad_all[df_cad_all["kod_pusat"].astype(str).str.len() > 2].copy()
+            
+            # Juga check data dict jika kod_pusat column kosong tapi ada dalam data
+            if df_hasil_semua.empty:
+                rows_check = []
+                for _, r in df_cad_all.iterrows():
+                    d = r.get("data") or {}
+                    if isinstance(d, str):
+                        try: d = json.loads(d)
+                        except: d = {}
+                    if d.get("KOD_PUSAT") or d.get("NO_PUSAT_ASAL"):
+                        rows_check.append(r)
+                if rows_check:
+                    df_hasil_semua = pd.DataFrame(rows_check)
+
+        if df_hasil_semua.empty:
+            # PAPARAN 1: TIADA HASIL JANAAN
+            st.markdown('''
+            <div style="background:#fff3e0; border:3px solid #e65100; border-radius:12px; padding:40px; text-align:center; margin:20px 0;">
+                <div style="font-size:64px;">📭</div>
+                <div style="font-size:22px; font-weight:800; color:#bf360c; margin:15px 0;">BELUM ADA HASIL JANAAN</div>
+                <div style="font-size:16px; color:#424242; margin:10px 0;">
+                    Tiada guru yang telah dijana ke pusat peperiksaan untuk PPD ini.<br>
+                    Sila lakukan janaan terlebih dahulu.
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+            col_btn1, col_btn2 = st.columns([1, 1])
+            with col_btn1:
+                if st.button("🚀 Pergi Ke Menu Jana Keseluruhan", type="primary", use_container_width=True):
+                    st.session_state["ppd_menu_radio"] = "jana" # Cuba set menu radio jika boleh, atau user klik manual
+                    st.info("Sila klik menu '🚀 Jana Keseluruhan' di sidebar kiri.")
+            with col_btn2:
+                if st.button("🔄 Refresh Data", use_container_width=True):
+                    st.rerun()
+
+        else:
+            # PAPARAN 2: ADA HASIL JANAAN (TERUS PAPAR SENARAI)
+            st.success(f"✅ Dijumpai {len(df_hasil_semua)} petugas yang telah dijana ke pusat.")
+            
+            # Kumpulkan mengikut Pusat untuk paparan yang lebih teratur
+            pusat_unik = df_hasil_semua["kod_pusat"].unique()
+            
+            for pusat in sorted(pusat_unik):
+                df_pusat_ini = df_hasil_semua[df_hasil_semua["kod_pusat"] == pusat]
+                
+                # Dapatkan nama pusat (cuba dari DB pusat_master atau ambil dari data)
+                nama_pusat_display = pusat
+                try:
+                    res_p = supa.table("pusat_master").select("nama_pusat").eq("no_pusat", pusat).limit(1).execute()
+                    if res_p.data:
+                        nama_pusat_display = res_p.data[0].get("nama_pusat", pusat)
+                    else:
+                        # Try kod_pusat column
+                        res_p2 = supa.table("pusat_master").select("nama_pusat").eq("kod_pusat", pusat).limit(1).execute()
+                        if res_p2.data:
+                            nama_pusat_display = res_p2.data[0].get("nama_pusat", pusat)
+                except:
+                    pass
+
+                st.markdown(f"### 🏫 Pusat: {pusat} - {nama_pusat_display}")
+                
+                # Group by Jawatan
+                jawatan_groups = {}
+                for _, r in df_pusat_ini.iterrows():
+                    jaw = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or "Pengawas Peperiksaan").strip()
+                    if jaw not in jawatan_groups:
+                        jawatan_groups[jaw] = []
+                    jawatan_groups[jaw].append(r)
+                
+                # Papar setiap kumpulan jawatan
+                for jawatan, guru_list in jawatan_groups.items():
+                    # Tentukan warna/icon
+                    if "Ketua Pengawas" in jawatan and "Timbalan" not in jawatan:
+                        icon, color, bg = "👑", "#b71c1c", "#ffebee"
+                    elif "Timbalan" in jawatan:
+                        icon, color, bg = "🎖️", "#e65100", "#fff3e0"
+                    elif "Penyelia" in jawatan:
+                        icon, color, bg = "🔍", "#0d47a1", "#e3f2fd"
+                    else:
+                        icon, color, bg = "👨‍🏫", "#1b5e20", "#e8f5e9"
+                    
+                    st.markdown(f"""
+                    <div style="background:{bg}; border-left:5px solid {color}; border-radius:4px; padding:10px; margin:10px 0;">
+                        <div style="font-weight:800; color:{color}; font-size:15px;">{icon} {jawatan} ({len(guru_list)} orang)</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Table ringkas
+                    rows_j = []
+                    for g in guru_list:
+                        rows_j.append({
+                            "NAMA GURU": g.get("NAMA_GURU", ""),
+                            "IC": g.get("IC_GURU", ""),
+                            "SEKOLAH ASAL": g.get("KOD_SEKOLAH_ASAL", "") + " - " + str(g.get("NAMA_SEKOLAH_ASAL", ""))[:20],
+                            "TELEFON": g.get("TELEFON_GURU", "")
+                        })
+                    st.dataframe(pd.DataFrame(rows_j), use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+            
+            # Butang Export Sahaja
+            st.download_button(
+                "📥 Export Semua Hasil Janaan (Excel)", 
+                to_excel(df_hasil_semua), 
+                file_name=f"SEMUA_HASIL_JANAAN_{kod_ppd}_{datetime.date.today()}.xlsx", 
+                use_container_width=True,
+                type="primary"
+            )
             st.markdown(f"""
             <div style="background: #1b5e20; padding:20px; border-radius:12px; color:white; border: 2px solid #0d3b0d; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:15px;">
