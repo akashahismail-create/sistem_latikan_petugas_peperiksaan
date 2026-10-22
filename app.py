@@ -1991,7 +1991,6 @@ elif st.session_state.role == "PPD":
                     st.dataframe(df_j, use_container_width=True, hide_index=True)
 
         elif menu == "cadangan":
-        elif menu == "cadangan":
             st.header(f"Cadangan dari SUP - PPD {kod_ppd}")
             df_cad = get_cadangan_df(kod_ppd=kod_ppd)
             if df_cad.empty: st.info("Belum ada cadangan dari SUP")
