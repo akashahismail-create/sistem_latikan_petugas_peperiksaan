@@ -254,7 +254,85 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     html += '</body></html>'
     return html
 
+def generate_surat_penyelia_kawasan_html(nama, ic, sek_asal, nama_sek_asal, telefon, kod_bilik_kebal, nama_bilik_kebal, alamat_bilik_kebal, pusat_jagaan_list, no_surat, kod_ppd, ppd_name, tarikh):
+    """Surat khas untuk Penyelia Kawasan yang ditempatkan ke Bilik Kebal"""
+    pusat_jagaan_str = ", ".join(pusat_jagaan_list) if isinstance(pusat_jagaan_list, list) else str(pusat_jagaan_list)
+    pusat_jagaan_table = ""
+    if isinstance(pusat_jagaan_list, list) and pusat_jagaan_list:
+        for idx, p in enumerate(pusat_jagaan_list, 1):
+            pusat_jagaan_table += f"<tr><td>{idx}</td><td>{p}</td></tr>"
+    else:
+        pusat_jagaan_table = f"<tr><td>1</td><td>{pusat_jagaan_str}</td></tr>"
+    
+    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan Penyelia Kawasan SPM 2026</title>'
+    html += '<style>body{font-family:Times New Roman,serif;margin:40px;color:#000;}'
+    html += '.surat{border:3px double #0d47a1;padding:30px;margin-bottom:30px;background:white;page-break-after:always;}'
+    html += '.header{text-align:center;border-bottom:3px double #0d47a1;padding-bottom:15px;margin-bottom:20px;}'
+    html += '.header h2{color:#0d47a1;margin:5px 0;}'
+    html += '.kandungan{line-height:1.7;font-size:14px;}'
+    html += 'table.info{width:100%;border-collapse:collapse;margin:15px 0;}'
+    html += 'table.info td{padding:8px 12px;border:1px solid #ddd;}'
+    html += 'table.info td:first-child{width:200px;font-weight:bold;background:#e3f2fd;}'
+    html += 'table.pusat{width:100%;border-collapse:collapse;margin:10px 0;}'
+    html += 'table.pusat th, table.pusat td{border:1px solid #0d47a1;padding:8px;text-align:left;}'
+    html += 'table.pusat th{background:#0d47a1;color:white;}'
+    html += '.tandatangan{margin-top:60px;display:flex;justify-content:space-between;}'
+    html += '.penting{background:#fff3e0;border-left:5px solid #e65100;padding:12px;margin:15px 0;}'
+    html += '</style></head><body>'
+    html += '<div class="surat"><div class="header">'
+    html += '<h2>JABATAN PENDIDIKAN NEGERI SELANGOR</h2>'
+    html += f'<h3>PEJABAT PENDIDIKAN DAERAH {kod_ppd} - {ppd_name}</h3>'
+    html += '<h3 style="color:#e65100;">SURAT LANTIKAN PENYELIA KAWASAN SPM 2026</h3>'
+    html += f'<p><strong>No Rujukan: {no_surat}</strong> | Tarikh: {tarikh}</p></div>'
+    html += '<div class="kandungan">'
+    html += '<p><strong>Tuan/Puan,</strong></p>'
+    html += '<p><strong>PELANTIKAN SEBAGAI PENYELIA KAWASAN PEPERIKSAAN SPM TAHUN 2026 - PENEMPATAN DI BILIK KEBAL</strong></p>'
+    html += '<p>Dengan hormatnya saya merujuk kepada perkara di atas dan sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai <strong>Penyelia Kawasan SPM 2026</strong> dengan butiran seperti berikut:</p>'
+    html += '<table class="info">'
+    html += f'<tr><td>Nama Penyelia Kawasan</td><td>{nama}</td></tr>'
+    html += f'<tr><td>No. Kad Pengenalan</td><td>{ic}</td></tr>'
+    html += f'<tr><td>Sekolah Asal</td><td>{sek_asal} - {nama_sek_asal}</td></tr>'
+    html += f'<tr><td>No. Telefon</td><td>{telefon}</td></tr>'
+    html += f'<tr><td>Jawatan Lantikan</td><td><strong>PENYELIA KAWASAN</strong></td></tr>'
+    html += f'<tr><td>Dilantik di Bilik Kebal</td><td><strong>{kod_bilik_kebal} - {nama_bilik_kebal}</strong><br><small>{alamat_bilik_kebal}</small></td></tr>'
+    html += f'<tr><td>No Surat Lantikan</td><td>{no_surat}</td></tr>'
+    html += f'<tr><td>PPD</td><td>{kod_ppd} - {ppd_name}</td></tr>'
+    html += '</table>'
+    
+    html += '<div class="penting">'
+    html += '<strong>BERTANGGUNGJAWAB ATAS PUSAT-PUSAT PEPERIKSAAN:</strong>'
+    html += '<p>Penyelia Kawasan ini bertanggungjawab memantau dan menyelia pusat-pusat peperiksaan berikut di bawah Bilik Kebal yang berkenaan:</p>'
+    html += '</div>'
+    
+    html += '<table class="pusat">'
+    html += '<tr><th>Bil</th><th>Kod Pusat / Pusat Peperiksaan Di Bawah Jagaan</th></tr>'
+    html += pusat_jagaan_table
+    html += '</table>'
+    
+    html += f'<p><strong>Jumlah Pusat Jagaan: {len(pusat_jagaan_list) if isinstance(pusat_jagaan_list, list) else 1} pusat</strong></p>'
+    
+    html += '<p>3. <strong>Tugas dan Tanggungjawab Penyelia Kawasan:</strong></p>'
+    html += '<ul>'
+    html += '<li>Bertanggungjawab sepenuhnya ke atas keselamatan dan kelancaran pengurusan kertas soalan di Bilik Kebal yang ditetapkan;</li>'
+    html += f'<li>Menyelia dan memantau {len(pusat_jagaan_list) if isinstance(pusat_jagaan_list, list) else 1} pusat peperiksaan di bawah jagaan Bilik Kebal {kod_bilik_kebal};</li>'
+    html += '<li>Memastikan semua prosedur keselamatan dan tatacara peperiksaan SPM dipatuhi;</li>'
+    html += '<li>Melaporkan sebarang isu atau masalah kepada Pegawai Pendidikan Daerah dengan segera;</li>'
+    html += '<li>Hadir bertugas mengikut jadual yang ditetapkan oleh PPD.</li>'
+    html += '</ul>'
+    
+    html += '<p>4. Tuan/puan dikehendaki hadir taklimat Penyelia Kawasan yang akan dimaklumkan kemudian oleh PPD.</p>'
+    html += '<p>5. Kerjasama, komitmen dan integriti tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai.</p>'
+    html += '<p>Sekian, terima kasih.</p>'
+    
+    html += '<div class="footer"><p><strong>MALAYSIA MADANI</strong><br><strong>BERKHIDMAT UNTUK NEGARA</strong></p>'
+    html += '<div class="tandatangan"><div><p>Yang benar,</p><br><br><br>'
+    html += f'<p>_________________________<br><strong>Pegawai Pendidikan Daerah<br>PPD {kod_ppd} - {ppd_name}</strong><br><small>Tarikh: {tarikh}</small></p></div>'
+    html += '<div style="text-align:right;"><p>b.p Pengarah Pendidikan<br>Jabatan Pendidikan Negeri Selangor<br><br><small>Salinan: Pengetua {nama_sek_asal}<br>Sekolah Asal Penyelia Kawasan</small></p></div></div></div></div></div>'
+    html += '</body></html>'
+    return html
+
 def generate_surat_kolektif_html(guru_list, kod_ppd, ppd_name, tarikh, prefix):
+
     # guru_list is list of dicts with NAMA, IC, etc
     html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan Kolektif</title>'
     html += '<style>body{font-family:Arial,sans-serif;margin:20px;} .surat{border:1px solid #ccc;padding:20px;margin:10px 0;} h2{text-align:center;}</style></head><body>'
@@ -1367,41 +1445,104 @@ if st.session_state.role == "SUP":
                     for _, r in df_lulus.iterrows():
                         nama = r.get("NAMA_GURU", "") or r.get("nama_guru", "")
                         ic = r.get("IC_GURU", "") or r.get("ic_guru", "")
-                        jawatan = r.get("JAWATAN_CADANGAN", "") or r.get("jawatan_cadangan", "")
-                        pusat = r.get("kod_pusat", "") or r.get("KOD_PUSAT", "")
+                        jawatan = r.get("JAWATAN_CADANGAN", "") or r.get("jawatan_cadangan", "") or ""
+                        pusat = r.get("kod_pusat", "") or r.get("KOD_PUSAT", "") or ""
                         no_surat = r.get("no_surat", "") or ""
+                        telefon = r.get("TELEFON_GURU", "") or r.get("telefon_guru", "") or r.get("NO_TELEFON", "") or ""
                         
-                        with st.expander(f"{nama} - {jawatan} - {pusat} - {no_surat}"):
-                            # Generate individual surat HTML
+                        # Detect if this is Penyelia Kawasan placed in Bilik Kebal
+                        is_penyelia_bk = "PENYELIA" in jawatan.upper() and ("BK-" in pusat.upper() or "CB" in pusat.upper() or "BILIK" in pusat.upper() or str(r.get("status","")).upper() in ["DITEMPATKAN BILIK KEBAL", "SURAT PK DIHANTAR", "SURAT PK DIHANTAR KE SEKOLAH"])
+                        # Also check data json for bilik kebal
+                        data_json = r.get("data") if isinstance(r.get("data"), dict) else {}
+                        if isinstance(data_json, str):
+                            try:
+                                data_json = json.loads(data_json)
+                            except:
+                                data_json = {}
+                        if data_json and ("kod_bilik_kebal" in str(data_json).lower() or "pusat_jagaan" in str(data_json).lower()):
+                            is_penyelia_bk = True
+                        
+                        label_bk = "🔐 Penyelia Kawasan - Bilik Kebal" if is_penyelia_bk else f"{jawatan}"
+                        
+                        with st.expander(f"{nama} - {label_bk} - {pusat} - {no_surat}"):
                             try:
                                 pusat_nama = ""
-                                try:
-                                    df_pusat = get_pusat_df()
-                                    for _, pr in df_pusat.iterrows():
-                                        d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
-                                        if isinstance(d, str):
-                                            try: d = json.loads(d)
-                                            except: d = {}
-                                        no_p = str(pr.get("no_pusat") or d.get("NO_PUSAT") or "").upper().strip()
-                                        if no_p == pusat.upper():
-                                            pusat_nama = pr.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
-                                            break
-                                except:
-                                    pusat_nama = ""
+                                alamat_bk = ""
+                                nama_bk = pusat
+                                # Try get bilik kebal details
+                                if is_penyelia_bk:
+                                    try:
+                                        res_bk = supa.table("bilik_kebal_master").select("*").eq("kod_bilik_kebal", pusat.upper()).limit(1).execute()
+                                        if res_bk.data:
+                                            nama_bk = res_bk.data[0].get("nama_bilik_kebal", pusat)
+                                            alamat_bk = res_bk.data[0].get("alamat", "")
+                                            pusat_nama = nama_bk
+                                    except:
+                                        pass
+                                else:
+                                    try:
+                                        df_pusat = get_pusat_df()
+                                        for _, pr in df_pusat.iterrows():
+                                            d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
+                                            if isinstance(d, str):
+                                                try: d = json.loads(d)
+                                                except: d = {}
+                                            no_p = str(pr.get("no_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                            if no_p == pusat.upper():
+                                                pusat_nama = pr.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                                                break
+                                    except:
+                                        pusat_nama = ""
                                 
-                                html_surat = generate_surat_html(
-                                    nama, ic, jawatan,
-                                    r.get("KOD_SEKOLAH_ASAL", "") or kod,
-                                    r.get("NAMA_SEKOLAH_ASAL", "") or info.get('nama_sekolah',''),
-                                    pusat, pusat_nama, no_surat,
-                                    r.get("KOD_PPD", "") or info.get('kod_ppd',''),
-                                    PPD_MAP.get(r.get("KOD_PPD", "") or info.get('kod_ppd',''), ""),
-                                    datetime.date.today().strftime('%d %B %Y')
-                                )
-                                st.components.v1.html(html_surat, height=500, scrolling=True)
-                                st.download_button(f"Download Surat {nama}", data=html_surat.encode('utf-8'), file_name=f"Surat_{nama.replace(' ', '_')}_{no_surat.replace('/', '_')}.html", mime="text/html", use_container_width=True, key=f"dl_{r.get('id','')}")
+                                # Get pusat jagaan for penyelia
+                                pusat_jagaan_list = []
+                                if is_penyelia_bk:
+                                    if isinstance(data_json, dict):
+                                        pj = data_json.get("pusat_jagaan") or data_json.get("pusat_jagaan_str") or []
+                                        if isinstance(pj, str):
+                                            pusat_jagaan_list = [p.strip() for p in pj.split(",") if p.strip()]
+                                        elif isinstance(pj, list):
+                                            pusat_jagaan_list = pj
+                                    if not pusat_jagaan_list:
+                                        pusat_jagaan_list = [pusat]
+                                    
+                                    html_surat = generate_surat_penyelia_kawasan_html(
+                                        nama=nama,
+                                        ic=ic,
+                                        sek_asal=r.get("KOD_SEKOLAH_ASAL", "") or r.get("kod_sekolah_asal", "") or kod,
+                                        nama_sek_asal=r.get("NAMA_SEKOLAH_ASAL", "") or r.get("nama_sekolah_asal", "") or info.get('nama_sekolah',''),
+                                        telefon=telefon,
+                                        kod_bilik_kebal=pusat,
+                                        nama_bilik_kebal=nama_bk,
+                                        alamat_bilik_kebal=alamat_bk,
+                                        pusat_jagaan_list=pusat_jagaan_list,
+                                        no_surat=no_surat,
+                                        kod_ppd=r.get("KOD_PPD", "") or r.get("kod_ppd", "") or info.get('kod_ppd',''),
+                                        ppd_name=PPD_MAP.get(r.get("KOD_PPD", "") or r.get("kod_ppd", "") or info.get('kod_ppd',''), ""),
+                                        tarikh=datetime.date.today().strftime('%d %B %Y')
+                                    )
+                                else:
+                                    html_surat = generate_surat_html(
+                                        nama, ic, jawatan,
+                                        r.get("KOD_SEKOLAH_ASAL", "") or kod,
+                                        r.get("NAMA_SEKOLAH_ASAL", "") or info.get('nama_sekolah',''),
+                                        pusat, pusat_nama, no_surat,
+                                        r.get("KOD_PPD", "") or info.get('kod_ppd',''),
+                                        PPD_MAP.get(r.get("KOD_PPD", "") or info.get('kod_ppd',''), ""),
+                                        datetime.date.today().strftime('%d %B %Y')
+                                    )
+                                
+                                st.components.v1.html(html_surat, height=600, scrolling=True)
+                                st.download_button(f"📥 Download Surat {nama} - {label_bk}", data=html_surat.encode('utf-8'), file_name=f"Surat_{label_bk.replace(' ', '_')}_{nama.replace(' ', '_')}_{no_surat.replace('/', '_')}.html", mime="text/html", use_container_width=True, key=f"dl_{r.get('id','')}")
+                                
+                                # Show extra info for penyelia kawasan
+                                if is_penyelia_bk and pusat_jagaan_list:
+                                    st.info(f"🔐 Penyelia Kawasan ini ditempatkan di Bilik Kebal {pusat} ({nama_bk}) dan bertanggungjawab atas {len(pusat_jagaan_list)} pusat: {', '.join(pusat_jagaan_list)}")
+                                
                             except Exception as e:
                                 st.error(f"Error generate surat: {e}")
+                                import traceback
+                                st.error(traceback.format_exc())
 
 # ================= ROLE: PPD =================
 elif st.session_state.role == "PPD":
@@ -3167,7 +3308,7 @@ elif st.session_state.role == "PPD":
                 total_guru_ppd = 0
             c3.metric("Guru PPD", total_guru_ppd)
             
-            tab_form, tab_senarai, tab_import, tab_penyelia = st.tabs(["Tambah Bilik Kebal", "Senarai Bilik Kebal", "Import Pukal Excel", "Tempatkan Penyelia Kawasan"])
+            tab_form, tab_senarai, tab_import, tab_penyelia, tab_surat = st.tabs(["Tambah Bilik Kebal", "Senarai Bilik Kebal", "Import Pukal Excel", "Tempatkan Penyelia Kawasan", "📄 Jana Surat Penyelia"])
             
             with tab_form:
                 st.markdown("### Borang Daftar Bilik Kebal Baru")
@@ -3614,6 +3755,197 @@ elif st.session_state.role == "PPD":
                             st.info(f"Tiada penyelia ditempatkan di {pilih_bk_batal}")
 
 
+
+
+            with tab_surat:
+                st.markdown(f"### 📄 Jana Surat Lantikan Penyelia Kawasan - PPD {kod_ppd}")
+                st.caption("Surat akan dijana dengan Nama, IC, Sekolah Asal, Bilik Kebal, Pusat Jagaan. Boleh download HTML dan hantar ke sekolah asal. SUP akan nampak di Petugas di Sekolah Saya.")
+                
+                # Load bilik kebal and penyelia assigned
+                df_cad_all_surat = get_cadangan_df(kod_ppd=kod_ppd)
+                if df_cad_all_surat.empty:
+                    st.warning("Belum ada cadangan")
+                else:
+                    # Filter penyelia yang sudah ditempatkan di bilik kebal
+                    df_surat = []
+                    for _, c in df_cad_all_surat.iterrows():
+                        p = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper()
+                        jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "").upper()
+                        if "PENYELIA" in jaw and p:
+                            # Check if p is bilik kebal
+                            is_bk = False
+                            for _, bk in df_bk.iterrows():
+                                if str(bk.get("kod_bilik_kebal","")).upper() == p:
+                                    is_bk = True
+                                    break
+                            if is_bk or "BK-" in p or "CB" in p or p.startswith(kod_ppd+"-BK") or "BILIK" in p:
+                                df_surat.append(c)
+                            # Also include if status DITEMPATKAN BILIK KEBAL
+                            if str(c.get("status") or c.get("STATUS") or "").upper() == "DITEMPATKAN BILIK KEBAL":
+                                if c not in df_surat:
+                                    df_surat.append(c)
+                    
+                    df_surat = pd.DataFrame(df_surat) if df_surat else pd.DataFrame()
+                    
+                    if df_surat.empty:
+                        st.info("Belum ada Penyelia Kawasan yang ditempatkan ke Bilik Kebal. Sila tempatkan dulu di tab Tempatkan Penyelia Kawasan.")
+                    else:
+                        st.success(f"Ada {len(df_surat)} Penyelia Kawasan telah ditempatkan ke Bilik Kebal dan sedia untuk jana surat")
+                        
+                        # Select penyelia to generate surat
+                        def get_col_s(df, *cands):
+                            for cand in cands:
+                                if cand in df.columns:
+                                    return cand
+                            return None
+                        
+                        c_nama_s = get_col_s(df_surat, "NAMA_GURU","nama_guru")
+                        c_ic_s = get_col_s(df_surat, "IC_GURU","ic_guru")
+                        c_sek_s = get_col_s(df_surat, "KOD_SEKOLAH_ASAL","kod_sekolah_asal")
+                        c_sek_nama_s = get_col_s(df_surat, "NAMA_SEKOLAH_ASAL","nama_sekolah_asal")
+                        c_tel_s = get_col_s(df_surat, "TELEFON_GURU","telefon_guru")
+                        c_pusat_s = get_col_s(df_surat, "KOD_PUSAT","kod_pusat")
+                        c_id_s = "id" if "id" in df_surat.columns else None
+                        
+                        # Display
+                        cols_s = [c for c in [c_nama_s,c_ic_s,c_sek_s,c_sek_nama_s,c_tel_s,c_pusat_s] if c]
+                        if cols_s:
+                            st.dataframe(df_surat[cols_s].head(50), use_container_width=True, hide_index=True)
+                        
+                        # Pilih penyelia
+                        if c_id_s:
+                            id_list_s = df_surat[c_id_s].tolist()
+                            def fmt_surat(x):
+                                row = df_surat[df_surat[c_id_s].astype(str)==str(x)]
+                                if row.empty:
+                                    row = df_surat[df_surat[c_id_s]==x]
+                                if not row.empty:
+                                    nama = str(row.iloc[0].get(c_nama_s,"") if c_nama_s else "")[:25]
+                                    bk = str(row.iloc[0].get(c_pusat_s,"") if c_pusat_s else "")[:15]
+                                    return f"{nama} - {bk} (ID:{x})"
+                                return f"ID:{x}"
+                            
+                            pilih_surat = st.multiselect("Pilih Penyelia Kawasan untuk Jana Surat", id_list_s, format_func=fmt_surat, key="pilih_surat_penyelia")
+                            
+                            # No surat settings
+                            col_no1, col_no2, col_no3 = st.columns(3)
+                            with col_no1:
+                                prefix_surat = st.text_input("Prefix No Surat", value=f"PPD{kod_ppd}/SPM/PK/2026/", key="prefix_surat_pk")
+                            with col_no2:
+                                no_mula = st.number_input("No Mula", min_value=1, value=1, key="no_mula_pk")
+                            with col_no3:
+                                tarikh_surat = st.date_input("Tarikh Surat", value=datetime.date.today(), key="tarikh_surat_pk")
+                            
+                            if pilih_surat and st.button(f"📄 Jana {len(pilih_surat)} Surat Penyelia Kawasan", type="primary", use_container_width=True, key="btn_jana_surat_pk"):
+                                try:
+                                    tarikh_str = tarikh_surat.strftime("%d %B %Y")
+                                    surat_html_all = ""
+                                    surat_list_data = []
+                                    current_no = no_mula
+                                    
+                                    for pid in pilih_surat:
+                                        row = df_surat[df_surat[c_id_s].astype(str)==str(pid)]
+                                        if row.empty:
+                                            row = df_surat[df_surat[c_id_s]==pid]
+                                        if row.empty:
+                                            continue
+                                        r = row.iloc[0]
+                                        nama = str(r.get(c_nama_s,"") if c_nama_s else "")
+                                        ic = str(r.get(c_ic_s,"") if c_ic_s else "")
+                                        sek = str(r.get(c_sek_s,"") if c_sek_s else "")
+                                        nama_sek = str(r.get(c_sek_nama_s,"") if c_sek_nama_s else sek)
+                                        tel = str(r.get(c_tel_s,"") if c_tel_s else "")
+                                        kod_bk = str(r.get(c_pusat_s,"") if c_pusat_s else "")
+                                        
+                                        # Get bilik kebal details
+                                        bk_row = df_bk[df_bk["kod_bilik_kebal"].astype(str).str.upper()==kod_bk.upper()] if not df_bk.empty and "kod_bilik_kebal" in df_bk.columns else pd.DataFrame()
+                                        if not bk_row.empty:
+                                            nama_bk = str(bk_row.iloc[0].get("nama_bilik_kebal",""))
+                                            alamat_bk = str(bk_row.iloc[0].get("alamat",""))
+                                        else:
+                                            nama_bk = kod_bk
+                                            alamat_bk = ""
+                                        
+                                        # Get pusat jagaan from data json
+                                        d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                                        if isinstance(d, str):
+                                            try:
+                                                d = json.loads(d)
+                                            except:
+                                                d = {}
+                                        pusat_jagaan = d.get("pusat_jagaan") or d.get("pusat_jagaan_str") or []
+                                        if isinstance(pusat_jagaan, str):
+                                            pusat_jagaan = [p.strip() for p in pusat_jagaan.split(",") if p.strip()]
+                                        
+                                        no_surat = f"{prefix_surat}{current_no:04d}"
+                                        current_no += 1
+                                        
+                                        html_surat = generate_surat_penyelia_kawasan_html(
+                                            nama=nama,
+                                            ic=ic,
+                                            sek_asal=sek,
+                                            nama_sek_asal=nama_sek,
+                                            telefon=tel,
+                                            kod_bilik_kebal=kod_bk,
+                                            nama_bilik_kebal=nama_bk,
+                                            alamat_bilik_kebal=alamat_bk,
+                                            pusat_jagaan_list=pusat_jagaan,
+                                            no_surat=no_surat,
+                                            kod_ppd=kod_ppd,
+                                            ppd_name=PPD_MAP.get(kod_ppd,""),
+                                            tarikh=tarikh_str
+                                        )
+                                        surat_html_all += html_surat + "\n"
+                                        surat_list_data.append({
+                                            "id": pid,
+                                            "nama": nama,
+                                            "ic": ic,
+                                            "sekolah_asal": sek,
+                                            "bilik_kebal": kod_bk,
+                                            "no_surat": no_surat,
+                                            "html": html_surat
+                                        })
+                                    
+                                    # Save to session for download and hantar
+                                    st.session_state[f"surat_pk_html_{kod_ppd}"] = surat_html_all
+                                    st.session_state[f"surat_pk_list_{kod_ppd}"] = surat_list_data
+                                    
+                                    st.success(f"✅ Berjaya jana {len(surat_list_data)} surat Penyelia Kawasan")
+                                    st.components.v1.html(surat_html_all[:10000], height=600, scrolling=True)
+                                    
+                                except Exception as e:
+                                    st.error(f"Error jana surat: {e}")
+                                    import traceback
+                                    st.error(traceback.format_exc())
+                            
+                            # Show generated surat if exists
+                            if f"surat_pk_html_{kod_ppd}" in st.session_state:
+                                st.markdown("---")
+                                st.markdown("### 📄 Surat Telah Dijana")
+                                html_all = st.session_state[f"surat_pk_html_{kod_ppd}"]
+                                list_data = st.session_state.get(f"surat_pk_list_{kod_ppd}", [])
+                                
+                                st.components.v1.html(html_all[:12000], height=700, scrolling=True)
+                                
+                                col_dl1, col_dl2, col_dl3 = st.columns(3)
+                                with col_dl1:
+                                    st.download_button("📥 Download Semua Surat (HTML)", data=html_all.encode('utf-8'), file_name=f"Surat_Penyelia_Kawasan_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key="dl_all_surat_pk")
+                                with col_dl2:
+                                    # Excel list
+                                    df_dl = pd.DataFrame([{"NAMA": s["nama"], "IC": s["ic"], "SEKOLAH ASAL": s["sekolah_asal"], "BILIK KEBAL": s["bilik_kebal"], "NO SURAT": s["no_surat"]} for s in list_data])
+                                    st.download_button("📥 Download Senarai (Excel)", to_excel(df_dl), file_name=f"Senarai_Surat_PK_{kod_ppd}.xlsx", use_container_width=True, key="dl_excel_pk")
+                                with col_dl3:
+                                    if st.button(f"📤 Hantar Surat ke Sekolah Asal (SUP akan nampak di Petugas di Sekolah Saya)", type="primary", use_container_width=True, key="btn_hantar_surat_pk"):
+                                        try:
+                                            berjaya = 0
+                                            for s in list_data:
+                                                supa.table("cadangan_sup").update({"status": "SURAT PK DIHANTAR", "no_surat": s["no_surat"]}).eq("id", s["id"]).execute()
+                                                berjaya += 1
+                                            st.success(f"✅ {berjaya} surat dihantar ke sekolah asal! SUP boleh lihat di menu Petugas di Sekolah Saya")
+                                            st.balloons()
+                                            st.info("Surat telah dihantar - guru di sekolah asal boleh download surat di SUP > Surat Lantikan Saya / Petugas di Sekolah Saya")
+                                        except Exception as e:
+                                            st.error(f"Error hantar: {e}")
 
         elif menu == "export":
             st.header(f"Export Data PPD {kod_ppd}")
