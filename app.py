@@ -4157,22 +4157,33 @@ elif st.session_state.role == "PPD":
                 else:
                     # Filter penyelia yang sudah ditempatkan di bilik kebal
                     df_surat = []
+                    seen_ids_surat = set()
                     for _, c in df_cad_all_surat.iterrows():
                         p = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper()
                         jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "").upper()
+                        c_id = str(c.get("id") or c.get("IC_GURU") or c.get("ic_guru") or "") + "_" + str(c.get("KOD_SEKOLAH_ASAL") or "")
+                        # Check if already added
+                        if c_id in seen_ids_surat:
+                            continue
                         if "PENYELIA" in jaw and p:
                             # Check if p is bilik kebal
                             is_bk = False
-                            for _, bk in df_bk.iterrows():
-                                if str(bk.get("kod_bilik_kebal","")).upper() == p:
-                                    is_bk = True
-                                    break
+                            try:
+                                for _, bk in df_bk.iterrows():
+                                    if str(bk.get("kod_bilik_kebal","")).upper() == p:
+                                        is_bk = True
+                                        break
+                            except:
+                                pass
                             if is_bk or "BK-" in p or "CB" in p or p.startswith(kod_ppd+"-BK") or "BILIK" in p:
                                 df_surat.append(c)
-                            # Also include if status DITEMPATKAN BILIK KEBAL
-                            if str(c.get("status") or c.get("STATUS") or "").upper() == "DITEMPATKAN BILIK KEBAL":
-                                if c not in df_surat:
-                                    df_surat.append(c)
+                                seen_ids_surat.add(c_id)
+                                continue
+                        # Also include if status DITEMPATKAN BILIK KEBAL
+                        if str(c.get("status") or c.get("STATUS") or "").upper() == "DITEMPATKAN BILIK KEBAL":
+                            if c_id not in seen_ids_surat:
+                                df_surat.append(c)
+                                seen_ids_surat.add(c_id)
                     
                     df_surat = pd.DataFrame(df_surat) if df_surat else pd.DataFrame()
                     
