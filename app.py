@@ -36,10 +36,26 @@ st.markdown("""
 .stSidebar {display: none !important;}
 section[data-testid="stSidebar"] {display: none !important;}
 
-/* ===== GLOBAL DARK MODE FIX ===== */
-/* Pastikan semua text utama nampak dalam dark mode */
+/* ===== GLOBAL DARK MODE FIX - FORCE LIGHT FOR CUSTOM SIDEBAR ===== */
 .stApp {
     color-scheme: light;
+}
+
+/* Force left column (col_menu) to have white background */
+div[data-testid="stHorizontalBlock"] > div:first-child {
+    background: #ffffff !important;
+    border-radius: 12px;
+}
+
+/* Ensure the column containing custom-sidebar is white */
+[data-testid="column"] {
+    background: transparent;
+}
+
+[data-testid="column"]:first-child {
+    background: #ffffff !important;
+    border-radius: 12px;
+    padding: 0 !important;
 }
 
 /* Metric cards - pastikan text hitam atas background putih sentiasa nampak */
@@ -157,7 +173,120 @@ div[style*="background: linear-gradient"] b {
     color: #000000 !important;
 }
 
-/* Radio buttons menu - pastikan text nampak */
+/* ===== FIX MENU RADIO DARK MODE - PASTIKAN NAMPAK ===== */
+.custom-sidebar [data-testid="stRadio"] {
+    background: #ffffff !important;
+}
+
+.custom-sidebar [data-testid="stRadio"] > div {
+    background: #ffffff !important;
+    gap: 6px !important;
+}
+
+/* Setiap label radio - buat macam button, putih background, hitam text, sentiasa nampak */
+.custom-sidebar [data-testid="stRadio"] label {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    padding: 10px 12px !important;
+    border-radius: 8px !important;
+    border: 2px solid #e0e0e0 !important;
+    margin-bottom: 2px !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.custom-sidebar [data-testid="stRadio"] label:hover {
+    background: #e3f2fd !important;
+    border-color: #1976d2 !important;
+    color: #0d47a1 !important;
+}
+
+/* Label yang dipilih - biru pekat dengan text putih - nampak dalam light & dark */
+.custom-sidebar [data-testid="stRadio"] label:has(input:checked),
+.custom-sidebar [data-testid="stRadio"] div[aria-checked="true"] {
+    background: #0d47a1 !important;
+    background-color: #0d47a1 !important;
+    color: #ffffff !important;
+    border-color: #0d47a1 !important;
+    font-weight: 800 !important;
+}
+
+/* Alternative selector for checked state */
+.custom-sidebar [data-testid="stRadio"] label[data-checked="true"] {
+    background: #0d47a1 !important;
+    color: #ffffff !important;
+    border-color: #0d47a1 !important;
+}
+
+/* Radio circle - pastikan nampak */
+.custom-sidebar [data-testid="stRadio"] input {
+    accent-color: #0d47a1 !important;
+}
+
+/* Text inside label */
+.custom-sidebar [data-testid="stRadio"] label p,
+.custom-sidebar [data-testid="stRadio"] label div,
+.custom-sidebar [data-testid="stRadio"] label span {
+    color: inherit !important;
+    font-weight: inherit !important;
+}
+
+/* Force menu container background putih */
+.custom-sidebar {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+/* Refresh button section - pastikan nampak */
+.custom-sidebar .stButton {
+    background: #ffffff !important;
+}
+
+.custom-sidebar .stButton button {
+    background: #ff1744 !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    border: 2px solid #d50000 !important;
+}
+
+/* Dark mode specific - force menu jadi putih dengan text hitam, selected biru dengan text putih */
+@media (prefers-color-scheme: dark) {
+    .custom-sidebar {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+    }
+    .custom-sidebar [data-testid="stRadio"] {
+        background: #ffffff !important;
+    }
+    .custom-sidebar [data-testid="stRadio"] label {
+        background: #ffffff !important;
+        color: #000000 !important;
+        border: 2px solid #9e9e9e !important;
+    }
+    .custom-sidebar [data-testid="stRadio"] label p {
+        color: #000000 !important;
+    }
+}
+
+[data-theme="dark"] .custom-sidebar,
+.stApp[data-theme="dark"] .custom-sidebar {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+[data-theme="dark"] .custom-sidebar [data-testid="stRadio"] label {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 2px solid #757575 !important;
+}
+
+/* Global radio fix - outside custom-sidebar also */
 [data-testid="stRadio"] label {
     color: #212121 !important;
     font-weight: 600 !important;
