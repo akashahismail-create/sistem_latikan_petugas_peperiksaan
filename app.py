@@ -5,6 +5,7 @@ from io import BytesIO
 import datetime
 import math
 import json
+import re
 
 st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="📚")
 
@@ -136,25 +137,26 @@ def get_guru_df(kod_sekolah):
                 except:
                     d = {}
 
+            # Padan nama lajur tanpa kira huruf besar/kecil, jarak, '_' atau '-'
+            # (contoh: "EMAIL GURU", "Email_Guru", "E-MAIL" semuanya dikenali sebagai EMAILGURU / EMAIL)
+            def _nk(x):
+                return re.sub(r"[^A-Z0-9]", "", str(x).upper())
+            _kosong_val = ("", "none", "null", "nan", "n/a", "-")
+            _dn, _rn = {}, {}
+            for _k, _v in d.items():
+                if _v is not None and not isinstance(_v, (dict, list)) and str(_v).strip().lower() not in _kosong_val:
+                    _dn.setdefault(_nk(_k), str(_v).strip())
+            for _k, _v in r.items():
+                if _v is not None and not isinstance(_v, (dict, list)) and str(_v).strip().lower() not in _kosong_val:
+                    _rn.setdefault(_nk(_k), str(_v).strip())
+
             def get_val(*keys, default=""):
                 for k in keys:
-                    if k in d and d[k] not in [None, "", "None", "null", "N/A", "-"]:
-                        v = str(d[k]).strip()
-                        if v and v.lower() not in ["none", "null", "nan", ""]:
-                            return v
-                    ku = k.upper()
-                    if ku in d and d[ku] not in [None, "", "None"]:
-                        v = str(d[ku]).strip()
-                        if v and v.lower() not in ["none", "null", "nan", ""]:
-                            return v
-                    if k in r and r[k] not in [None, "", "None"]:
-                        v = str(r[k]).strip()
-                        if v and v.lower() not in ["none", "null", "nan", ""]:
-                            return v
-                    if ku in r and r[ku] not in [None, "", "None"]:
-                        v = str(r[ku]).strip()
-                        if v and v.lower() not in ["none", "null", "nan", ""]:
-                            return v
+                    nk = _nk(k)
+                    if nk in _dn:
+                        return _dn[nk]
+                    if nk in _rn:
+                        return _rn[nk]
                 return default
 
             ic_val = get_val("IC", "ic_guru", "IC_GURU", "ic", "no_ic", "NO_KP", "NO KP")
@@ -163,13 +165,13 @@ def get_guru_df(kod_sekolah):
             poskod_val = get_val("POSKOD_RUMAH", "poskod_rumah", "POSKOD", "poskod", "POSKOD RUMAH")
             alamat_val = get_val("ALAMAT_RUMAH", "alamat_rumah", "ALAMAT RUMAH", "alamat", "ALAMAT")
             telefon_val = get_val("TELEFON_GURU", "telefon_guru", "NO TELEFON GURU", "TELEFON", "no_telefon")
-            email_val = get_val("EMAIL_GURU", "email_guru", "EMAIL", "email", "EMEL")
+            email_val = get_val("EMAIL_GURU", "email_guru", "EMAIL GURU", "EMAIL", "email", "EMEL", "EMEL GURU", "E-MEL", "E-MAIL")
             pengalaman_val = get_val("PENGALAMAN_SPM", "pengalaman_spm", "PENGALAMAN", "pengalaman")
             jawatan_val = get_val("JAWATAN_CADANGAN", "jawatan_cadangan", "JAWATAN CADANGAN", "jawatan")
             kod_ppd_val = get_val("KOD_PPD", "kod_ppd", "kod_ppd_asal", "KOD_PPD_ASAL", "ppd", "PPD")
             kod_sek_val = get_val("KOD_SEKOLAH", "kod_sekolah", "KOD SEKOLAH", "kod_sekolah_asal", "KOD_SEKOLAH_ASAL", default=kod_sekolah)
             nama_sek_val = get_val("NAMA_SEKOLAH", "nama_sekolah", "NAMA SEKOLAH", "sekolah_asal", "NAMA_SEKOLAH_ASAL")
-            no_pusat_asal_val = get_val("NO_PUSAT_ASAL", "no_pusat_asal", "NO PUSAT ASAL", "pusat_asal", "NO_PUSAT")
+            no_pusat_asal_val = get_val("NO_PUSAT_ASAL", "no_pusat_asal", "NO PUSAT ASAL", "PUSAT ASAL", "pusat_asal", "KOD PUSAT ASAL", "NO_PUSAT", "KOD PUSAT")
 
             if not nama_sek_val or nama_sek_val == "" or nama_sek_val == kod_sek_val:
                 nama_sek_val = sekolah_map_guru.get(kod_sek_val.upper(), "") or sekolah_map_guru.get(kod_sekolah.upper(), "") or kod_sek_val
@@ -177,11 +179,6 @@ def get_guru_df(kod_sekolah):
                 kod_ppd_val = kod_sekolah[:2] if len(kod_sekolah) >= 2 else "BA"
             if not jawatan_val or jawatan_val.strip() == "":
                 jawatan_val = "Pengawas Peperiksaan"
-            if not no_pusat_asal_val or no_pusat_asal_val.strip() == "":
-                if kod_sekolah.upper() == "BFT0003":
-                    no_pusat_asal_val = "BA142"
-                else:
-                    no_pusat_asal_val = f"{kod_ppd_val}001" if kod_ppd_val else "BA142"
 
             rows.append({
                 "id": r.get("id"),
@@ -370,6 +367,42 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         return df_norm
     except Exception:
         return pd.DataFrame()
+
+def flash(level, msg):
+    """Simpan mesej supaya masih nampak selepas st.rerun()."""
+    st.session_state.setdefault("_flash", []).append((level, msg))
+
+
+def show_flash():
+    for level, msg in st.session_state.pop("_flash", []):
+        getattr(st, level)(msg)
+
+
+def _id_py(x):
+    """ID baris -> jenis Python biasa (elak ralat JSON dengan numpy)."""
+    if hasattr(x, "item"):
+        x = x.item()
+    if isinstance(x, float) and x.is_integer():
+        return int(x)
+    return x
+
+
+def hantar_ke_ppd(ids, kod_ppd):
+    """Tukar status cadangan -> HANTAR KE PPD (kelompok 100 baris). Pulang (bil_berjaya, senarai_gagal)."""
+    berjaya, gagal = 0, []
+    for i in range(0, len(ids), 100):
+        kelompok = ids[i:i + 100]
+        try:
+            supa.table("cadangan_sup").update({"status": "HANTAR KE PPD", "kod_ppd": kod_ppd}).in_("id", kelompok).execute()
+        except Exception:
+            try:
+                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).in_("id", kelompok).execute()
+            except Exception as e:
+                gagal.append(f"{e}")
+                continue
+        berjaya += len(kelompok)
+    return berjaya, gagal
+
 
 def to_excel(df):
     output = BytesIO()
@@ -580,13 +613,15 @@ if st.session_state.role == "SUP":
     info = st.session_state.info
     st.sidebar.title(f"🏫 SUP {kod}")
     st.sidebar.caption(f"{info.get('nama_sekolah', '')} | {info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}")
-    menu = st.sidebar.radio("Menu SUP", ["📊 Dashboard", "📋 Senarai Guru", "➕ Tambah Guru", " Import Excel", "🗑️ Buang Guru", "📝 Cadangan Lantikan", " Hantar ke PPD", "🚪 Log Keluar"])
-    if menu == " Log Keluar":
+    MENU_SUP = [('dashboard', '📊 Dashboard'), ('senarai', '📋 Senarai Guru'), ('tambah', '➕ Tambah Guru'), ('import', '📤 Import Excel'), ('buang', '🗑️ Buang Guru'), ('cadangan', '📝 Cadangan Lantikan'), ('hantar', '📤 Hantar ke PPD'), ('keluar', '🚪 Log Keluar')]
+    menu = st.sidebar.radio("Menu SUP", [k for k, _ in MENU_SUP], format_func=dict(MENU_SUP).get)
+    if menu == "keluar":
         st.session_state.clear()
         st.rerun()
+    show_flash()
     df_guru = get_guru_df(kod)
 
-    if menu == "📊 Dashboard":
+    if menu == "dashboard":
         st.header(f"Dashboard SUP - {kod} {info.get('nama_sekolah', '')}")
         try:
             df_pusat_all = get_pusat_df()
@@ -668,7 +703,7 @@ if st.session_state.role == "SUP":
         else:
             st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
 
-    elif menu == "📋 Senarai Guru":
+    elif menu == "senarai":
         st.header(f"Senarai Guru - {kod} - Lengkap")
         if df_guru.empty:
             st.info("guru_master kosong untuk sekolah ini. Sila Tambah Guru atau Import Excel.")
@@ -720,7 +755,7 @@ if st.session_state.role == "SUP":
                             except Exception as e:
                                 st.error(f"Gagal update: {e}")
 
-    elif menu == "➕ Tambah Guru":
+    elif menu == "tambah":
         st.header(f"Tambah Guru - {kod} - Lengkap Semua Maklumat")
         with st.form("tambah_guru", clear_on_submit=True):
             col1, col2 = st.columns(2)
@@ -754,7 +789,7 @@ if st.session_state.role == "SUP":
                         except Exception as e2:
                             st.error(f"Gagal: {e2}")
 
-    elif menu == "📤 Import Excel":
+    elif menu == "import":
         st.header(f"Import Excel Guru - {kod}")
         st.info("Format Excel: NAMA GURU, IC, JANTINA, NO TELEFON GURU, EMAIL GURU, ALAMAT RUMAH, KOD SEKOLAH, KOD PPD")
         st.download_button("📥 Download Template Guru (Excel Sah)", to_excel(get_template_guru()), file_name="template_guru.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -814,7 +849,7 @@ if st.session_state.role == "SUP":
             except Exception as e:
                 st.error(f"Excel error: {e}")
 
-    elif menu == "️ Buang Guru":
+    elif menu == "buang":
         st.header(f"Buang Guru - {kod}")
         if df_guru.empty:
             st.info("Tiada guru untuk dibuang.")
@@ -834,7 +869,7 @@ if st.session_state.role == "SUP":
                     st.success(f"✅ Berjaya buang {len(pilih)} guru")
                     st.rerun()
 
-    elif menu == "📝 Cadangan Lantikan":
+    elif menu == "cadangan":
         st.header(f"Cadangan Lantikan - {kod} - {info.get('nama_sekolah', '')}")
         try:
             df_pusat_all2 = get_pusat_df()
@@ -984,91 +1019,108 @@ if st.session_state.role == "SUP":
             st.dataframe(df_cad, use_container_width=True)
             st.download_button("📥 Export Cadangan", to_excel(df_cad), file_name=f"cadangan_{kod}.xlsx")
 
-    elif menu == "📤 Hantar ke PPD":
+    elif menu == "hantar":
         st.header(f"Hantar Cadangan ke PPD {info.get('kod_ppd', 'BA')}")
         df_cad = get_cadangan_df(kod_sekolah=kod)
         if df_cad.empty:
             st.warning("Belum ada cadangan. Pergi menu Cadangan Lantikan dulu.")
         else:
-            display_cols = [c for c in ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "EMAIL_GURU", "JAWATAN_CADANGAN", "PENGALAMAN_SPM", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "NO_PUSAT_ASAL", "STATUS", "TARIKH_CADANG"] if c in df_cad.columns]
-            if display_cols:
-                st.dataframe(df_cad[display_cols], use_container_width=True)
-            else:
-                st.dataframe(df_cad, use_container_width=True)
-            st.info(f"Ada {len(df_cad)} cadangan akan dihantar ke PPD {info.get('kod_ppd', 'BA')} - {PPD_MAP.get(info.get('kod_ppd', 'BA'), '')} - Semua ada POSKOD & ALAMAT lengkap!")
-            # Show if any missing poskod
-            missing_poskod = df_cad[df_cad["POSKOD_RUMAH"].astype(str).str.strip()==""] if "POSKOD_RUMAH" in df_cad.columns else pd.DataFrame()
-            if not missing_poskod.empty:
-                st.warning(f"⚠️ Ada {len(missing_poskod)} cadangan tanpa POSKOD - PPD tak boleh jana terdekat! Sila edit di Senarai Guru")
-            else:
-                st.success(f"✅ Semua {len(df_cad)} cadangan ada POSKOD & ALAMAT lengkap - PPD boleh jana ikut terdekat!")
+            kod_ppd_sup = str(info.get('kod_ppd', 'BA')).upper()
+            status_s = df_cad["STATUS"].astype(str).str.upper() if "STATUS" in df_cad.columns else pd.Series([""] * len(df_cad), index=df_cad.index)
+            m_lulus = status_s.str.contains("LULUS", na=False)
+            m_hantar = status_s.str.contains("HANTAR", na=False) & ~m_lulus
+            m_baru = ~(m_lulus | m_hantar)   # DICADANGKAN / TOLAK PPD - boleh dihantar (semula)
+            bil_baru = int(m_baru.sum())
+
+            display_cols = [c for c in ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "EMAIL_GURU", "JAWATAN_CADANGAN", "PENGALAMAN_SPM", "NO_PUSAT_ASAL", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "STATUS"] if c in df_cad.columns]
+            st.dataframe(df_cad[display_cols] if display_cols else df_cad, use_container_width=True)
+            k1, k2, k3 = st.columns(3)
+            with k1:
+                st.metric("Belum dihantar", bil_baru)
+            with k2:
+                st.metric("Sudah dihantar", int(m_hantar.sum()))
+            with k3:
+                st.metric("Lulus PPD", int(m_lulus.sum()))
+
+            sasaran = df_cad[m_baru]
+            def _kosong(col):
+                if col not in sasaran.columns:
+                    return pd.Series(False, index=sasaran.index)
+                return sasaran[col].astype(str).str.strip().isin(["", "KOSONG", "nan", "None"])
+            tak_lengkap = sasaran[_kosong("POSKOD_RUMAH") | _kosong("ALAMAT_RUMAH") | _kosong("TELEFON_GURU")]
+            if bil_baru and not tak_lengkap.empty:
+                st.warning(f"⚠️ {len(tak_lengkap)} cadangan belum lengkap (POSKOD / ALAMAT / TELEFON kosong) - PPD tak boleh jana ikut terdekat. Sila lengkapkan di Senarai Guru > Edit. Contoh: " + ", ".join(tak_lengkap["NAMA_GURU"].astype(str).head(3)))
+            elif bil_baru:
+                st.success(f"✅ {bil_baru} cadangan ada POSKOD, ALAMAT & TELEFON lengkap.")
+
             col_hantar, col_batal, col_reset = st.columns(3)
             with col_hantar:
-                if st.button("📤 Hantar Semua ke PPD", type="primary", use_container_width=True):
-                    try:
-                        for _, row in df_cad.iterrows():
-                            try:
-                                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD", "kod_ppd": info.get('kod_ppd', 'BA').upper()}).eq("id", row["id"]).execute()
-                            except Exception:
-                                try:
-                                    supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("id", row["id"]).execute()
-                                except Exception as ee:
-                                    st.error(f"Gagal {row.get('id')}: {ee}")
-                        st.success(f"✅ Berjaya hantar {len(df_cad)} cadangan ke PPD!")
-                        st.balloons()
+                if bil_baru == 0:
+                    st.info("Semua cadangan sudah dihantar / lulus.")
+                if st.button(f"📤 Hantar {bil_baru} Cadangan ke PPD", type="primary", use_container_width=True, disabled=bil_baru == 0, key="btn_hantar_ppd"):
+                    ids = [_id_py(x) for x in sasaran["id"].tolist()] if "id" in sasaran.columns else []
+                    if not ids:
+                        st.error("Tiada ID cadangan - data tak lengkap, hubungi admin.")
+                    else:
+                        berjaya, gagal = hantar_ke_ppd(ids, kod_ppd_sup)
+                        if berjaya:
+                            flash("success", f"✅ Berjaya hantar {berjaya} cadangan ke PPD {kod_ppd_sup} - {PPD_MAP.get(kod_ppd_sup, '')}!")
+                        if gagal:
+                            flash("error", "Sebahagian gagal dihantar: " + "; ".join(gagal[:3]))
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal hantar: {e}")
             with col_batal:
                 st.markdown("**Batal Cadangan (Selagi PPD Belum Lantik)**")
-                batal_ids = st.multiselect("Pilih untuk batal", df_cad["id"].tolist() if "id" in df_cad.columns else [], format_func=lambda x: f"{df_cad[df_cad['id']==x]['NAMA_GURU'].values[0] if not df_cad[df_cad['id']==x].empty else x} - {x}")
-                if st.button("❌ Batal Terpilih", use_container_width=True):
+                label_batal = {}
+                if "id" in df_cad.columns:
+                    for _, r_ in df_cad.iterrows():
+                        label_batal[_id_py(r_["id"])] = f"{r_.get('NAMA_GURU', '')} | {r_.get('IC_GURU', '')} | {r_.get('STATUS', '')}"
+                batal_ids = st.multiselect("Pilih untuk batal", list(label_batal.keys()), format_func=lambda x: label_batal.get(x, str(x)))
+                if st.button("❌ Batal Terpilih", use_container_width=True, key="btn_batal_cad"):
                     if not batal_ids:
                         st.warning("Pilih sekurang-kurangnya 1")
                     else:
+                        berjaya_b = 0
                         for bid in batal_ids:
                             try:
-                                row_check = df_cad[df_cad["id"] == bid]
-                                if not row_check.empty:
-                                    status_check = str(row_check.iloc[0].get("STATUS", "")).upper()
-                                    if "LULUS" in status_check:
-                                        st.error(f"Tak boleh batal {bid} - sudah LULUS PPD!")
-                                        continue
+                                if "LULUS" in str(df_cad[df_cad["id"] == bid].iloc[0].get("STATUS", "")).upper():
+                                    flash("error", f"Tak boleh batal {label_batal.get(bid, bid)} - sudah LULUS PPD!")
+                                    continue
                                 supa.table("cadangan_sup").delete().eq("id", bid).execute()
+                                berjaya_b += 1
                             except Exception as e:
-                                st.error(f"Gagal batal {bid}: {e}")
-                        st.success(f"✅ Berjaya batal {len(batal_ids)} cadangan!")
+                                flash("error", f"Gagal batal {label_batal.get(bid, bid)}: {e}")
+                        if berjaya_b:
+                            flash("success", f"✅ Berjaya batal {berjaya_b} cadangan!")
                         st.rerun()
             with col_reset:
                 st.markdown("**Reset Semua (Clear & Isi Semula)**")
-                if st.button(" Reset Semua Cadangan", use_container_width=True, type="secondary"):
-                    try:
-                        count_del = 0
-                        for _, row in df_cad.iterrows():
-                            status_check = str(row.get("STATUS", "")).upper()
-                            if "LULUS" not in status_check:
-                                try:
-                                    supa.table("cadangan_sup").delete().eq("id", row["id"]).execute()
-                                    count_del += 1
-                                except:
-                                    pass
-                        st.success(f"✅ Reset {count_del} cadangan! Data baru akan keluar lengkap. Email sahaja kosong.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal reset: {e}")
+                sah_reset = st.checkbox("Ya, padam semua cadangan (kecuali yang sudah LULUS)", key="sah_reset_cad")
+                if st.button("🔄 Reset Semua Cadangan", use_container_width=True, type="secondary", disabled=not sah_reset, key="btn_reset_cad"):
+                    count_del = 0
+                    for _, row in df_cad.iterrows():
+                        if "LULUS" in str(row.get("STATUS", "")).upper():
+                            continue
+                        try:
+                            supa.table("cadangan_sup").delete().eq("id", _id_py(row["id"])).execute()
+                            count_del += 1
+                        except Exception as e:
+                            flash("error", f"Gagal padam {row.get('NAMA_GURU', '')}: {e}")
+                    flash("success", f"✅ Reset {count_del} cadangan!")
+                    st.rerun()
         st.markdown("---")
-        st.caption("ℹ️ Nota: EMAIL_GURU kosong adalah normal - SUP perlu isi manual di Senarai Guru > Edit. NO_PUSAT_ASAL & KOD_SEKOLAH_ASAL sahaja digunakan (bukan KOD_PUSAT/KOD_SEKOLAH duplicate). Bila data baru isi, akan keluar lengkap kecuali email.")
+        st.caption("ℹ️ Cadangan yang sudah LULUS PPD tidak akan diubah atau dipadam oleh butang di atas.")
 
 # ================= PPD =================
 elif st.session_state.role == "PPD":
     kod_ppd = st.session_state.kod
     st.sidebar.title(f"🏢 PPD {kod_ppd}")
     st.sidebar.caption(f"{PPD_MAP.get(kod_ppd, '')}")
-    menu = st.sidebar.radio("Menu PPD", ["📊 Dashboard PPD", "🏫 Sekolah dalam PPD", "🏫 Pusat di PPD", "🚀 Jana Keseluruhan", "📋 Cadangan SUP", "✅ Kelulusan", "📥 Export", "🚪 Log Keluar"])
-    if menu == "🚪 Log Keluar":
+    MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), ('jana', '🚀 Jana Keseluruhan'), ('cadangan', '📋 Cadangan SUP'), ('kelulusan', '✅ Kelulusan'), ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
+    menu = st.sidebar.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get)
+    if menu == "keluar":
         st.session_state.clear()
         st.rerun()
-    if menu == "📊 Dashboard PPD":
+    if menu == "dashboard":
         st.header(f"Dashboard PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}")
         try:
             cnt_sekolah = supa.table("sekolah_master").select("kod_sekolah", count="exact").eq("kod_ppd", kod_ppd).execute()
@@ -1080,7 +1132,7 @@ elif st.session_state.role == "PPD":
             c3.metric("Cadangan", cnt_cadang.count)
         except Exception as e:
             st.error(f"Error dashboard: {e}")
-    elif menu == "🏫 Sekolah dalam PPD":
+    elif menu == "sekolah":
         st.header(f"Senarai Sekolah PPD {kod_ppd}")
         try:
             res = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
@@ -1144,7 +1196,7 @@ elif st.session_state.role == "PPD":
             # Baris asal: st.error(str(e)) <- variable 'e' tidak wujud di sini, akan crash NameError
             # Telah dibuang sepenuhnya kerana tiada exception handler yang sepadan
 
-    elif menu == "🏫 Pusat di PPD":
+    elif menu == "pusat":
         st.header(f"Pusat di PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')} - Total Calon")
         st.caption("Filter BETUL ikut NO_PUSAT prefix BA=Klang sahaja - bug lama cari substring SABAK contains BA dah fix")
         df_pusat_raw = get_pusat_df()
@@ -1186,7 +1238,7 @@ elif st.session_state.role == "PPD":
                 c4.metric("Total Perlu", int(df_f["SEKOLAH_PERLU"].sum()))
                 st.download_button(f"Export Pusat {kod_ppd}", to_excel(df_f), file_name=f"pusat_{kod_ppd}.xlsx", use_container_width=True)
 
-    elif menu == "🚀 Jana Keseluruhan":
+    elif menu == "jana":
         st.header(f"🚀 Jana Keseluruhan - Letak Semua Petugas di Pusat Peperiksaan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}")
         st.caption("Function ni akan ambil semua cadangan dari SUP dan letak di pusat peperiksaan ikut jumlah calon. Boleh edit kalau tak sesuai.")
         df_pusat_raw = get_pusat_df()
@@ -1295,7 +1347,7 @@ elif st.session_state.role == "PPD":
                                         st.error(f"Gagal update: {e}")
                 st.download_button("📥 Export Penempatan Penuh", to_excel(df_assign), file_name=f"penempatan_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
 
-    elif menu == "📋 Cadangan SUP":
+    elif menu == "cadangan":
         st.header(f"Cadangan dari SUP - PPD {kod_ppd}")
         df_cad = get_cadangan_df(kod_ppd=kod_ppd)
         if df_cad.empty:
@@ -1304,7 +1356,7 @@ elif st.session_state.role == "PPD":
             st.dataframe(df_cad, use_container_width=True)
             st.download_button("Export Cadangan", to_excel(df_cad), file_name=f"cadangan_PPD_{kod_ppd}.xlsx")
 
-    elif menu == "✅ Kelulusan":
+    elif menu == "kelulusan":
         st.header(f"Kelulusan PPD {kod_ppd}")
         df_cad = get_cadangan_df(kod_ppd=kod_ppd)
         if df_cad.empty:
@@ -1332,7 +1384,7 @@ elif st.session_state.role == "PPD":
                     st.success("Tolak berjaya")
                     st.rerun()
 
-    elif menu == "📥 Export":
+    elif menu == "export":
         st.header(f"Export Data PPD {kod_ppd}")
         df_cad = get_cadangan_df(kod_ppd=kod_ppd)
         if not df_cad.empty:
@@ -1348,11 +1400,12 @@ elif st.session_state.role == "PPD":
 # ================= JPN =================
 elif st.session_state.role == "JPN":
     st.sidebar.title("🏛️ JPN Selangor")
-    menu = st.sidebar.radio("Menu JPN", ["📊 Dashboard JPN", "🏫 Semua Sekolah", " Pusat Master", "👨‍ Guru Master", "📋 Semua Cadangan", "📥 Export Negeri", "️ Admin", "🚪 Log Keluar"])
-    if menu == "🚪 Log Keluar":
+    MENU_JPN = [('dashboard', '📊 Dashboard JPN'), ('sekolah', '🏫 Semua Sekolah'), ('pusat', '🏫 Pusat Master'), ('guru', '👨\u200d🏫 Guru Master'), ('cadangan', '📋 Semua Cadangan'), ('export', '📥 Export Negeri'), ('admin', '⚙️ Admin'), ('keluar', '🚪 Log Keluar')]
+    menu = st.sidebar.radio("Menu JPN", [k for k, _ in MENU_JPN], format_func=dict(MENU_JPN).get)
+    if menu == "keluar":
         st.session_state.clear()
         st.rerun()
-    if menu == " Dashboard JPN":
+    if menu == "dashboard":
         st.header("Dashboard JPN Selangor - Pelantikan SPM 2026")
         cols = st.columns(5)
         for idx, t in enumerate(["sekolah_master", "pusat_master", "guru_master", "cadangan_sup"]):
@@ -1373,7 +1426,7 @@ elif st.session_state.role == "JPN":
             except:
                 rows.append({"PPD": ppd, "Sekolah": 0, "Guru": 0, "Cadangan": 0})
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    elif menu == "🏫 Semua Sekolah":
+    elif menu == "sekolah":
         st.header("Semua Sekolah Master (369 Sekolah)")
         try:
             res = supa.table("sekolah_master").select("*", count="exact").limit(5000).execute()
@@ -1485,7 +1538,7 @@ CREATE POLICY "allow all" ON sekolah_master FOR ALL USING (true) WITH CHECK (tru
             except Exception as e:
                 st.error(f"Error generate: {e}")
 
-    elif menu == "🏫 Pusat Master":
+    elif menu == "pusat":
         st.header("Pusat Master - Selangor 2026 (506 Pusat) - FIX Jumlah Calon")
         try:
             total = safe_count("pusat_master")
@@ -1706,7 +1759,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
             except Exception as e:
                 st.error(str(e))
 
-    elif menu == "👨‍🏫 Guru Master":
+    elif menu == "guru":
         st.header("Guru Master Seluruh Negeri")
         st.subheader(" Import MASTER 60K Guru Selangor")
         st.info("Upload file MASTER-GURU-SELANGOR-2026.xlsx (60K) di sini untuk restore balik data yang hilang. Guna batch 500 untuk laju.")
@@ -1775,7 +1828,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
         except Exception as e:
             st.error(str(e))
 
-    elif menu == "📋 Semua Cadangan":
+    elif menu == "cadangan":
         st.header("Semua Cadangan Seluruh Negeri")
         try:
             res = supa.table("cadangan_sup").select("*").limit(10000).execute()
@@ -1786,7 +1839,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
         except Exception as e:
             st.error(str(e))
 
-    elif menu == "📥 Export Negeri":
+    elif menu == "export":
         st.header("Export Laporan Negeri")
         try:
             res = supa.table("cadangan_sup").select("*").limit(10000).execute()
@@ -1796,7 +1849,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
         except Exception as e:
             st.error(str(e))
 
-    elif menu == "⚙️ Admin":
+    elif menu == "admin":
         st.header("Admin - Check Tables & Connection")
         st.code(f"URL: {SUPABASE_URL}\nKEY: {SUPABASE_KEY[:20]}...{SUPABASE_KEY[-10:]} (Active)")
         for t in ["sekolah_master", "pusat_master", "guru_master", "cadangan_sup"]:
