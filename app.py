@@ -1059,7 +1059,7 @@ if st.session_state.role == "SUP":
                 st.warning("Tiada guru untuk dicadang. Tambah guru dulu.")
             else:
                 df_cad_existing = get_cadangan_df(kod_sekolah=kod)
-                JAWATAN_BETUL = ["Ketua Pengawas (WAJIB 1)", "Timbalan Ketua Pengawas (WAJIB 1)", "Penyelia Kawasan (Wajib 1-2)", "Pengawas Peperiksaan (Ikut Kelas)", "Selenggara Bilik Kebal (Wajib 1)"]
+                JAWATAN_BETUL = ["Ketua Pengawas (WAJIB 1)", "Timbalan Ketua Pengawas (WAJIB 1)", "Penyelia Kawasan (Wajib 1)", "Pengawas Peperiksaan (Ikut Kelas)", "Selenggara Bilik Kebal (Wajib 1)"]
                 st.markdown("### Pilih Guru (EMAIL kosong dibenarkan)")
                 guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan (boleh pilih ramai)", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x}", key="guru_pilih_simple")
                 col_jawatan, col_exp = st.columns(2)
@@ -2492,9 +2492,11 @@ elif st.session_state.role == "PPD":
             # Paparan semasa
             st.markdown(f"### 🏫 Pusat {pilih_pusat_manual} - Penempatan Semasa")
             col_curr1, col_curr2, col_curr3, col_curr4, col_curr5, col_curr6 = st.columns(6)
-            # FIX: Gunakan ID comparison, bukan object comparison (pandas Series error)
+            # FIX: 5 jawatan termasuk Penyelia Kawasan & Selenggara Bilik Kebal
             kp_curr_dict = {}
             tkp_curr_dict = {}
+            penyelia_curr_dict = {}
+            selenggara_curr_dict = {}
             peng_curr_dict = {}
             for k, c in tugas_pusat_ini.items():
                 jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or c.get("JAWATAN") or "")
@@ -2502,6 +2504,10 @@ elif st.session_state.role == "PPD":
                     kp_curr_dict[k] = c
                 elif "Timbalan" in jaw:
                     tkp_curr_dict[k] = c
+                elif "Penyelia Kawasan" in jaw or ("Penyelia" in jaw and "Kawasan" in jaw):
+                    penyelia_curr_dict[k] = c
+                elif "Selenggara" in jaw or "Bilik Kebal" in jaw:
+                    selenggara_curr_dict[k] = c
                 else:
                     peng_curr_dict[k] = c
             kp_curr = list(kp_curr_dict.values())
@@ -2518,8 +2524,8 @@ elif st.session_state.role == "PPD":
                 st.metric("Selenggara BK", f"{len(selenggara_curr_dict)}/1", delta="OK" if len(selenggara_curr_dict)>=1 else "Perlu 1", delta_color="normal" if len(selenggara_curr_dict)>=1 else "inverse")
             with col_curr5:
                 perlu_p = int(info_pusat["PERLU"].values[0]) if not info_pusat.empty else 0
-                st.metric("Pengawas", f"{len(peng_curr)}/{perlu_p-2}", delta=f"Perlu {perlu_p-2}")
-            with col_curr4:
+                st.metric("Pengawas", f"{len(peng_curr)}/{max(perlu_p-4,0)}", delta=f"Perlu {max(perlu_p-4,0)}")
+            with col_curr6:
                 st.metric("Jumlah", f"{len(tugas_pusat_ini)}/{perlu_p}", delta="Cukup" if len(tugas_pusat_ini)>=perlu_p else f"Kurang {perlu_p-len(tugas_pusat_ini)}")
             
             # Check pelanggaran max 3
@@ -2795,103 +2801,62 @@ elif st.session_state.role == "PPD":
                                 st.error(str(e))
             
 
-            # ===== NEW: PENYELIA KAWASAN =====
             st.markdown("---")
-            st.markdown("### 🗺️ Penyelia Kawasan")
-            perlu_penyelia = 1
-            kp_has = len(kp_curr_dict)
-            tkp_has = len(tkp_curr_dict)
-            # count existing penyelia
-            penyelia_curr_dict = {}
-            selenggara_curr_dict = {}
-            for k, c in tugas_pusat_ini.items():
-                jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or c.get("JAWATAN") or "")
-                if "Penyelia Kawasan" in jaw or "Penyelia" == jaw.strip():
-                    penyelia_curr_dict[k] = c
-                if "Selenggara Bilik Kebal" in jaw or "Bilik Kebal" in jaw or "Selenggara" in jaw:
-                    selenggara_curr_dict[k] = c
-            # reuse peng dict already filtered but we recalc for display
-            st.caption(f"Sedia ada: {len(penyelia_curr_dict)}/{perlu_penyelia} Penyelia Kawasan")
-
-            def is_belum_penyelia(row):
-                kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
-                return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
-            df_penyelia_pool = df_cad_all[df_cad_all.apply(is_belum_penyelia, axis=1)].copy() if 'df_cad_all' in locals() else pd.DataFrame()
-            # Filter jawatan Penyelia
-            if not df_penyelia_pool.empty and "JAWATAN_CADANGAN" in df_penyelia_pool.columns:
-                df_penyelia_calon = df_penyelia_pool[df_penyelia_pool["JAWATAN_CADANGAN"].astype(str).str.contains("Penyelia Kawasan|Penyelia", case=False, na=False)].copy()
-            else:
-                df_penyelia_calon = pd.DataFrame()
-
-            def check_penyelia_max3(row):
-                kod = str(row.get("KOD_SEKOLAH_ASAL", "")).upper().strip()
-                return sekolah_count_manual.get(kod, 0) < 3 if kod else True
-            if not df_penyelia_calon.empty:
-                df_penyelia_calon["MAX3_OK"] = df_penyelia_calon.apply(check_penyelia_max3, axis=1)
-                df_penyelia_layak = df_penyelia_calon[df_penyelia_calon["MAX3_OK"] == True]
-                df_penyelia_belum = df_penyelia_layak.copy()
-                st.caption(f"{len(df_penyelia_belum)} calon Penyelia Kawasan belum ditempatkan")
-                if not df_penyelia_belum.empty:
-                    pilih_penyelia_list = st.multiselect(
-                        f"Pilih Penyelia Kawasan (perlu {perlu_penyelia})",
-                        df_penyelia_belum["id"].tolist() if "id" in df_penyelia_belum.columns else [],
-                        format_func=lambda x: f"{df_penyelia_belum[df_penyelia_belum['id']==x]['NAMA_GURU'].values[0]} - {df_penyelia_belum[df_penyelia_belum['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_penyelia_belum[df_penyelia_belum['id']==x].empty else str(x),
-                        key="pilih_penyelia_manual"
-                    )
-                    if pilih_penyelia_list and st.button(f"✅ Lantik {len(pilih_penyelia_list)} Sebagai Penyelia Kawasan", type="primary", use_container_width=True, key="lantik_penyelia"):
+            col_penyelia, col_selenggara = st.columns(2)
+            with col_penyelia:
+                st.markdown("""
+                <div style="background:#e8f5e9; border:2px solid #2e7d32; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;">
+                    <div style="font-size:28px;">🗺️</div>
+                    <div style="font-weight:800; color:#1b5e20;">PENYELIA KAWASAN</div>
+                    <div style="font-size:11px; color:#666;">1 orang per pusat</div>
+                </div>
+                """, unsafe_allow_html=True)
+                # Filter calon Penyelia
+                def is_belum_penyelia_row(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                df_belum_all = df_cad_all[df_cad_all.apply(is_belum_penyelia_row, axis=1)].copy()
+                df_penyelia_calon = df_belum_all[df_belum_all["JAWATAN_CADANGAN"].astype(str).str.contains("Penyelia Kawasan", case=False, na=False)].copy() if not df_belum_all.empty and "JAWATAN_CADANGAN" in df_belum_all.columns else pd.DataFrame()
+                if not df_penyelia_calon.empty:
+                    df_penyelia_calon["MAX3_OK"] = df_penyelia_calon.apply(lambda r: sekolah_count_manual.get(str(r.get("KOD_SEKOLAH_ASAL","")).upper().strip(),0) < 3, axis=1)
+                    df_penyelia_layak = df_penyelia_calon[df_penyelia_calon["MAX3_OK"]==True]
+                    st.caption(f"{len(df_penyelia_layak)} calon belum dilantik")
+                    pilih_penyelia = st.multiselect("Pilih Penyelia Kawasan", df_penyelia_layak["id"].tolist() if "id" in df_penyelia_layak.columns else [], format_func=lambda x: f"{df_penyelia_layak[df_penyelia_layak['id']==x]['NAMA_GURU'].values[0]} - {df_penyelia_layak[df_penyelia_layak['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_penyelia_layak[df_penyelia_layak['id']==x].empty else str(x), key="pilih_penyelia_manual")
+                    if pilih_penyelia and st.button(f"✅ Lantik {len(pilih_penyelia)} Penyelia Kawasan", type="primary", use_container_width=True, key="btn_lantik_penyelia"):
                         try:
-                            for pid in pilih_penyelia_list:
+                            for pid in pilih_penyelia:
                                 supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pid).execute()
-                            st.success(f"✅ {len(pilih_penyelia_list)} Penyelia Kawasan dilantik ke {pilih_pusat_manual}")
+                            st.success(f"✅ {len(pilih_penyelia)} Penyelia Kawasan dilantik")
                             st.rerun()
                         except Exception as e:
                             st.error(str(e))
                 else:
-                    st.warning("Tiada calon Penyelia Kawasan layak")
-                    # Fallback: show all belum if jawatan filter empty
-                    if len(df_penyelia_pool) > 0:
-                        st.dataframe(df_penyelia_pool[["NAMA_GURU","KOD_SEKOLAH_ASAL","JAWATAN_CADANGAN"]].head(10), use_container_width=True)
+                    st.warning("Tiada calon Penyelia Kawasan - pastikan SUP cadang jawatan ini")
 
-            # ===== NEW: SELENGGARA BILIK KEBAL =====
-            st.markdown("### 🔐 Selenggara Bilik Kebal")
-            perlu_selenggara = 1
-            st.caption(f"Sedia ada: {len(selenggara_curr_dict)}/{perlu_selenggara} Selenggara Bilik Kebal")
-
-            if not df_penyelia_pool.empty and "JAWATAN_CADANGAN" in df_penyelia_pool.columns:
-                df_selenggara_calon = df_penyelia_pool[df_penyelia_pool["JAWATAN_CADANGAN"].astype(str).str.contains("Selenggara|Bilik Kebal", case=False, na=False)].copy()
-            else:
-                df_selenggara_calon = pd.DataFrame()
-
-            def check_selenggara_max3(row):
-                kod = str(row.get("KOD_SEKOLAH_ASAL", "")).upper().strip()
-                return sekolah_count_manual.get(kod, 0) < 3 if kod else True
-            if not df_selenggara_calon.empty:
-                df_selenggara_calon["MAX3_OK"] = df_selenggara_calon.apply(check_selenggara_max3, axis=1)
-                df_selenggara_layak = df_selenggara_calon[df_selenggara_calon["MAX3_OK"] == True]
-                df_selenggara_belum = df_selenggara_layak.copy()
-                st.caption(f"{len(df_selenggara_belum)} calon Selenggara Bilik Kebal belum ditempatkan")
-                if not df_selenggara_belum.empty:
-                    pilih_selenggara_list = st.multiselect(
-                        f"Pilih Selenggara Bilik Kebal (perlu {perlu_selenggara})",
-                        df_selenggara_belum["id"].tolist() if "id" in df_selenggara_belum.columns else [],
-                        format_func=lambda x: f"{df_selenggara_belum[df_selenggara_belum['id']==x]['NAMA_GURU'].values[0]} - {df_selenggara_belum[df_selenggara_belum['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_selenggara_belum[df_selenggara_belum['id']==x].empty else str(x),
-                        key="pilih_selenggara_manual"
-                    )
-                    if pilih_selenggara_list and st.button(f"✅ Lantik {len(pilih_selenggara_list)} Sebagai Selenggara Bilik Kebal", type="primary", use_container_width=True, key="lantik_selenggara"):
+            with col_selenggara:
+                st.markdown("""
+                <div style="background:#fff3e0; border:2px solid #e65100; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;">
+                    <div style="font-size:28px;">🔐</div>
+                    <div style="font-weight:800; color:#e65100;">SELENGGARA BILIK KEBAL</div>
+                    <div style="font-size:11px; color:#666;">1 orang per pusat</div>
+                </div>
+                """, unsafe_allow_html=True)
+                df_selenggara_calon = df_belum_all[df_belum_all["JAWATAN_CADANGAN"].astype(str).str.contains("Selenggara|Bilik Kebal", case=False, na=False)].copy() if not df_belum_all.empty and "JAWATAN_CADANGAN" in df_belum_all.columns else pd.DataFrame()
+                if not df_selenggara_calon.empty:
+                    df_selenggara_calon["MAX3_OK"] = df_selenggara_calon.apply(lambda r: sekolah_count_manual.get(str(r.get("KOD_SEKOLAH_ASAL","")).upper().strip(),0) < 3, axis=1)
+                    df_selenggara_layak = df_selenggara_calon[df_selenggara_calon["MAX3_OK"]==True]
+                    st.caption(f"{len(df_selenggara_layak)} calon belum dilantik")
+                    pilih_selenggara = st.multiselect("Pilih Selenggara Bilik Kebal", df_selenggara_layak["id"].tolist() if "id" in df_selenggara_layak.columns else [], format_func=lambda x: f"{df_selenggara_layak[df_selenggara_layak['id']==x]['NAMA_GURU'].values[0]} - {df_selenggara_layak[df_selenggara_layak['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_selenggara_layak[df_selenggara_layak['id']==x].empty else str(x), key="pilih_selenggara_manual")
+                    if pilih_selenggara and st.button(f"✅ Lantik {len(pilih_selenggara)} Selenggara Bilik Kebal", type="primary", use_container_width=True, key="btn_lantik_selenggara"):
                         try:
-                            for pid in pilih_selenggara_list:
+                            for pid in pilih_selenggara:
                                 supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pid).execute()
-                            st.success(f"✅ {len(pilih_selenggara_list)} Selenggara Bilik Kebal dilantik ke {pilih_pusat_manual}")
+                            st.success(f"✅ {len(pilih_selenggara)} Selenggara dilantik")
                             st.rerun()
                         except Exception as e:
                             st.error(str(e))
                 else:
-                    st.warning("Tiada calon Selenggara Bilik Kebal layak")
-            else:
-                st.warning("Tiada calon Selenggara Bilik Kebal - Sila pastikan SUP cadang jawatan Selenggara Bilik Kebal")
-
-            # Update col metrics to include new roles in display
-            # (will be shown in ringkasan)
+                    st.warning("Tiada calon Selenggara Bilik Kebal - pastikan SUP cadang jawatan ini")
 
             st.markdown("---")
             st.markdown("### 📊 Ringkasan Penempatan Manual")
