@@ -19,6 +19,27 @@ def get_supabase():
 
 supa = get_supabase()
 
+# ================= REFRESH BUTTON - SUP PPD JPN =================
+# ================= REFRESH BUTTON - SUP PPD JPN =================
+def add_refresh_button():
+    """Butang Refresh di sidebar kiri - untuk baca perubahan terbaru"""
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### 🔄 Refresh Data")
+        st.caption(f"Last: {datetime.datetime.now().strftime('%d/%m %H:%M:%S')}")
+        if st.button("🔄 REFRESH - Baca Data Baru", use_container_width=True, type="primary", key=f"refresh_main_{st.session_state.role}_{st.session_state.kod if hasattr(st.session_state, 'kod') else 'x'}"):
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            st.toast("✅ Data refreshed! Baca perubahan terbaru")
+            st.rerun()
+        st.caption("Tekan selepas SUP buat pertukaran / cadangan")
+        if st.button("🔄 REFRESH DATA TERBARU", use_container_width=True, type="primary", key=f"refresh_main_{st.session_state.role}"):
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            st.success("✅ Data refreshed!")
+            st.rerun()
+
+
 # ✅ FIX 1: Buang trailing space dari KOD_DAERAH & PPD_MAP
 KOD_DAERAH = ["BA", "BB", "BC", "BD", "BE", "BF", "BG", "BH", "BJ", "BK"]
 PPD_MAP = {
@@ -612,6 +633,8 @@ if st.session_state.role == "SUP":
     kod = st.session_state.kod
     info = st.session_state.info
     st.sidebar.title(f"🏫 SUP {kod}")
+    # 🔄 REFRESH BUTTON SUP - di menu kiri
+    add_refresh_button()
     st.sidebar.caption(f"{info.get('nama_sekolah', '')} | {info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}")
     MENU_SUP = [('dashboard', '📊 Dashboard'), ('senarai', '📋 Senarai Guru'), ('tambah', '➕ Tambah Guru'), ('import', '📤 Import Excel'), ('buang', '🗑️ Buang Guru'), ('cadangan', '📝 Cadangan Lantikan'), ('hantar', '📤 Hantar ke PPD'), ('keluar', '🚪 Log Keluar')]
     menu = st.sidebar.radio("Menu SUP", [k for k, _ in MENU_SUP], format_func=dict(MENU_SUP).get)
@@ -1114,6 +1137,8 @@ if st.session_state.role == "SUP":
 elif st.session_state.role == "PPD":
     kod_ppd = st.session_state.kod
     st.sidebar.title(f"🏢 PPD {kod_ppd}")
+    # 🔄 REFRESH BUTTON PPD
+    add_refresh_button()
     st.sidebar.caption(f"{PPD_MAP.get(kod_ppd, '')}")
     MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), ('jana', '🚀 Jana Keseluruhan'), ('cadangan', '📋 Cadangan SUP'), ('kelulusan', '✅ Kelulusan'), ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
     menu = st.sidebar.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get)
