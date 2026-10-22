@@ -3710,10 +3710,10 @@ elif st.session_state.role == "PPD":
                                     if p == pilih_bk_batal.upper():
                                         jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "").upper()
                                         if "PENYELIA" in jaw:
-                                            # Reset
-                                            supa.table("cadangan_sup").update({"kod_pusat": c.get("KOD_SEKOLAH_ASAL") or c.get("kod_sekolah_asal") or None, "status": "DICADANGKAN", "data": {}}).eq("id", c.get("id")).execute()
+                                            # Reset balik ke pool cadangan - kosongkan bilik kebal & pusat jagaan
+                                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN SEMULA - BATAL BILIK KEBAL", "no_surat": None, "data": {}}).eq("id", c.get("id")).execute()
                                             count_batal += 1
-                                st.success(f"✅ {count_batal} penempatan di {pilih_bk_batal} telah dibatalkan")
+                                st.success(f"✅ {count_batal} penempatan di {pilih_bk_batal} telah dibatalkan. Cadangan kembali ke PPD > Cadangan SUP & SUP > Cadangan Lantikan dengan status DICADANGKAN")
                                 # Clear session pusat bawah
                                 if f"pusat_bawah_{pilih_bk_batal}" in st.session_state:
                                     del st.session_state[f"pusat_bawah_{pilih_bk_batal}"]
@@ -3744,8 +3744,8 @@ elif st.session_state.role == "PPD":
                                 if pilih_batal_ind and st.button(f"🗑️ Batal {len(pilih_batal_ind)} Penyelia Terpilih", use_container_width=True, key="btn_batal_ind"):
                                     try:
                                         for pid in pilih_batal_ind:
-                                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN", "data": {}}).eq("id", pid).execute()
-                                        st.success(f"Berjaya batal {len(pilih_batal_ind)} penyelia")
+                                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN SEMULA - BATAL BILIK KEBAL", "no_surat": None, "data": {}}).eq("id", pid).execute()
+                                        st.success(f"✅ Berjaya batal {len(pilih_batal_ind)} penyelia. Mereka kembali ke pool cadangan - boleh lihat di PPD > Cadangan SUP")
                                         st.rerun()
                                     except Exception as e:
                                         st.error(str(e))
