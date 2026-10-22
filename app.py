@@ -3303,12 +3303,49 @@ elif st.session_state.role == "PPD":
                     st.info(f"Ada {len(df_penyelia)} Penyelia Kawasan dicadangkan SUP untuk PPD {kod_ppd}")
                     if not df_penyelia.empty:
                         pilih_bk_tempat = st.selectbox("Pilih Bilik Kebal untuk tempatkan Penyelia", df_bk["kod_bilik_kebal"].tolist() if "kod_bilik_kebal" in df_bk.columns else [], format_func=lambda x: f"{x} - {df_bk[df_bk['kod_bilik_kebal']==x]['nama_bilik_kebal'].values[0][:30] if not df_bk[df_bk['kod_bilik_kebal']==x].empty and 'nama_bilik_kebal' in df_bk.columns else x}", key="pilih_bk_tempat")
-                        # Safe columns display - handle lower/upper case
-                        cols_show = [c for c in ["NAMA_GURU","IC_GURU","KOD_SEKOLAH_ASAL","KOD_PUSAT","kod_pusat","STATUS","status","JAWATAN_CADANGAN","jawatan_cadangan"] if c in df_penyelia.columns]
-                        if not cols_show:
-                            cols_show = df_penyelia.columns.tolist()[:6]
-                        st.dataframe(df_penyelia[cols_show].head(100) if not df_penyelia.empty else df_penyelia, use_container_width=True)
-                        pilih_penyelia_bk = st.multiselect("Pilih Penyelia Kawasan untuk ditempatkan ke Bilik Kebal", df_penyelia["id"].tolist() if "id" in df_penyelia.columns else [], key="pilih_penyelia_bk")
+                        
+                        # Safe display for penyelia - handle case insensitive columns
+                        def get_col(df, *candidates):
+                            for cand in candidates:
+                                if cand in df.columns:
+                                    return cand
+                            return None
+                        
+                        c_nama = get_col(df_penyelia, "NAMA_GURU","nama_guru","Nama Guru")
+                        c_ic = get_col(df_penyelia, "IC_GURU","ic_guru")
+                        c_sek = get_col(df_penyelia, "KOD_SEKOLAH_ASAL","kod_sekolah_asal")
+                        c_pusat = get_col(df_penyelia, "KOD_PUSAT","kod_pusat")
+                        c_status = get_col(df_penyelia, "STATUS","status")
+                        c_jaw = get_col(df_penyelia, "JAWATAN_CADANGAN","jawatan_cadangan")
+                        
+                        cols_disp = [c for c in [c_nama,c_ic,c_sek,c_pusat,c_status,c_jaw] if c]
+                        if cols_disp:
+                            st.dataframe(df_penyelia[cols_disp].head(100), use_container_width=True, hide_index=True)
+                        else:
+                            st.dataframe(df_penyelia.head(100), use_container_width=True, hide_index=True)
+                        
+                        # Robust multiselect with proper format - handle id as int or str
+                        id_col = "id" if "id" in df_penyelia.columns else None
+                        if id_col:
+                            id_list = df_penyelia[id_col].tolist()
+                            def format_penyelia(x):
+                                try:
+                                    # Find row where id matches (handle int/str)
+                                    row = df_penyelia[df_penyelia[id_col].astype(str) == str(x)]
+                                    if row.empty:
+                                        row = df_penyelia[df_penyelia[id_col] == x]
+                                    if not row.empty:
+                                        nama = str(row.iloc[0].get(c_nama,"") if c_nama else row.iloc[0].get("NAMA_GURU",""))[:30]
+                                        ic = str(row.iloc[0].get(c_ic,"") if c_ic else "")[:20]
+                                        sek = str(row.iloc[0].get(c_sek,"") if c_sek else "")[:10]
+                                        return f"{nama} - {ic} - {sek} (ID:{x})"
+                                    else:
+                                        return f"ID:{x}"
+                                except Exception as e:
+                                    return f"ID:{x} - {str(e)[:20]}"
+                            pilih_penyelia_bk = st.multiselect("Pilih Penyelia Kawasan untuk ditempatkan ke Bilik Kebal (Nama akan keluar)", id_list, format_func=format_penyelia, key="pilih_penyelia_bk")
+                        else:
+                            pilih_penyelia_bk = []
                         if pilih_penyelia_bk and st.button(f"Tempatkan {len(pilih_penyelia_bk)} Penyelia ke {pilih_bk_tempat}", type="primary", use_container_width=True, key="btn_tempat_penyelia_bk"):
                             try:
                                 for pid in pilih_penyelia_bk:
