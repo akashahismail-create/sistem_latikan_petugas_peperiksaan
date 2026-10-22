@@ -1858,14 +1858,53 @@ elif st.session_state.role == "PPD":
                     if tuan_rumah_kod:
                         df_available = df_available[~df_available["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.contains(tuan_rumah_kod, na=False)]
                     
+                    # STRICT MAX 3 untuk jana ikut pusat juga
+                    # Kira berapa guru dari setiap sekolah sudah ada di pusat ini
+                    sekolah_count_pusat = {}
+                    # Dari DB
+                    for _, c in df_cad_all.iterrows():
+                        p_db = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper().strip()
+                        if p_db == pilihan_pusat_jana:
+                            kod = str(c.get("KOD_SEKOLAH_ASAL") or c.get("kod_sekolah_asal") or "").upper().strip()
+                            if kod:
+                                sekolah_count_pusat[kod] = sekolah_count_pusat.get(kod, 0) + 1
+                    # Dari session
+                    for p in st.session_state.get("jana_all_result", []) or []:
+                        if str(p.get("NO_PUSAT_TUGAS") or "").upper().strip() == pilihan_pusat_jana:
+                            kod = str(p.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
+                            if kod:
+                                sekolah_count_pusat[kod] = sekolah_count_pusat.get(kod, 0) + 1
+                    
+                    st.info(f"Semakan sedia ada di {pilihan_pusat_jana}: {sekolah_count_pusat}")
+                    
+                    def check_max3_ikut_pusat(row):
+                        k = str(row.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
+                        return sekolah_count_pusat.get(k, 0) < 3 if k else True
+                    
+                    df_available["CHECK_MAX3"] = df_available.apply(check_max3_ikut_pusat, axis=1)
+                    df_before = len(df_available)
+                    df_available = df_available[df_available["CHECK_MAX3"] == True].copy()
+                    df_after = len(df_available)
+                    if df_before > df_after:
+                        st.warning(f"📋 {df_before - df_after} guru ditapis - sekolah sudah ada 3 orang di {pilihan_pusat_jana} (Max 3)")
+                    
                     # Ambil sebanyak yang perlu, prioriti ikut jawatan
-                    # Ketua Pengawas, TKP, Penyelia, Pengawas
                     jawatan_order = {"Ketua Pengawas": 1, "Timbalan Ketua Pengawas": 2, "Penyelia Kawasan": 3, "Pengawas Peperiksaan": 4}
                     df_available["JAWATAN_ORDER"] = df_available["JAWATAN_CADANGAN"].map(jawatan_order).fillna(5)
-                    df_available = df_available.sort_values("JAWATAN_ORDER").head(perlu)
+                    df_available = df_available.sort_values("JAWATAN_ORDER")
+                    
+                    # Random untuk elak bias
+                    import random
+                    if len(df_available) > 1:
+                        df_available = df_available.sample(frac=1, random_state=random.randint(1, 10000)).reset_index(drop=True)
                     
                     assignments = []
                     for _, row in df_available.iterrows():
+                        if len(assignments) >= perlu:
+                            break
+                        kod_row = str(row.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
+                        if kod_row and sekolah_count_pusat.get(kod_row, 0) >= 3:
+                            continue
                         assignments.append({
                             "id": row.get("id", ""),
                             "NAMA_GURU": row.get("NAMA_GURU", ""),
@@ -1877,6 +1916,8 @@ elif st.session_state.role == "PPD":
                             "NO_PUSAT_TUGAS": pilihan_pusat_jana,
                             "STATUS": "DIJANA PPD"
                         })
+                        if kod_row:
+                            sekolah_count_pusat[kod_row] = sekolah_count_pusat.get(kod_row, 0) + 1
                     
                     df_assign_pusat = pd.DataFrame(assignments)
                     st.session_state["jana_pusat_result"] = df_assign_pusat.to_dict('records')
@@ -1916,6 +1957,45 @@ elif st.session_state.role == "PPD":
 
         elif menu == "hasil":
             st.header(f"Hasil Janaan - PPD {kod_ppd}")
+            
+            # ===== BUTANG BATAL JANAAN - RESET SEMUA JADI 0 =====
+            col_batal1, col_batal2 = st.columns([3, 1])
+            with col_batal1:
+                st.caption(f"PPD {kod_ppd} - Jika ada pelanggaran max 3 (contoh SAM NURUL IMAN 10 orang di BA021), batal dan jana semula")
+            with col_batal2:
+                if st.button("🗑️ Batal Janaan - Reset 0", type="primary", use_container_width=True, key="batal_janaan_all"):
+                    st.session_state["confirm_batal"] = True
+            
+            if st.session_state.get("confirm_batal"):
+                st.warning("⚠️ Anda pasti nak batal semua janaan? Semua penempatan akan jadi 0 dan perlu Jana Keseluruhan semula!")
+                col_yes, col_no = st.columns(2)
+                with col_yes:
+                    if st.button("✅ YA, Batal Semua Janaan", type="primary", use_container_width=True, key="confirm_yes_batal"):
+                        try:
+                            # Clear DB - set kod_pusat = None untuk PPD ini
+                            st.info("Membatalkan semua janaan...")
+                            # Update semua cadangan PPD ini
+                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("kod_ppd", kod_ppd).execute()
+                            # Clear session
+                            if "jana_all_result" in st.session_state:
+                                del st.session_state["jana_all_result"]
+                            if "jana_pusat_result" in st.session_state:
+                                del st.session_state["jana_pusat_result"]
+                            if "jana_pusat_no" in st.session_state:
+                                del st.session_state["jana_pusat_no"]
+                            st.session_state["confirm_batal"] = False
+                            st.success(f"✅ Berjaya batal semua janaan untuk PPD {kod_ppd}. Hasil janaan sekarang 0. Sila Jana Keseluruhan semula!")
+                            st.balloons()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal batal: {e}")
+                            st.session_state["confirm_batal"] = False
+                with col_no:
+                    if st.button("❌ Tidak", use_container_width=True, key="confirm_no_batal"):
+                        st.session_state["confirm_batal"] = False
+                        st.rerun()
+            
+            st.markdown("---")
             df_pusat_raw = get_pusat_df()
             df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
             if df_pusat_raw.empty:
@@ -1964,6 +2044,23 @@ elif st.session_state.role == "PPD":
                 if v["pusat"] == pilihan_pusat_hasil:
                     hasil_pusat.append(v["row"].copy())
             df_hasil = pd.DataFrame(hasil_pusat)
+            
+            # Semakan pelanggaran max 3 untuk pusat yang dipilih
+            if not df_hasil.empty:
+                sekolah_count_check = {}
+                for _, r in df_hasil.iterrows():
+                    kod = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or "").upper().strip()
+                    if kod:
+                        sekolah_count_check[kod] = sekolah_count_check.get(kod, 0) + 1
+                pelanggaran = [(k, v) for k, v in sekolah_count_check.items() if v > 3]
+                if pelanggaran:
+                    st.error(f"❌ PELANGGARAN MAX 3 DI {pilihan_pusat_hasil}:")
+                    for kod, cnt in pelanggaran:
+                        st.error(f"   - {kod}: {cnt} orang (LANGGAR! Max 3 sahaja) - Contoh: SAM NURUL IMAN 10 orang di BA021")
+                    st.warning("⚠️ Sila klik Batal Janaan di atas dan Jana Keseluruhan semula untuk betulkan!")
+                else:
+                    st.success(f"✅ Semakan Max 3 OK di {pilihan_pusat_hasil}: Tiada sekolah lebih 3 orang")
+            
             st.markdown("---")
             if df_hasil.empty:
                 st.warning(f"Belum Ada Hasil Janaan Di Pusat Yang Dipilih: {pilihan_pusat_hasil}")
