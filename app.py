@@ -3291,11 +3291,23 @@ elif st.session_state.role == "PPD":
                     st.warning("Belum ada bilik kebal. Sila daftar bilik kebal dulu di tab Tambah / Import.")
                 else:
                     df_cad_all_bk = get_cadangan_df(kod_ppd=kod_ppd)
-                    df_penyelia = df_cad_all_bk[df_cad_all_bk["JAWATAN_CADANGAN"].astype(str).str.contains("Penyelia Kawasan", case=False, na=False)].copy() if not df_cad_all_bk.empty and "JAWATAN_CADANGAN" in df_cad_all_bk.columns else pd.DataFrame()
+                    # Flexible filter for JAWATAN - handle upper/lower
+                    if not df_cad_all_bk.empty:
+                        col_jaw = "JAWATAN_CADANGAN" if "JAWATAN_CADANGAN" in df_cad_all_bk.columns else "jawatan_cadangan" if "jawatan_cadangan" in df_cad_all_bk.columns else None
+                        if col_jaw:
+                            df_penyelia = df_cad_all_bk[df_cad_all_bk[col_jaw].astype(str).str.contains("Penyelia Kawasan", case=False, na=False)].copy()
+                        else:
+                            df_penyelia = pd.DataFrame()
+                    else:
+                        df_penyelia = pd.DataFrame()
                     st.info(f"Ada {len(df_penyelia)} Penyelia Kawasan dicadangkan SUP untuk PPD {kod_ppd}")
                     if not df_penyelia.empty:
-                        pilih_bk_tempat = st.selectbox("Pilih Bilik Kebal untuk tempatkan Penyelia", df_bk["kod_bilik_kebal"].tolist() if "kod_bilik_kebal" in df_bk.columns else [], key="pilih_bk_tempat")
-                        st.dataframe(df_penyelia[["NAMA_GURU","IC_GURU","KOD_SEKOLAH_ASAL","KOD_PUSAT","STATUS"]].head(100) if not df_penyelia.empty else df_penyelia, use_container_width=True)
+                        pilih_bk_tempat = st.selectbox("Pilih Bilik Kebal untuk tempatkan Penyelia", df_bk["kod_bilik_kebal"].tolist() if "kod_bilik_kebal" in df_bk.columns else [], format_func=lambda x: f"{x} - {df_bk[df_bk['kod_bilik_kebal']==x]['nama_bilik_kebal'].values[0][:30] if not df_bk[df_bk['kod_bilik_kebal']==x].empty and 'nama_bilik_kebal' in df_bk.columns else x}", key="pilih_bk_tempat")
+                        # Safe columns display - handle lower/upper case
+                        cols_show = [c for c in ["NAMA_GURU","IC_GURU","KOD_SEKOLAH_ASAL","KOD_PUSAT","kod_pusat","STATUS","status","JAWATAN_CADANGAN","jawatan_cadangan"] if c in df_penyelia.columns]
+                        if not cols_show:
+                            cols_show = df_penyelia.columns.tolist()[:6]
+                        st.dataframe(df_penyelia[cols_show].head(100) if not df_penyelia.empty else df_penyelia, use_container_width=True)
                         pilih_penyelia_bk = st.multiselect("Pilih Penyelia Kawasan untuk ditempatkan ke Bilik Kebal", df_penyelia["id"].tolist() if "id" in df_penyelia.columns else [], key="pilih_penyelia_bk")
                         if pilih_penyelia_bk and st.button(f"Tempatkan {len(pilih_penyelia_bk)} Penyelia ke {pilih_bk_tempat}", type="primary", use_container_width=True, key="btn_tempat_penyelia_bk"):
                             try:
