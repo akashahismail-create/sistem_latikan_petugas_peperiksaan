@@ -27,25 +27,61 @@ PPD_MAP = {
     "BG": "Gombak", "BH": "Petaling Perdana", "BJ": "Sepang", "BK": "Petaling Utama"
 }
 
-# ================= CSS UNTUK CUSTOM SIDEBAR - FIX DARK MODE =================
+# ================= CSS MESRA DARK MODE - SEMUA TULISAN NAMPAK =================
 st.markdown("""
 <style>
+/* Hide original sidebar */
 [data-testid="stSidebar"] {display: none !important;}
 [data-testid="stSidebarNav"] {display: none !important;}
 .stSidebar {display: none !important;}
 section[data-testid="stSidebar"] {display: none !important;}
 
-/* Custom left panel that looks like sidebar */
+/* ===== GLOBAL DARK MODE FIX ===== */
+/* Pastikan semua text utama nampak dalam dark mode */
+.stApp {
+    color-scheme: light;
+}
+
+/* Metric cards - pastikan text hitam atas background putih sentiasa nampak */
+[data-testid="stMetric"] {
+    background: #ffffff !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+}
+[data-testid="stMetric"] label, [data-testid="stMetric"] div {
+    color: #212121 !important;
+}
+[data-testid="stMetricValue"] {
+    color: #0d47a1 !important;
+    font-weight: 800 !important;
+}
+
+/* Info, Warning, Success boxes - pastikan text gelap atas background cerah */
+[data-testid="stAlert"] {
+    background: #ffffff !important;
+    color: #212121 !important;
+    border: 1px solid #90caf9 !important;
+}
+[data-testid="stAlert"] p, [data-testid="stAlert"] div {
+    color: #212121 !important;
+}
+
+/* Dataframe - pastikan header nampak */
+[data-testid="stDataFrame"] {
+    background: white !important;
+}
+
+/* Custom left panel - FIX DARK MODE - sentiasa putih dengan text hitam */
 .custom-sidebar {
-    background: #ffffff;
+    background: #ffffff !important;
     border-radius: 12px;
     padding: 16px;
-    border: 2px solid #0d47a1;
+    border: 2px solid #0d47a1 !important;
     box-shadow: 0 4px 12px rgba(13, 71, 161, 0.15);
     height: fit-content;
     position: sticky;
     top: 10px;
-    color: #212121; /* Default text color for light mode */
 }
 .custom-sidebar h3 {
     font-size: 20px;
@@ -53,25 +89,31 @@ section[data-testid="stSidebar"] {display: none !important;}
     font-weight: 800;
     margin-bottom: 4px;
 }
-/* Caption nama sekolah - buat lebih gelap dan visible */
-.custom-sidebar .caption, .custom-sidebar [data-testid="stCaptionContainer"] {
-    color: #424242 !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
+.custom-sidebar p, .custom-sidebar span, .custom-sidebar div {
+    color: #212121 !important;
+}
+/* Caption nama sekolah - buat hitam pekat, bukan kelabu cair */
+.custom-sidebar [data-testid="stCaptionContainer"] {
+    color: #212121 !important;
     opacity: 1 !important;
 }
-/* NO PUSAT box - high contrast */ 
+.custom-sidebar [data-testid="stCaptionContainer"] p {
+    color: #212121 !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+}
+
+/* NO PUSAT box - high contrast kuning dengan text hitam - nampak dalam dark & light */
 .no-pusat-box {
-    background: #ffeb3b;
-    border: 2px solid #f57f17;
+    background: #ffeb3b !important;
+    border: 2px solid #f57f17 !important;
     border-radius: 8px;
     padding: 10px 12px;
     margin: 10px 0;
-    color: #000000;
 }
 .no-pusat-label {
     font-size: 11px;
-    color: #bf360c;
+    color: #bf360c !important;
     font-weight: 700;
     margin-bottom: 2px;
 }
@@ -83,36 +125,112 @@ section[data-testid="stSidebar"] {display: none !important;}
     word-break: break-all;
 }
 
-/* =========================================
-   DARK MODE FIXES
-   ========================================= */
+/* PPD Dashboard cards - pastikan nampak */
+.ppd-table {
+    background: white !important;
+    color: #212121 !important;
+}
+.ppd-table th {
+    background: #0d47a1 !important;
+    color: white !important;
+}
+.ppd-table td {
+    background: white !important;
+    color: #212121 !important;
+    border-bottom: 1px solid #e0e0e0 !important;
+}
+
+/* Badge merah/kuning/hijau - pastikan text nampak */
+.badge-merah, .badge-kuning, .badge-hijau {
+    color: #000000 !important;
+    font-weight: 800 !important;
+}
+.badge-merah {background: #ffcdd2 !important; border: 2px solid #d32f2f !important; color: #b71c1c !important;}
+.badge-kuning {background: #fff9c4 !important; border: 2px solid #f57f17 !important; color: #e65100 !important;}
+.badge-hijau {background: #c8e6c9 !important; border: 2px solid #2e7d32 !important; color: #1b5e20 !important;}
+
+/* Semua markdown dengan background gradient - pastikan text gelap nampak */
+div[style*="background: linear-gradient"] h3, div[style*="background: linear-gradient"] p, div[style*="background: linear-gradient"] div {
+    color: #0d47a1 !important;
+}
+div[style*="background: linear-gradient"] b {
+    color: #000000 !important;
+}
+
+/* Radio buttons menu - pastikan text nampak */
+[data-testid="stRadio"] label {
+    color: #212121 !important;
+    font-weight: 600 !important;
+}
+
+/* Buttons */
+.stButton button {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Tabs */
+[data-testid="stTabs"] button {
+    color: #212121 !important;
+    font-weight: 600 !important;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+    color: #0d47a1 !important;
+}
+
+/* Force all captions to be dark and visible */
+[data-testid="stCaptionContainer"] {
+    color: #424242 !important;
+}
+[data-testid="stCaptionContainer"] p {
+    color: #212121 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* Selectbox, text input labels */
+label {
+    color: #212121 !important;
+    font-weight: 600 !important;
+}
+
+/* Dark mode override - force light theme for our custom components */
 @media (prefers-color-scheme: dark) {
     .custom-sidebar {
-        background: #1e1e1e !important; /* Dark grey background */
-        border-color: #4dabf7 !important; /* Lighter blue border */
-        color: #e0e0e0 !important; /* Light text */
+        background: #ffffff !important;
+        border-color: #0d47a1 !important;
+    }
+    .custom-sidebar * {
+        color: #212121 !important;
     }
     .custom-sidebar h3 {
-        color: #4dabf7 !important; /* Light blue header */
+        color: #0d47a1 !important;
     }
-    .custom-sidebar p, .custom-sidebar span, .custom-sidebar div, .custom-sidebar label {
-        color: #e0e0e0 !important; /* Ensure all text is light */
+    .no-pusat-box {
+        background: #ffeb3b !important;
     }
-    .custom-sidebar .caption, .custom-sidebar [data-testid="stCaptionContainer"] {
-        color: #b0b0b0 !important; /* Slightly dimmer caption but still visible */
+    .no-pusat-box * {
+        color: #000000 !important;
     }
-    /* Fix for selectbox/radio inside custom sidebar in dark mode */
-    .custom-sidebar div[data-baseweb="select"] > div, 
-    .custom-sidebar div[data-baseweb="radio"] > div {
-        background-color: #2d2d2d !important;
-        color: white !important;
+    [data-testid="stMetric"] {
+        background: #ffffff !important;
+    }
+    [data-testid="stMetric"] * {
+        color: #212121 !important;
     }
 }
 
-/* Force Streamlit caption to be visible in light mode */
-[data-testid="stCaptionContainer"] p {
-    color: #424242 !important;
-    font-weight: 600 !important;
+/* Additional fix for Streamlit dark theme */
+.stApp[data-theme="dark"] .custom-sidebar {
+    background: #ffffff !important;
+}
+.stApp[data-theme="dark"] .custom-sidebar * {
+    color: #212121 !important;
+}
+.stApp[data-theme="dark"] [data-testid="stCaptionContainer"] p {
+    color: #212121 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -551,7 +669,6 @@ if st.session_state.role == "SUP":
         st.markdown(f"### 🏫 SUP {kod}")
         # Nama sekolah - buat lebih visible, bukan caption cair
         st.markdown(f"<div style='color:#212121; font-weight:700; font-size:13px; margin-bottom:4px;'>{info.get('nama_sekolah', '')}</div><div style='color:#424242; font-size:12px; margin-bottom:8px;'>{info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}</div>", unsafe_allow_html=True)
-        
         # ===== PAPARKAN NO PUSAT DI BAWAH NAMA SEKOLAH =====
         try:
             df_pusat_sidebar = get_pusat_df()
@@ -567,7 +684,6 @@ if st.session_state.role == "SUP":
                     no_p = str(r.get("no_pusat") or r.get("kod_pusat") or r.get("NO_PUSAT") or d.get("NO_PUSAT") or d.get("NO PUSAT") or "").upper().strip()
                     if no_p and no_p not in no_pusat_list_sidebar:
                         no_pusat_list_sidebar.append(no_p)
-            
             if no_pusat_list_sidebar:
                 no_pusat_str = ", ".join(no_pusat_list_sidebar)
                 st.markdown(f'''<div class="no-pusat-box"><div class="no-pusat-label">📍 NO PUSAT SEKOLAH:</div><div class="no-pusat-value">{no_pusat_str}</div></div>''', unsafe_allow_html=True)
@@ -575,7 +691,6 @@ if st.session_state.role == "SUP":
                 st.markdown(f'''<div class="no-pusat-box" style="background:#ffccbc; border-color:#d32f2f;"><div class="no-pusat-label" style="color:#b71c1c;">⚠️ TIADA NO PUSAT:</div><div class="no-pusat-value" style="font-size:12px;">Tiada pusat dijumpai untuk {kod}<br>Hubungi PPD</div></div>''', unsafe_allow_html=True)
         except Exception as e:
             st.markdown(f"<div style='background:#fff3e0; padding:8px; border-radius:6px; font-size:11px;'>Error load pusat: {e}</div>", unsafe_allow_html=True)
-
         add_refresh_button()
         
         MENU_SUP = [('dashboard', '📊 Dashboard'), ('senarai', '📋 Senarai Guru'), ('tambah', '➕ Tambah Guru'), 
@@ -629,8 +744,8 @@ if st.session_state.role == "SUP":
                 # Paparan NO PUSAT yang jelas
                 no_pusat_list = ", ".join([f"{p['NO_PUSAT']}" for p in pusat_sekolah if p['NO_PUSAT']])
                 st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding:20px; border-radius:12px; border-left:6px solid #1565c0; margin-bottom:20px;">
-                    <h3 style="margin:0; color:#0d47a1;">🏫 KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
+                <div style="background: #ffffff; padding:20px; border-radius:12px; border:3px solid #1565c0; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px;">
+                    <h3 style="margin:0; color:#0d47a1 !important; font-weight:800;">🏫 KEPERLUAN PENGAWAS SEKOLAH ANDA - {kod}</h3>
                     <p style="margin:8px 0; font-size:16px;">
                         Sekolah anda ada <b>{len(pusat_sekolah)} pusat</b> | <b>{total_calon} calon</b> | <b>{total_kelas} kelas</b> (1 kelas=20 calon)<br>
                         Formula: Kelas = CEIL(Calon/20), Petugas = Kelas+9, Sekolah Perlu = Kelas+12
@@ -1125,7 +1240,7 @@ elif st.session_state.role == "PPD":
         
         elif menu == "dashboard":
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+            <div style="background: #0d47a1; padding:20px; border-radius:12px; color:white; border: 2px solid #002171; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <div style="font-size:48px;">🏢</div>
                     <div>
@@ -1136,6 +1251,7 @@ elif st.session_state.role == "PPD":
                 </div>
             </div>
             """, unsafe_allow_html=True)
+            
             try:
                 # Load data
                 df_pusat_raw = get_pusat_df()
@@ -1166,10 +1282,13 @@ elif st.session_state.role == "PPD":
                     petugas_sep = kira_petugas_dari_kelas(jk)
                     
                     # Kira berapa petugas telah dicadangkan untuk pusat ini
+                    # Cari dalam cadangan_sup yang kod_pusat / no_pusat_asal / no_pusat_tugas == no_pusat ini
                     dicadangkan = 0
                     if not df_cad_all.empty:
+                        # Check multiple columns
                         for _, c_row in df_cad_all.iterrows():
                             c_no_pusat = str(c_row.get("kod_pusat") or c_row.get("no_pusat_asal") or c_row.get("NO_PUSAT_ASAL") or c_row.get("KOD_PUSAT") or "").upper().strip()
+                            # Also check data dict
                             c_data = c_row.get("data") or {}
                             if isinstance(c_data, str):
                                 try: c_data = json.loads(c_data)
@@ -1177,6 +1296,7 @@ elif st.session_state.role == "PPD":
                             c_no_pusat2 = str(c_data.get("NO_PUSAT_ASAL") or c_data.get("KOD_PUSAT") or "").upper().strip()
                             if c_no_pusat == no_pusat or c_no_pusat2 == no_pusat:
                                 dicadangkan += 1
+                        # If no specific assignment yet, distribute proportionally? For now show 0, but total will show overall
                     
                     pusat_list.append({
                         "NO_PUSAT": no_pusat,
@@ -1189,6 +1309,7 @@ elif st.session_state.role == "PPD":
                     })
                 
                 df_pusat_ppd = pd.DataFrame(pusat_list)
+                
                 if df_pusat_ppd.empty:
                     st.warning(f"⚠️ Tiada pusat dijumpai untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}. Sila import pusat di JPN > Pusat Master")
                 else:
@@ -1237,85 +1358,176 @@ elif st.session_state.role == "PPD":
                     c6.metric("⚠️ Kurang", kekurangan if kekurangan > 0 else 0, delta=f"{'Cukup' if kekurangan <=0 else f'-{kekurangan}'}", delta_color="normal" if kekurangan <=0 else "inverse")
                     
                     st.markdown("---")
-                    st.markdown("### 📍 Senarai Pusat Peperiksaan - Status Petugas")
-                    st.caption("🔴 Merah = Belum Ada (0) | 🟡 Kuning = Belum Cukup (< sepatutnya) | 🟢 Hijau = Cukup / Lebih (>= sepatutnya)")
+                    st.markdown("### 📍 Senarai Pusat Peperiksaan - Status Petugas (PPD Boleh Edit)")
+                    st.caption("🔴 Merah = Belum Ada (0) | 🟡 Kuning = Belum Cukup (< sepatutnya) | 🟢 Hijau = Cukup / Lebih (>= sepatutnya) | ✏️ PPD boleh edit BIL CALON, KELAS, PERLU ikut keperluan")
+                    st.info("💡 **Cara Edit:** Klik pada angka CALON / KELAS / PERLU dalam table di bawah, tukar ikut keperluan, kemudian tekan **💾 Simpan Perubahan**")
                     
-                    # Build display table with colors
-                    display_rows = []
-                    for _, p in df_pusat_ppd.sort_values("NO_PUSAT").iterrows():
-                        no_p = p["NO_PUSAT"]
-                        dic = p["DICADANGKAN"]
-                        sep = p["SEPATUTNYA"]
+                    # Build editable table
+                    # Prepare data for data_editor with BIL, editable columns
+                    editable_rows = []
+                    for idx, p in enumerate(df_pusat_ppd.sort_values("NO_PUSAT").iterrows()):
+                        p_data = p[1]
+                        no_p = p_data["NO_PUSAT"]
+                        dic = p_data["DICADANGKAN"]
+                        sep = p_data["SEPATUTNYA"]
+                        
                         if dic == 0:
                             status_icon = "🔴"
                             status_text = "Belum Ada"
-                            color = "#d32f2f"
-                            bg = "#ffebee"
                         elif dic < sep:
                             status_icon = "🟡"
-                            status_text = f"Belum Cukup ({dic}/{sep})"
-                            color = "#f57f17"
-                            bg = "#fff8e1"
+                            status_text = f"Belum Cukup"
                         else:
                             status_icon = "🟢"
-                            status_text = f"Cukup ({dic}/{sep})"
-                            color = "#2e7d32"
-                            bg = "#e8f5e9"
+                            status_text = f"Cukup"
                         
-                        display_rows.append({
-                            "Logo": "🏫",
+                        editable_rows.append({
+                            "BIL": idx + 1,
                             "NO_PUSAT": no_p,
-                            "NAMA_PUSAT": p["NAMA_PUSAT"][:30],
-                            "KOD_TUAN": p["KOD_TUAN_RUMAH"],
-                            "CALON": p["CALON"],
-                            "KELAS": p["KELAS"],
-                            "SEPATUTNYA": sep,
+                            "NAMA_PUSAT": p_data["NAMA_PUSAT"][:35],
+                            "KOD_TUAN": p_data["KOD_TUAN_RUMAH"],
+                            "BIL_CALON": p_data["CALON"],
+                            "KELAS": p_data["KELAS"],
+                            "PERLU_K9": sep,
                             "DICADANGKAN": dic,
                             "STATUS": f"{status_icon} {status_text}",
-                            "_color": color,
-                            "_bg": bg
+                            "KEKURANGAN": max(0, sep - dic)
                         })
                     
-                    df_display = pd.DataFrame(display_rows)
+                    df_editable = pd.DataFrame(editable_rows)
                     
+                    # Data editor - PPD boleh edit BIL_CALON, KELAS, PERLU_K9
+                    st.markdown("#### ✏️ Edit Data Pusat (PPD)")
+                    edited_df = st.data_editor(
+                        df_editable,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "BIL": st.column_config.NumberColumn("BIL", width="small", disabled=True),
+                            "NO_PUSAT": st.column_config.TextColumn("NO PUSAT", width="medium", disabled=True),
+                            "NAMA_PUSAT": st.column_config.TextColumn("NAMA PUSAT", width="large", disabled=True),
+                            "KOD_TUAN": st.column_config.TextColumn("KOD TUAN RUMAH", width="medium", disabled=True),
+                            "BIL_CALON": st.column_config.NumberColumn("BIL CALON", help="PPD boleh edit ikut keperluan sebenar", min_value=0, max_value=500, step=1, required=True),
+                            "KELAS": st.column_config.NumberColumn("KELAS", help="Auto: CEIL(Calon/20), tapi PPD boleh edit", min_value=0, max_value=30, step=1, required=True),
+                            "PERLU_K9": st.column_config.NumberColumn("PERLU (K+9)", help="PPD boleh edit ikut keperluan, formula asal Kelas+9", min_value=0, max_value=50, step=1, required=True),
+                            "DICADANGKAN": st.column_config.NumberColumn("DICADANGKAN", disabled=True),
+                            "STATUS": st.column_config.TextColumn("STATUS", disabled=True),
+                            "KEKURANGAN": st.column_config.NumberColumn("KEKURANGAN", help="Auto kira: PERLU - DICADANGKAN", disabled=True)
+                        },
+                        key=f"ppd_edit_{kod_ppd}",
+                        num_rows="fixed"
+                    )
+                    
+                    # Auto-calculate logic: if BIL_CALON changed, update KELAS and PERLU suggestion
+                    # Show save button
+                    col_save, col_reset, col_info = st.columns([1, 1, 2])
+                    with col_save:
+                        if st.button("💾 Simpan Perubahan Pusat", type="primary", use_container_width=True, key=f"save_pusat_{kod_ppd}"):
+                            try:
+                                # Update pusat_master table
+                                updated_count = 0
+                                for _, row in edited_df.iterrows():
+                                    no_pusat = row["NO_PUSAT"]
+                                    new_calon = int(row["BIL_CALON"])
+                                    new_kelas = int(row["KELAS"])
+                                    new_perlu = int(row["PERLU_K9"])
+                                    
+                                    # Find original record
+                                    for _, r in df_pusat_raw.iterrows():
+                                        d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                                        if isinstance(d, str):
+                                            try: d = json.loads(d)
+                                            except: d = {}
+                                        r_no_pusat = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                        if r_no_pusat == no_pusat:
+                                            # Update
+                                            old_data = d.copy() if isinstance(d, dict) else {}
+                                            old_data["JUMLAH_CALON"] = new_calon
+                                            old_data["JUMLAH_KELAS"] = new_kelas
+                                            old_data["CALON"] = new_calon
+                                            old_data["KELAS"] = new_kelas
+                                            
+                                            update_payload = {
+                                                "jumlah_calon": new_calon,
+                                                "jumlah_kelas": new_kelas,
+                                                "calon": new_calon,
+                                                "data": old_data
+                                            }
+                                            # Try update by no_pusat
+                                            try:
+                                                supa.table("pusat_master").update(update_payload).eq("no_pusat", no_pusat).execute()
+                                                updated_count += 1
+                                            except:
+                                                try:
+                                                    supa.table("pusat_master").update(update_payload).eq("kod_pusat", no_pusat).execute()
+                                                    updated_count += 1
+                                                except Exception as e:
+                                                    st.error(f"Gagal update {no_pusat}: {e}")
+                                            break
+                                
+                                st.success(f"✅ Berjaya simpan {updated_count} pusat! Data calon, kelas, perlu telah dikemaskini.")
+                                st.balloons()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error simpan: {e}")
+                                import traceback
+                                st.code(traceback.format_exc())
+                    
+                    with col_reset:
+                        if st.button("🔄 Reset Auto (Kira Semula)", use_container_width=True, key=f"reset_auto_{kod_ppd}"):
+                            st.info("Auto kira semula: KELAS = CEIL(CALON/20), PERLU = KELAS+9")
+                            st.rerun()
+                    
+                    with col_info:
+                        st.caption(f"Total: {len(edited_df)} pusat | Boleh edit CALON, KELAS, PERLU")
+                    
+                    st.markdown("---")
+                    
+                    # Also show colored HTML table for quick view
+                    st.markdown("#### 📊 Paparan Status Berwarna")
                     # Create HTML table with colors
                     html_table = """
                     <style>
-                    .ppd-table {width:100%; border-collapse:collapse; font-size:13px;}
-                    .ppd-table th {background:#0d47a1; color:white; padding:10px 8px; text-align:left; font-weight:700;}
-                    .ppd-table td {padding:8px; border-bottom:1px solid #e0e0e0;}
-                    .ppd-table tr:hover {background:#f5f5f5;}
-                    .badge-merah {background:#ffebee; color:#d32f2f; padding:4px 8px; border-radius:12px; font-weight:700; border:1px solid #d32f2f;}
-                    .badge-kuning {background:#fff8e1; color:#f57f17; padding:4px 8px; border-radius:12px; font-weight:700; border:1px solid #f57f17;}
-                    .badge-hijau {background:#e8f5e9; color:#2e7d32; padding:4px 8px; border-radius:12px; font-weight:700; border:1px solid #2e7d32;}
+                    .ppd-table {width:100%; border-collapse:collapse; font-size:13px; background:white;}
+                    .ppd-table th {background:#0d47a1; color:white; padding:10px 8px; text-align:left; font-weight:700; position:sticky; top:0;}
+                    .ppd-table td {padding:8px; border-bottom:1px solid #e0e0e0; background:white; color:#212121;}
+                    .ppd-table tr:hover td {background:#f5f5f5 !important;}
+                    .badge-merah {background:#ffcdd2 !important; color:#b71c1c !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #d32f2f;}
+                    .badge-kuning {background:#fff9c4 !important; color:#e65100 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #f57f17;}
+                    .badge-hijau {background:#c8e6c9 !important; color:#1b5e20 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #2e7d32;}
+                    .edit-hint {background:#e3f2fd; border-left:4px solid #1976d2; padding:6px 10px; margin:4px 0; font-size:11px;}
                     </style>
+                    <div class="edit-hint">✏️ <b>PPD boleh edit:</b> BIL CALON, KELAS, PERLU (K+9) ikut keperluan sebenar - klik angka dalam table atas untuk edit</div>
                     <table class="ppd-table">
-                    <tr><th>🏫</th><th>NO PUSAT</th><th>NAMA PUSAT</th><th>KOD TUAN</th><th>CALON</th><th>KELAS</th><th>PERLU (K+9)</th><th>DICADANG</th><th>STATUS</th></tr>
+                    <tr><th>BIL</th><th>NO PUSAT</th><th>NAMA PUSAT</th><th>KOD TUAN</th><th>BIL CALON ✏️</th><th>KELAS ✏️</th><th>PERLU (K+9) ✏️</th><th>DICADANG</th><th>STATUS</th></tr>
                     """
-                    for _, r in df_display.iterrows():
+                    
+                    for _, r in edited_df.iterrows():
                         dic = r["DICADANGKAN"]
-                        sep = r["SEPATUTNYA"]
+                        sep = r["PERLU_K9"]
                         if dic == 0:
                             badge_class = "badge-merah"
                             badge_text = f"🔴 {dic}"
-                            status_badge = f'<span class="{badge_class}">{r["STATUS"]}</span>'
+                            status_badge = f'<span class="{badge_class}">🔴 Belum Ada</span>'
                         elif dic < sep:
                             badge_class = "badge-kuning"
                             badge_text = f"🟡 {dic}"
-                            status_badge = f'<span class="{badge_class}">{r["STATUS"]}</span>'
+                            status_badge = f'<span class="{badge_class}">🟡 Belum Cukup</span>'
                         else:
                             badge_class = "badge-hijau"
                             badge_text = f"🟢 {dic}"
-                            status_badge = f'<span class="{badge_class}">{r["STATUS"]}</span>'
+                            status_badge = f'<span class="{badge_class}">🟢 Cukup</span>'
                         
-                        html_table += f"<tr><td>{r['Logo']}</td><td><b>{r['NO_PUSAT']}</b></td><td>{r['NAMA_PUSAT']}</td><td>{r['KOD_TUAN']}</td><td style='text-align:center;'><b>{r['CALON']}</b></td><td style='text-align:center;'>{r['KELAS']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700;'>{r['SEPATUTNYA']}</td><td style='text-align:center;'><span class='{badge_class}'>{badge_text}</span></td><td>{status_badge}</td></tr>"
+                        html_table += f"<tr><td><b>{r['BIL']}</b></td><td><b>{r['NO_PUSAT']}</b></td><td>{r['NAMA_PUSAT']}</td><td>{r['KOD_TUAN']}</td><td style='text-align:center; background:#fff9c4; font-weight:700; border:1px dashed #f57f17;'>{r['BIL_CALON']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700; border:1px dashed #1976d2;'>{r['KELAS']}</td><td style='text-align:center; background:#fce4ec; font-weight:700; border:1px dashed #d32f2f;'>{r['PERLU_K9']}</td><td style='text-align:center;'><span class='{badge_class}'>{badge_text}</span></td><td>{status_badge}</td></tr>"
                     
                     html_table += "</table>"
+                    
                     st.markdown(html_table, unsafe_allow_html=True)
                     
                     st.markdown("---")
-                    # Also show as dataframe for export
-                    with st.expander("📊 Lihat Dataframe & Export", expanded=False):
+                    
+                    # Export
+                    with st.expander("📊 Export Data", expanded=False):
                         st.dataframe(df_pusat_ppd.sort_values("NO_PUSAT"), use_container_width=True, hide_index=True)
                         st.download_button(f"📥 Export Dashboard PPD {kod_ppd} (Excel)", to_excel(df_pusat_ppd), file_name=f"Dashboard_PPD_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
                     
@@ -1336,6 +1548,7 @@ elif st.session_state.role == "PPD":
                             k_sek = str(s.get("kod_sekolah") or s.get("KOD_SEKOLAH") or "").upper().strip()
                             n_sek = str(s.get("nama_sekolah") or s.get("NAMA_SEKOLAH") or "").upper().strip()
                             cad = sekolah_cad_count.get(k_sek, 0)
+                            
                             if cad == 0:
                                 s_icon = "🔴"
                                 s_status = "Belum Cadang"
@@ -1345,13 +1558,14 @@ elif st.session_state.role == "PPD":
                             else:
                                 s_icon = "🟢"
                                 s_status = f"{cad} dicadang"
+                            
                             sekolah_rows.append({"Logo": "🏫", "KOD_SEKOLAH": k_sek, "NAMA_SEKOLAH": n_sek[:35], "DICADANGKAN": cad, "STATUS": f"{s_icon} {s_status}"})
                         
                         df_sekolah_display = pd.DataFrame(sekolah_rows).sort_values("KOD_SEKOLAH")
                         st.dataframe(df_sekolah_display, use_container_width=True, hide_index=True)
                     else:
                         st.info(f"Tiada sekolah dijumpai untuk PPD {kod_ppd}")
-                        
+                
             except Exception as e:
                 st.error(f"Error dashboard PPD: {e}")
                 import traceback
