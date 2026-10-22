@@ -934,17 +934,66 @@ if st.session_state.role == "SUP":
                 st.info("guru_master kosong untuk sekolah ini. Sila Tambah Guru atau Import Excel.")
             else:
                 st.success(f"Ada {len(df_guru)} guru di {kod}")
-                cols_to_show = [c for c in ["NAMA GURU", "IC", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "EMAIL_GURU", "JAWATAN CADANGAN", "PENGALAMAN_SPM", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "NO_PUSAT_ASAL"] if c in df_guru.columns]
+                
+                # ===== FILTER IKUT JAWATAN - SUP SENARAI GURU (BARU) =====
+                st.markdown("### 🔍 Filter Ikut Jawatan - Senarai Guru")
+                jawatan_sup_list = []
+                col_jawatan_sup = "JAWATAN CADANGAN" if "JAWATAN CADANGAN" in df_guru.columns else "JAWATAN_CADANGAN" if "JAWATAN_CADANGAN" in df_guru.columns else None
+                if col_jawatan_sup:
+                    for _, r in df_guru.iterrows():
+                        j = str(r.get(col_jawatan_sup, "")).strip()
+                        if j and j not in jawatan_sup_list:
+                            jawatan_sup_list.append(j)
+                order_j = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                jawatan_sup_sorted = sorted(jawatan_sup_list, key=lambda x: (order_j.index(x) if x in order_j else 99, x))
+                
+                col_f1_sup, col_f2_sup, col_f3_sup, col_f4_sup = st.columns([2,1,1,1])
+                with col_f1_sup:
+                    filter_jawatan_sup = st.multiselect("Filter Jawatan", jawatan_sup_sorted, default=[], key="filter_jawatan_sup_senarai", placeholder="Kosong = semua jawatan")
+                with col_f2_sup:
+                    if filter_jawatan_sup:
+                        filtered_count = len(df_guru[df_guru[col_jawatan_sup].astype(str).str.strip().isin(filter_jawatan_sup)]) if col_jawatan_sup else 0
+                        st.metric(f"Filter: {len(filter_jawatan_sup)}", f"{filtered_count} guru")
+                    else:
+                        st.metric("Semua", f"{len(df_guru)} guru")
+                with col_f3_sup:
+                    if st.button("🔐 Hanya Penyelia", use_container_width=True, key="btn_filter_pk_sup"):
+                        st.session_state["filter_jawatan_sup_senarai"] = ["Penyelia Kawasan"]
+                        st.rerun()
+                with col_f4_sup:
+                    if st.button("🔄 Clear", use_container_width=True, key="btn_clear_sup"):
+                        st.session_state["filter_jawatan_sup_senarai"] = []
+                        st.rerun()
+                
+                df_guru_filtered = df_guru
+                if filter_jawatan_sup and col_jawatan_sup:
+                    df_guru_filtered = df_guru[df_guru[col_jawatan_sup].astype(str).str.strip().isin(filter_jawatan_sup)].copy()
+                    st.success(f"✅ Filter: {', '.join(filter_jawatan_sup)} - {len(df_guru_filtered)} guru")
+                
+                # Pecahan ikut jawatan
+                if not df_guru_filtered.empty and col_jawatan_sup:
+                    j_counts = df_guru_filtered[col_jawatan_sup].value_counts().to_dict()
+                    if j_counts:
+                        st.markdown("#### 📊 Pecahan Ikut Jawatan")
+                        cols_j_sup = st.columns(len(j_counts))
+                        for idx, (j, cnt) in enumerate(sorted(j_counts.items(), key=lambda x: (order_j.index(x[0]) if x[0] in order_j else 99, x[0]))):
+                            with cols_j_sup[idx % len(cols_j_sup)]:
+                                icon = "👑" if "Ketua Pengawas" in j and "Timbalan" not in j else "🎖️" if "Timbalan" in j else "🔐" if "Penyelia" in j else "👨‍🏫"
+                                st.metric(f"{icon} {j}", cnt)
+                
+                cols_to_show = [c for c in ["NAMA GURU", "IC", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "EMAIL_GURU", "JAWATAN CADANGAN", "JAWATAN_CADANGAN", "PENGALAMAN_SPM", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "NO_PUSAT_ASAL"] if c in df_guru_filtered.columns]
                 if cols_to_show:
-                    st.dataframe(df_guru[cols_to_show], use_container_width=True, hide_index=True)
-                    kosong = df_guru[df_guru["JANTINA"].isin(["", "KOSONG"]) | df_guru["POSKOD_RUMAH"].isin(["", "KOSONG"]) | df_guru["TELEFON_GURU"].isin(["", "KOSONG"])]
+                    st.dataframe(df_guru_filtered[cols_to_show], use_container_width=True, hide_index=True)
+                    kosong = df_guru_filtered[df_guru_filtered["JANTINA"].isin(["", "KOSONG"]) | df_guru_filtered["POSKOD_RUMAH"].isin(["", "KOSONG"]) | df_guru_filtered["TELEFON_GURU"].isin(["", "KOSONG"])] if "JANTINA" in df_guru_filtered.columns and "POSKOD_RUMAH" in df_guru_filtered.columns and "TELEFON_GURU" in df_guru_filtered.columns else pd.DataFrame()
                     if not kosong.empty:
                         st.warning(f"⚠️ Ada {len(kosong)} guru dengan data KOSONG (JANTINA/POSKOD/ALAMAT/TELEFON/EMAIL). Sila edit di bawah.")
                 
-                st.download_button(" Export Excel Lengkap", to_excel(df_guru), file_name=f"guru_{kod}_lengkap.xlsx", use_container_width=True)
+                st.download_button(" Export Excel Lengkap (Ikut Filter)", to_excel(df_guru_filtered), file_name=f"guru_{kod}_lengkap_{'_'.join(filter_jawatan_sup) if filter_jawatan_sup else 'semua'}.xlsx", use_container_width=True)
                 st.markdown("---")
                 st.subheader("✏️ Edit Data Guru (Lengkapkan yang kosong)")
-                edit_ic = st.selectbox("Pilih IC guru untuk edit", df_guru["IC"].tolist(), format_func=lambda x: f"{x} - {df_guru[df_guru['IC']==x]['NAMA GURU'].values[0] if not df_guru[df_guru['IC']==x].empty else x}")
+                # Use filtered list for edit too
+                df_for_edit = df_guru_filtered if 'df_guru_filtered' in locals() else df_guru
+                edit_ic = st.selectbox("Pilih IC guru untuk edit", df_for_edit["IC"].tolist() if "IC" in df_for_edit.columns else [], format_func=lambda x: f"{x} - {df_for_edit[df_for_edit['IC']==x]['NAMA GURU'].values[0] if not df_for_edit[df_for_edit['IC']==x].empty else x}")
                 if edit_ic:
                     guru_edit = df_guru[df_guru["IC"] == edit_ic].iloc[0] if not df_guru[df_guru["IC"] == edit_ic].empty else None
                     if guru_edit is not None:
