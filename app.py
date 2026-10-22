@@ -3014,6 +3014,23 @@ elif st.session_state.role == "PPD":
                 st.warning(f"Belum ada cadangan SUP untuk PPD {kod_ppd}")
                 st.stop()
             
+            # ===== FILTER IKUT JAWATAN (MESTI AWAL SEBELUM BUILD GROUP) =====
+            jawatan_list_all = []
+            for _, r in df_cad_all.iterrows():
+                j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip()
+                if j and j not in jawatan_list_all:
+                    jawatan_list_all.append(j)
+            order_jawatan = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Selenggara Bilik Kebal"]
+            jawatan_sorted = sorted(jawatan_list_all, key=lambda x: (order_jawatan.index(x) if x in order_jawatan else 99, x))
+            
+            # Default filter from session
+            filter_jawatan = st.session_state.get("filter_jawatan_cad", [])
+            
+            # Init df_cad_filtered as all first
+            df_cad_filtered = df_cad_all.copy()
+            if filter_jawatan:
+                df_cad_filtered = df_cad_all[df_cad_all.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan, axis=1)].copy()
+            
             # Get sekolah list in PPD
             try:
                 res_sek = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
@@ -3045,32 +3062,21 @@ elif st.session_state.role == "PPD":
                 belum = df_cad_all[df_cad_all.apply(is_belum, axis=1)]
                 st.metric("✅ Belum Dilantik", len(belum), delta=f"{len(df_cad_all)-len(belum)} telah dilantik")
             
-            # ===== FILTER IKUT JAWATAN (BARU) =====
             st.markdown("### 🔍 Filter Ikut Jawatan")
             st.caption("Filter untuk tengok siapa Penyelia Kawasan, Ketua Pengawas, Timbalan, Pengawas Peperiksaan - senang PPD semak")
             
-            # Get unique jawatan
-            jawatan_list_all = []
-            for _, r in df_cad_all.iterrows():
-                j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip()
-                if j and j not in jawatan_list_all:
-                    jawatan_list_all.append(j)
-            
-            # Sort ikut kepentingan
-            order_jawatan = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Selenggara Bilik Kebal"]
-            jawatan_sorted = sorted(jawatan_list_all, key=lambda x: (order_jawatan.index(x) if x in order_jawatan else 99, x))
-            
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             with col_f1:
-                filter_jawatan = st.multiselect("Filter Jawatan", jawatan_sorted, default=[], key="filter_jawatan_cad", placeholder="Pilih jawatan - kosong = semua")
+                filter_jawatan_ui = st.multiselect("Filter Jawatan", jawatan_sorted, default=st.session_state.get("filter_jawatan_cad", []), key="filter_jawatan_cad", placeholder="Pilih jawatan - kosong = semua")
+                if filter_jawatan_ui != st.session_state.get("filter_jawatan_cad", []):
+                    st.session_state["filter_jawatan_cad"] = filter_jawatan_ui
+                    st.rerun()
             with col_f2:
-                # Count per jawatan
-                if filter_jawatan:
-                    st.metric(f"Filter: {len(filter_jawatan)} jawatan", f"{len(df_cad_all[df_cad_all.apply(lambda r: str(r.get('JAWATAN_CADANGAN') or r.get('jawatan_cadangan') or '').strip() in filter_jawatan, axis=1)])} guru")
+                if st.session_state.get("filter_jawatan_cad"):
+                    st.metric(f"Filter: {len(st.session_state.get('filter_jawatan_cad', []))} jawatan", f"{len(df_cad_filtered)} guru")
                 else:
                     st.metric("Semua Jawatan", f"{len(df_cad_all)} guru")
             with col_f3:
-                # Quick buttons
                 if st.button("🔐 Hanya Penyelia Kawasan", use_container_width=True, key="btn_filter_pk"):
                     st.session_state["filter_jawatan_cad"] = ["Penyelia Kawasan"]
                     st.rerun()
@@ -3079,11 +3085,8 @@ elif st.session_state.role == "PPD":
                     st.session_state["filter_jawatan_cad"] = []
                     st.rerun()
             
-            # Apply filter if selected
-            df_cad_filtered = df_cad_all
-            if filter_jawatan:
-                df_cad_filtered = df_cad_all[df_cad_all.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan, axis=1)].copy()
-                st.success(f"✅ Filter aktif: {', '.join(filter_jawatan)} - Jumpa {len(df_cad_filtered)} guru")
+            if st.session_state.get("filter_jawatan_cad"):
+                st.success(f"✅ Filter aktif: {', '.join(st.session_state.get('filter_jawatan_cad', []))} - Jumpa {len(df_cad_filtered)} guru")
             
             # Show breakdown by jawatan
             st.markdown("#### 📊 Pecahan Ikut Jawatan")
