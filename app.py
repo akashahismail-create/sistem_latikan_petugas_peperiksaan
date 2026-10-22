@@ -1624,11 +1624,82 @@ elif st.session_state.role == "PPD":
             df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
             
             if df_pusat_raw.empty:
-                st.warning("⚠️ Tiada pusat_master - import dulu di JPN > Pusat Master")
+                st.markdown('''
+                <div style="background:#ffebee; border:3px solid #d32f2f; border-radius:12px; padding:20px; text-align:center;">
+                    <div style="font-size:48px;">⚠️</div>
+                    <div style="font-size:20px; font-weight:800; color:#b71c1c; margin:10px 0;">Tiada Pusat Master</div>
+                    <div style="font-size:14px; color:#424242;">Sila import pusat di JPN > Pusat Master</div>
+                </div>
+                ''', unsafe_allow_html=True)
                 st.stop()
+            
+            # ===== POPUP LOGIC: Jika tiada guru dicadangkan atau semua telah dilantik =====
+            def show_popup_tiada_guru(alasan=""):
+                st.markdown(f'''
+                <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border:3px solid #e65100; border-radius:16px; padding:30px; text-align:center; box-shadow: 0 8px 24px rgba(230,81,0,0.2); margin:20px 0;">
+                    <div style="font-size:64px;">📋</div>
+                    <div style="font-size:22px; font-weight:800; color:#bf360c; margin:15px 0;">Tiada Senarai Cadangan Untuk Dilantik</div>
+                    <div style="font-size:16px; color:#424242; margin:10px 0; line-height:1.6;">
+                        {alasan}<br>
+                        <b>Semua guru telah dilantik</b> atau <b>tiada cadangan dari SUP</b> untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}
+                    </div>
+                    <div style="background:#ffffff; border:2px solid #ff9800; border-radius:8px; padding:12px; margin:15px 0; text-align:left;">
+                        <div style="font-weight:700; color:#e65100; font-size:13px;">💡 Apa Perlu Buat:</div>
+                        <div style="font-size:12px; color:#424242; margin-top:5px;">
+                            1. Pastikan SUP sekolah telah cadang guru di <b>SUP > Cadangan Lantikan</b><br>
+                            2. Pastikan SUP telah <b>Hantar ke PPD</b><br>
+                            3. Semak di <b>PPD > Cadangan SUP</b> ada senarai atau tidak<br>
+                            4. Jika semua status <b>LULUS PPD / DILANTIK</b> = semua telah dilantik
+                        </div>
+                    </div>
+                </div>
+                ''', unsafe_allow_html=True)
+                
+                # Also show as dialog-like popup using streamlit modal if available
+                with st.container():
+                    st.warning(f"⚠️ PPD {kod_ppd}: Tiada guru untuk dijana! {alasan}")
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Cadangan SUP", len(df_cad_all) if not df_cad_all.empty else 0)
+                    if not df_cad_all.empty and "STATUS" in df_cad_all.columns:
+                        lulus = len(df_cad_all[df_cad_all["STATUS"].astype(str).str.upper().str.contains("LULUS|DILANTIK|SAH")])
+                        belum = len(df_cad_all) - lulus
+                        c2.metric("Telah Dilantik/Lulus", lulus)
+                        c3.metric("Belum Dilantik", belum)
+                
+                st.balloons()
+            
+            # Check 1: Tiada cadangan langsung
             if df_cad_all.empty:
-                st.warning(f"⚠️ Belum ada cadangan dari SUP untuk PPD {kod_ppd}. Sekolah perlu cadang dulu di SUP > Cadangan Lantikan > Hantar ke PPD")
+                show_popup_tiada_guru(f"PPD {kod_ppd} belum menerima sebarang cadangan guru dari SUP.")
+                st.markdown("---")
+                st.info(f"💡 Sila arahkan SUP sekolah dalam PPD {kod_ppd} untuk mencadang guru terlebih dahulu.")
                 st.stop()
+            
+            # Check 2: Semua telah dilantik / LULUS PPD
+            if "STATUS" in df_cad_all.columns:
+                df_cad_all["STATUS_UPPER"] = df_cad_all["STATUS"].astype(str).str.upper()
+                # Kira yang belum dilantik
+                belum_dilantik = df_cad_all[~df_cad_all["STATUS_UPPER"].str.contains("LULUS|DILANTIK|SAH", na=False)]
+                telah_dilantik = df_cad_all[df_cad_all["STATUS_UPPER"].str.contains("LULUS|DILANTIK|SAH", na=False)]
+                
+                if belum_dilantik.empty and not telah_dilantik.empty:
+                    # Semua telah dilantik
+                    show_popup_tiada_guru(f"Ada {len(telah_dilantik)} cadangan, tetapi semua telah berstatus LULUS PPD / DILANTIK.")
+                    st.markdown("---")
+                    st.markdown(f"### ✅ Semua {len(telah_dilantik)} Guru Telah Dilantik - PPD {kod_ppd}")
+                    st.dataframe(telah_dilantik, use_container_width=True, hide_index=True)
+                    st.stop()
+                
+                # Jika ada yang belum, gunakan hanya yang belum untuk janaan
+                if not belum_dilantik.empty:
+                    st.info(f"📊 Ada {len(belum_dilantik)} guru belum dilantik, {len(telah_dilantik)} telah dilantik/Lulus. Jana akan guna {len(belum_dilantik)} yang belum sahaja.")
+                    # Use only belum for janaan display, but keep original for reference
+                    df_cad_untuk_jana = belum_dilantik.copy()
+                else:
+                    df_cad_untuk_jana = df_cad_all.copy()
+            else:
+                df_cad_untuk_jana = df_cad_all.copy()
+                belum_dilantik = df_cad_all.copy()
             
             # Parse pusat
             rows = []
@@ -1659,7 +1730,16 @@ elif st.session_state.role == "PPD":
             
             # ===== STEP 1: PAPARKAN DATA DARI SUP =====
             st.markdown("### 📋 STEP 1: Data Dari SUP (Cadangan Guru)")
-            st.info(f"📥 Ada {len(df_cad_all)} cadangan guru dari SUP untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}")
+            
+            # Use filtered data for display
+            df_display_cad = df_cad_untuk_jana if 'df_cad_untuk_jana' in locals() else df_cad_all
+            belum_count = len(df_display_cad)
+            total_count = len(df_cad_all)
+            
+            if belum_count < total_count:
+                st.warning(f"📥 Ada {total_count} cadangan total, {belum_count} belum dilantik (akan dijana), {total_count - belum_count} telah dilantik")
+            else:
+                st.info(f"📥 Ada {len(df_display_cad)} cadangan guru dari SUP untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')} - Sedia untuk dijana")
             
             # Show summary per sekolah
             cad_per_sekolah = {}
@@ -1711,9 +1791,22 @@ elif st.session_state.role == "PPD":
             # Logic Jana Keseluruhan
             if btn_jana_all or "jana_all_result" in st.session_state:
                 if btn_jana_all:
+                    # Check again before jana - popup if no data
+                    df_untuk_jana_check = df_cad_untuk_jana if 'df_cad_untuk_jana' in locals() else df_cad_all
+                    if df_untuk_jana_check.empty:
+                        st.markdown('''
+                        <div style="background:#ffebee; border:3px solid #d32f2f; border-radius:12px; padding:20px; text-align:center;">
+                            <div style="font-size:48px;">🚫</div>
+                            <div style="font-size:18px; font-weight:800; color:#b71c1c;">Tiada Guru Untuk Dijana!</div>
+                            <div style="font-size:14px; color:#424242; margin-top:10px;">Semua guru telah dilantik atau tiada senarai cadangan untuk dilantik</div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+                        st.error(f"❌ PPD {kod_ppd}: Semua guru telah dilantik atau tiada senarai cadangan untuk dilantik!")
+                        st.stop()
+                    
                     # Generate assignments
                     assignments = []
-                    df_cad_sorted = df_cad_all.sort_values("JAWATAN_CADANGAN") if "JAWATAN_CADANGAN" in df_cad_all.columns else df_cad_all
+                    df_cad_sorted = df_untuk_jana_check.sort_values("JAWATAN_CADANGAN") if "JAWATAN_CADANGAN" in df_untuk_jana_check.columns else df_untuk_jana_check
                     for idx, row in df_cad_sorted.iterrows():
                         kod_sek_asal = str(row.get("KOD_SEKOLAH_ASAL", "") or row.get("KOD_SEKOLAH", "") or "").upper().strip()
                         asal = str(row.get("NO_PUSAT_ASAL", "") or "").upper().strip()
