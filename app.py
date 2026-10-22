@@ -38,14 +38,38 @@ section[data-testid="stSidebar"] {display: none !important;}
     background: #eef2ff !important;
 }
 
-/* CUSTOM SIDEBAR - BIRU GELAP */
-.custom-sidebar {
+/* ===== BACKGROUND BELAKANG MENU SEBELAH KIRI KESELURUHAN - BIRU GELAP ===== */
+div[data-testid="stHorizontalBlock"] {
+    gap: 0 !important;
+}
+
+/* Kolum kiri keseluruhan - full biru gelap dari atas sampai bawah */
+div[data-testid="stHorizontalBlock"] > div:first-child {
     background: linear-gradient(180deg, #0d1b3e 0%, #0a1931 100%) !important;
     background-color: #0d1b3e !important;
-    border-radius: 14px;
-    padding: 16px;
-    border: 2px solid #1a237e !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    border-radius: 0 !important;
+    padding: 12px !important;
+    min-height: 100vh !important;
+    height: auto !important;
+    margin: -1rem 0 -1rem -1rem !important;
+    padding-top: 1rem !important;
+}
+
+[data-testid="column"]:first-child {
+    background: linear-gradient(180deg, #0d1b3e 0%, #0a1931 100%) !important;
+    background-color: #0d1b3e !important;
+    border-radius: 0 !important;
+    min-height: 100vh !important;
+}
+
+/* CUSTOM SIDEBAR - TRANSPARENT ATAS BACKGROUND BIRU GELAP KESELURUHAN */
+.custom-sidebar {
+    background: transparent !important;
+    background-color: transparent !important;
+    border-radius: 0;
+    padding: 0;
+    border: none !important;
+    box-shadow: none;
     height: fit-content;
     position: sticky;
     top: 10px;
