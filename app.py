@@ -1731,6 +1731,7 @@ elif st.session_state.role == "PPD":
                             eligible = eligible[~eligible["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_pusat)]
                         def check_max3(row):
                             k = str(row.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
+                            # Normalisasi key
                             return pusat_sekolah_count.get((pusat_no, k), 0) < 3 if k else True
                         eligible["CHECK_MAX"] = eligible.apply(check_max3, axis=1)
                         eligible = eligible[eligible["CHECK_MAX"] == True]
@@ -1761,7 +1762,8 @@ elif st.session_state.role == "PPD":
                             chosen = pool_eligible.iloc[0]
                             assignments.append({"id": chosen.get("id", ""), "NAMA_GURU": chosen.get("NAMA_GURU", ""), "IC_GURU": chosen.get("IC_GURU", ""), "JAWATAN_ASAL": chosen.get("JAWATAN_CADANGAN", ""), "JAWATAN_CADANGAN": "Ketua Pengawas", "JAWATAN": "Ketua Pengawas", "KOD_SEKOLAH_ASAL": str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper(), "NAMA_SEKOLAH_ASAL": chosen.get("NAMA_SEKOLAH_ASAL", ""), "JANTINA": chosen.get("JANTINA", "") or chosen.get("jantina", ""), "TELEFON_GURU": chosen.get("TELEFON_GURU", "") or chosen.get("telefon_guru", ""), "NO_PUSAT_TUGAS": no_pusat, "NAMA_PUSAT_TUGAS": info.get("NAMA", ""), "STATUS": "DIJANA PPD"})
                             used_ic.add(chosen.get("IC_GURU", ""))
-                            k = (no_pusat, str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper())
+                            kod_norm = str(chosen.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
+                            k = (no_pusat, kod_norm)
                             pusat_sekolah_count[k] = pusat_sekolah_count.get(k, 0) + 1
                             df_pool = df_pool[~df_pool["IC_GURU"].isin([chosen.get("IC_GURU", "")])]
                         for _ in range(need_tkp):
@@ -1773,7 +1775,8 @@ elif st.session_state.role == "PPD":
                             chosen = pool_eligible.iloc[0]
                             assignments.append({"id": chosen.get("id", ""), "NAMA_GURU": chosen.get("NAMA_GURU", ""), "IC_GURU": chosen.get("IC_GURU", ""), "JAWATAN_ASAL": chosen.get("JAWATAN_CADANGAN", ""), "JAWATAN_CADANGAN": "Timbalan Ketua Pengawas", "JAWATAN": "Timbalan Ketua Pengawas", "KOD_SEKOLAH_ASAL": str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper(), "NAMA_SEKOLAH_ASAL": chosen.get("NAMA_SEKOLAH_ASAL", ""), "JANTINA": chosen.get("JANTINA", "") or chosen.get("jantina", ""), "TELEFON_GURU": chosen.get("TELEFON_GURU", "") or chosen.get("telefon_guru", ""), "NO_PUSAT_TUGAS": no_pusat, "NAMA_PUSAT_TUGAS": info.get("NAMA", ""), "STATUS": "DIJANA PPD"})
                             used_ic.add(chosen.get("IC_GURU", ""))
-                            k = (no_pusat, str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper())
+                            kod_norm = str(chosen.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
+                            k = (no_pusat, kod_norm)
                             pusat_sekolah_count[k] = pusat_sekolah_count.get(k, 0) + 1
                             df_pool = df_pool[~df_pool["IC_GURU"].isin([chosen.get("IC_GURU", "")])]
                         for _ in range(need_pengawas):
@@ -1785,7 +1788,8 @@ elif st.session_state.role == "PPD":
                             chosen = pool_eligible.iloc[0]
                             assignments.append({"id": chosen.get("id", ""), "NAMA_GURU": chosen.get("NAMA_GURU", ""), "IC_GURU": chosen.get("IC_GURU", ""), "JAWATAN_ASAL": chosen.get("JAWATAN_CADANGAN", ""), "JAWATAN_CADANGAN": "Pengawas Peperiksaan", "JAWATAN": "Pengawas Peperiksaan", "KOD_SEKOLAH_ASAL": str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper(), "NAMA_SEKOLAH_ASAL": chosen.get("NAMA_SEKOLAH_ASAL", ""), "JANTINA": chosen.get("JANTINA", "") or chosen.get("jantina", ""), "TELEFON_GURU": chosen.get("TELEFON_GURU", "") or chosen.get("telefon_guru", ""), "NO_PUSAT_TUGAS": no_pusat, "NAMA_PUSAT_TUGAS": info.get("NAMA", ""), "STATUS": "DIJANA PPD"})
                             used_ic.add(chosen.get("IC_GURU", ""))
-                            k = (no_pusat, str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper())
+                            kod_norm = str(chosen.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
+                            k = (no_pusat, kod_norm)
                             pusat_sekolah_count[k] = pusat_sekolah_count.get(k, 0) + 1
                             df_pool = df_pool[~df_pool["IC_GURU"].isin([chosen.get("IC_GURU", "")])]
                     
