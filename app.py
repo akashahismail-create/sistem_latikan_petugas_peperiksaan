@@ -481,26 +481,20 @@ def get_pusat_df():
 @st.cache_data(ttl=120, show_spinner=False)
 def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
     try:
+        # Fetch with larger limit and without strict eq first to avoid missing data due to case issues
         try:
-            if kod_sekolah:
-                res = supa.table("cadangan_sup").select("*").eq("kod_sekolah", kod_sekolah.upper()).limit(5000).execute()
-                if not res.data: res = supa.table("cadangan_sup").select("*").eq("kod_sekolah_asal", kod_sekolah.upper()).limit(5000).execute()
-                if not res.data: res = supa.table("cadangan_sup").select("*").limit(5000).execute()
-            elif kod_ppd:
-                res = supa.table("cadangan_sup").select("*").eq("kod_ppd", kod_ppd.upper()).limit(5000).execute()
-                if not res.data: res = supa.table("cadangan_sup").select("*").limit(5000).execute()
-            else:
-                res = supa.table("cadangan_sup").select("*").limit(5000).execute()
+            # Always fetch all then filter locally for robustness
+            res = supa.table("cadangan_sup").select("*").limit(10000).execute()
         except:
             res = supa.table("cadangan_sup").select("*").limit(5000).execute()
         
         df = pd.DataFrame(res.data or [])
-        if df.empty: return df
+        if df.empty:
+            return df
         
-        # Normalization logic simplified for brevity but keeping functionality
+        # Normalize - merge data json and top-level columns
         norm_rows = []
         for _, r in df.iterrows():
-            # Basic extraction
             row_dict = {}
             for k, v in r.items():
                 if k != 'data':
@@ -509,29 +503,94 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
                     if isinstance(v, dict):
                         row_dict.update(v)
                     elif isinstance(v, str):
-                        try: row_dict.update(json.loads(v))
-                        except: pass
+                        try:
+                            parsed = json.loads(v)
+                            if isinstance(parsed, dict):
+                                row_dict.update(parsed)
+                        except:
+                            pass
+            # Normalize keys to upper for consistency but keep original too
+            # Ensure critical fields
+            # JAWATAN - normalize various possible keys
+            jaw = row_dict.get('JAWATAN_CADANGAN') or row_dict.get('jawatan_cadangan') or row_dict.get('JAWATAN') or row_dict.get('jawatan') or row_dict.get('JAWATAN CADANGAN') or ''
+            jaw = str(jaw).strip()
+            # Clean jawatan: remove extra spaces, normalize case for comparison but keep original display
+            jaw_clean = ' '.join(jaw.split())
+            row_dict['JAWATAN_CADANGAN'] = jaw_clean
+            row_dict['jawatan_cadangan'] = jaw_clean
+            row_dict['JAWATAN_CADANGAN_NORM'] = jaw_clean.lower()
             
-            # Ensure critical fields exist
-            if 'STATUS' not in row_dict: row_dict['STATUS'] = 'DICADANGKAN'
-            if 'KOD_PPD' not in row_dict: row_dict['KOD_PPD'] = row_dict.get('kod_ppd', '')
+            # KOD PPD
+            kppd = row_dict.get('KOD_PPD') or row_dict.get('kod_ppd') or row_dict.get('KOD_PPD_ASAL') or row_dict.get('kod_ppd_asal') or ''
+            row_dict['KOD_PPD'] = str(kppd).strip().upper()
+            
+            # KOD SEKOLAH ASAL
+            ksa = row_dict.get('KOD_SEKOLAH_ASAL') or row_dict.get('kod_sekolah_asal') or row_dict.get('KOD_SEKOLAH') or row_dict.get('kod_sekolah') or row_dict.get('kod_sekolah_tuan_rumah') or ''
+            row_dict['KOD_SEKOLAH_ASAL'] = str(ksa).strip().upper()
+            
+            # NAMA
+            ng = row_dict.get('NAMA_GURU') or row_dict.get('nama_guru') or row_dict.get('NAMA GURU') or ''
+            row_dict['NAMA_GURU'] = str(ng).strip().upper()
+            
+            # IC
+            ic = row_dict.get('IC_GURU') or row_dict.get('ic_guru') or row_dict.get('IC') or row_dict.get('ic') or ''
+            ic = str(ic).strip()
+            # Normalize IC - remove spaces
+            ic = ic.replace(' ', '')
+            row_dict['IC_GURU'] = ic
+            
+            if 'STATUS' not in row_dict or not row_dict['STATUS']:
+                row_dict['STATUS'] = row_dict.get('status') or 'DICADANGKAN'
             
             norm_rows.append(row_dict)
-            
-        df_norm = pd.DataFrame(norm_rows)
         
+        df_norm = pd.DataFrame(norm_rows)
+        if df_norm.empty:
+            return df_norm
+        
+        # Deduplicate by IC_GURU + KOD_SEKOLAH_ASAL + JAWATAN to avoid duplicate cadangan from SUP
+        if 'IC_GURU' in df_norm.columns:
+            # Keep last occurrence (latest)
+            df_norm = df_norm.sort_values(by=['IC_GURU']).drop_duplicates(subset=['IC_GURU', 'KOD_SEKOLAH_ASAL', 'JAWATAN_CADANGAN'], keep='last')
+        
+        # Filter by PPD if requested - robust case-insensitive contains
         if kod_ppd:
-            try: df_norm = df_norm[df_norm["KOD_PPD"].str.upper() == kod_ppd.upper()]
-            except: pass
-        if kod_sekolah:
+            kod_ppd_u = kod_ppd.strip().upper()
             try:
-                if "KOD_SEKOLAH_ASAL" in df_norm.columns:
-                    df_norm = df_norm[df_norm["KOD_SEKOLAH_ASAL"].str.upper() == kod_sekolah.upper()]
-                elif "KOD_SEKOLAH" in df_norm.columns:
-                    df_norm = df_norm[df_norm["KOD_SEKOLAH"].str.upper() == kod_sekolah.upper()]
-            except: pass
+                # Filter where KOD_PPD matches or is empty (include if no PPD info but school code belongs to PPD via sekolah_master)
+                mask = df_norm['KOD_PPD'].astype(str).str.upper().str.contains(kod_ppd_u, na=False)
+                # Also include if KOD_SEKOLAH_ASAL starts with something? But for BA, all BA schools have KOD_PPD BA - try also fetch sekolah list
+                # If mask gives zero, try not filtering strictly and let all pass, then later filter via sekolah_master mapping
+                if mask.sum() > 0:
+                    df_norm = df_norm[mask | (df_norm['KOD_PPD'] == '') | (df_norm['KOD_PPD'].isna())]
+                # If still, try to get sekolah codes for this PPD and filter by those
+                try:
+                    res_sek = supa.table("sekolah_master").select("kod_sekolah").eq("kod_ppd", kod_ppd_u).limit(2000).execute()
+                    kod_list = [str(s.get('kod_sekolah','')).upper() for s in (res_sek.data or [])]
+                    if kod_list:
+                        mask2 = df_norm['KOD_SEKOLAH_ASAL'].isin(kod_list)
+                        if mask2.sum() > 0:
+                            # Combine both masks
+                            df_norm = df_norm[mask | mask2]
+                except:
+                    pass
+            except Exception as e:
+                pass
+        
+        if kod_sekolah:
+            kod_s_u = kod_sekolah.strip().upper()
+            try:
+                df_norm = df_norm[df_norm['KOD_SEKOLAH_ASAL'].astype(str).str.upper() == kod_s_u]
+            except:
+                pass
+        
         return df_norm
-    except Exception:
+    except Exception as e:
+        # Return empty but log
+        try:
+            print(f"get_cadangan_df error: {e}")
+        except:
+            pass
         return pd.DataFrame()
 
 def flash(level, msg):
@@ -3140,19 +3199,39 @@ elif st.session_state.role == "PPD":
                     st.session_state["filter_jawatan_cad"] = []
                     st.rerun()
             
-            # Use UI value directly as filter - no extra session_state sync that causes error
-            if filter_jawatan_ui:
-                df_cad_filtered = df_cad_valid[df_cad_valid.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan_ui, axis=1)].copy()
+            # V22 ROBUST: filter using normalized lowercase contains
+            def match_jawatan(row_jawatan, filter_list):
+                if not filter_list:
+                    return True
+                rj = str(row_jawatan).strip().lower()
+                rj = ' '.join(rj.split())
+                for f in filter_list:
+                    f_low = str(f).strip().lower()
+                    f_low = ' '.join(f_low.split())
+                    # Exact or contains
+                    if f_low == rj or f_low in rj or rj in f_low:
+                        return True
+                    # Special for Penyelia Kawasan - check both words
+                    if 'penyelia' in f_low and 'penyelia' in rj:
+                        return True
+                return False
+            
+            # Determine active filter list
+            active_filter = filter_jawatan_ui if filter_jawatan_ui else st.session_state.get("filter_jawatan_cad", [])
+            
+            if active_filter:
+                df_cad_filtered = df_cad_valid[df_cad_valid['JAWATAN_CADANGAN'].apply(lambda x: match_jawatan(x, active_filter))].copy()
                 # Save for next run default
-                if filter_jawatan_ui != st.session_state["filter_jawatan_cad"]:
-                    st.session_state["filter_jawatan_cad"] = filter_jawatan_ui
+                if active_filter != st.session_state["filter_jawatan_cad"]:
+                    st.session_state["filter_jawatan_cad"] = active_filter
+                filter_jawatan_ui = active_filter
             else:
-                # If button set filter, use session_state filter
-                if st.session_state["filter_jawatan_cad"]:
-                    df_cad_filtered = df_cad_valid[df_cad_valid.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in st.session_state["filter_jawatan_cad"], axis=1)].copy()
-                    filter_jawatan_ui = st.session_state["filter_jawatan_cad"]
-                else:
-                    df_cad_filtered = df_cad_valid.copy()
+                df_cad_filtered = df_cad_valid.copy()
+            
+            # Debug info if filter gives 0 but data has Penyelia
+            if active_filter and len(df_cad_filtered) == 0:
+                total_pk = len(df_cad_valid[df_cad_valid['JAWATAN_CADANGAN_NORM'].str.contains('penyelia', na=False)])
+                st.warning(f"⚠️ Filter {active_filter} jumpa 0, tapi dalam DB ada {total_pk} Penyelia Kawasan (mungkin ejaan berbeza). Senarai jawatan dalam data: {df_cad_valid['JAWATAN_CADANGAN'].unique().tolist()[:10]}")
             
             if st.session_state.get("filter_jawatan_cad"):
                 st.success(f"✅ Filter aktif: {', '.join(st.session_state.get('filter_jawatan_cad', []))} - Jumpa {len(df_cad_filtered)} guru")
