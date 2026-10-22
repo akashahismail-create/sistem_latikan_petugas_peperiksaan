@@ -1716,12 +1716,24 @@ elif st.session_state.role == "PPD":
                 pilihan_pusat_jana = st.selectbox("Pilih Pusat untuk Jana", df_pusat_ppd["NO_PUSAT"].tolist(), format_func=lambda x: f"{x} - {df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x]['NAMA_PUSAT'].values[0][:25] if not df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x].empty else x}", key="pilih_pusat_jana")
                 btn_jana_pusat = st.button(f"📍 JANA UNTUK {pilihan_pusat_jana}", use_container_width=True, key="btn_jana_pusat")
             
-            # Logic Jana Keseluruhan - STRICT MAX 3 + 1 KP 1 TKP
+            # Logic Jana Keseluruhan - STRICT MAX 3 + 1 KP 1 TKP + ANTI DOUBLE LANTIK
             if btn_jana_all or "jana_all_result" in st.session_state:
                 if btn_jana_all:
                     import random
                     assignments = []
-                    df_pool = df_cad_all.copy()
+                    # ✅ QUERY ANTI DOUBLE LANTIK: Hanya guru BELUM dilantik
+                    df_pool_all = df_cad_all.copy()
+                    def is_belum_lantik(row):
+                        kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or row.get("KOD_PUSAT_TUGAS") or row.get("kod_pusat_tugas") or "").strip()
+                        return kp == "" or kp.lower() in ("none", "null", "nan", "nat", "-")
+                    df_pool = df_pool_all[df_pool_all.apply(is_belum_lantik, axis=1)].copy()
+                    jumlah_belum = len(df_pool)
+                    jumlah_sudah = len(df_pool_all) - jumlah_belum
+                    if jumlah_sudah > 0:
+                        st.info(f"ℹ️ {jumlah_sudah} guru telah dilantik di Penempatan Manual - tidak akan dijana lagi. {jumlah_belum} guru belum dilantik akan dijana.")
+                    if df_pool.empty:
+                        st.warning("⚠️ Semua guru telah dilantik! Tiada guru belum dilantik untuk dijana. Sila Batal Janaan jika perlu.")
+                        st.stop()
                     pusat_info_map = {}
                     for _, p in df_pusat_ppd.iterrows():
                         pusat_info_map[p["NO_PUSAT"]] = {"KOD_TUAN": str(p.get("KOD_SEKOLAH_TUAN_RUMAH", "") or "").upper().strip(), "NAMA": p.get("NAMA_PUSAT", ""), "PETUGAS": int(p.get("PETUGAS", 0))}
@@ -2192,6 +2204,18 @@ elif st.session_state.role == "PPD":
                 st.warning(f"Belum ada cadangan SUP untuk PPD {kod_ppd}")
                 st.stop()
             
+            # ✅ INFO: Berapa guru telah dilantik vs belum
+            total_cad = len(df_cad_all)
+            def is_belum_info(row):
+                kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+            belum_info = df_cad_all[df_cad_all.apply(is_belum_info, axis=1)]
+            sudah_info = total_cad - len(belum_info)
+            if sudah_info > 0:
+                st.info(f"📊 Status PPD {kod_ppd}: {total_cad} cadangan | {sudah_info} telah dilantik (tidak akan dipapar di sini) | {len(belum_info)} belum dilantik (akan dipapar)")
+            else:
+                st.info(f"📊 Status PPD {kod_ppd}: {total_cad} cadangan | Semua belum dilantik")
+            
             # Parse pusat list
             pusat_list_m = []
             for _, r in df_pusat_raw.iterrows():
@@ -2344,9 +2368,14 @@ elif st.session_state.role == "PPD":
                     st.info("Belum ada KP")
                 
                 st.markdown("**Pilih KP Baru:**")
-                # Filter cadangan KP yang belum ditempatkan atau boleh ditukar
+                # ✅ QUERY BARU: Hanya guru BELUM dilantik
                 kod_tuan_m = info_pusat["KOD_TUAN"].values[0] if not info_pusat.empty else ""
-                df_kp_calon = df_cad_all.copy()
+                df_kp_calon_all = df_cad_all.copy()
+                # Filter hanya belum dilantik
+                def is_belum_kp(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                df_kp_calon = df_kp_calon_all[df_kp_calon_all.apply(is_belum_kp, axis=1)].copy()
                 # Hanya KP
                 df_kp_calon = df_kp_calon[df_kp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Ketua Pengawas", case=False, na=False)]
                 # Elak sekolah sendiri
@@ -2363,10 +2392,15 @@ elif st.session_state.role == "PPD":
                 df_kp_layak = df_kp_calon[df_kp_calon["MAX3_OK"] == True]
                 
                 if df_kp_layak.empty:
-                    st.warning("Tiada calon KP yang layak (max 3 atau sekolah sendiri)")
-                    st.dataframe(df_kp_calon[["NAMA_GURU", "KOD_SEKOLAH_ASAL", "IC_GURU"]].head(10), use_container_width=True, hide_index=True)
+                    # Check if empty because all already appointed
+                    if len(df_kp_calon_all) > 0 and len(df_kp_calon) == 0:
+                        st.warning("⚠️ Semua calon KP telah dilantik! Tiada KP belum dilantik.")
+                    else:
+                        st.warning("Tiada calon KP yang layak (max 3 atau sekolah sendiri)")
+                    if not df_kp_calon.empty:
+                        st.dataframe(df_kp_calon[["NAMA_GURU", "KOD_SEKOLAH_ASAL", "IC_GURU"]].head(10), use_container_width=True, hide_index=True)
                 else:
-                    st.caption(f"{len(df_kp_layak)} calon KP layak (max 3 OK)")
+                    st.caption(f"{len(df_kp_layak)} calon KP belum dilantik & layak (max 3 OK) - tidak akan muncul lagi jika telah dilantik")
                     pilih_kp = st.selectbox(
                         "Klik untuk pilih Ketua Pengawas",
                         df_kp_layak["id"].tolist() if "id" in df_kp_layak.columns else [],
@@ -2421,7 +2455,12 @@ elif st.session_state.role == "PPD":
                     st.info("Belum ada TKP")
                 
                 st.markdown("**Pilih TKP Baru:**")
-                df_tkp_calon = df_cad_all.copy()
+                # ✅ QUERY BARU: Hanya guru BELUM dilantik
+                df_tkp_calon_all = df_cad_all.copy()
+                def is_belum_tkp(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                df_tkp_calon = df_tkp_calon_all[df_tkp_calon_all.apply(is_belum_tkp, axis=1)].copy()
                 df_tkp_calon = df_tkp_calon[df_tkp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Timbalan", case=False, na=False)]
                 if kod_tuan_m:
                     df_tkp_calon = df_tkp_calon[~df_tkp_calon["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_m)]
@@ -2492,7 +2531,12 @@ elif st.session_state.role == "PPD":
                     st.info(f"Belum ada Pengawas - perlu {perlu_pengawas}")
                 
                 st.markdown("**Pilih Pengawas Baru:**")
-                df_peng_calon = df_cad_all.copy()
+                # ✅ QUERY BARU: Hanya guru BELUM dilantik
+                df_peng_calon_all = df_cad_all.copy()
+                def is_belum_peng(row):
+                    kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                df_peng_calon = df_peng_calon_all[df_peng_calon_all.apply(is_belum_peng, axis=1)].copy()
                 # Pengawas sahaja (bukan KP/TKP)
                 df_peng_calon = df_peng_calon[~df_peng_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)]
                 if kod_tuan_m:
@@ -2503,8 +2547,8 @@ elif st.session_state.role == "PPD":
                 df_peng_calon["MAX3_OK"] = df_peng_calon.apply(check_peng_max3, axis=1)
                 df_peng_layak = df_peng_calon[df_peng_calon["MAX3_OK"] == True]
                 
-                # Yang belum ditempatkan
-                df_peng_belum = df_peng_layak[df_peng_layak["kod_pusat"].isna() | (df_peng_layak["kod_pusat"] == "")]
+                # Yang belum ditempatkan - df sudah filter belum dilantik, jadi semua belum
+                df_peng_belum = df_peng_layak.copy()
                 
                 st.caption(f"{len(df_peng_belum)} calon Pengawas belum ditempatkan (layak max 3) | Pusat perlu {perlu_pengawas}")
                 
