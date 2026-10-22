@@ -969,12 +969,10 @@ if st.session_state.role == "SUP":
                 with col_f3_sup:
                     if st.button("🔐 Hanya Penyelia", use_container_width=True, key="btn_filter_pk_sup"):
                         st.session_state["filter_jawatan_sup_senarai"] = ["Penyelia Kawasan"]
-                        st.session_state["filter_jawatan_sup_senarai_ui"] = ["Penyelia Kawasan"]
                         st.rerun()
                 with col_f4_sup:
                     if st.button("🔄 Clear", use_container_width=True, key="btn_clear_sup"):
                         st.session_state["filter_jawatan_sup_senarai"] = []
-                        st.session_state["filter_jawatan_sup_senarai_ui"] = []
                         st.rerun()
                 
                 # Sync after widget
@@ -3126,12 +3124,10 @@ elif st.session_state.role == "PPD":
             with col_f3:
                 if st.button("🔐 Hanya Penyelia Kawasan", use_container_width=True, key="btn_filter_pk"):
                     st.session_state["filter_jawatan_cad"] = ["Penyelia Kawasan"]
-                    st.session_state["filter_jawatan_cad_ui"] = ["Penyelia Kawasan"]
                     st.rerun()
             with col_f4:
                 if st.button("🔄 Clear Filter", use_container_width=True, key="btn_clear_filter"):
                     st.session_state["filter_jawatan_cad"] = []
-                    st.session_state["filter_jawatan_cad_ui"] = []
                     st.rerun()
             
             # After widget, sync UI back to logical if user changed via multiselect
