@@ -3014,22 +3014,37 @@ elif st.session_state.role == "PPD":
                 st.warning(f"Belum ada cadangan SUP untuk PPD {kod_ppd}")
                 st.stop()
             
-            # ===== FILTER IKUT JAWATAN (MESTI AWAL SEBELUM BUILD GROUP) =====
+            # ===== FILTER IKUT JAWATAN (MESTI AWAL) + CLEAN NAN =====
+            # Clean NAN rows from df_cad_all - remove rows where KOD_SEKOLAH_ASAL is NAN/nan/None/empty
+            def is_valid_sekolah(row):
+                kod = str(row.get("KOD_SEKOLAH_ASAL") or row.get("kod_sekolah_asal") or row.get("KOD_SEKOLAH") or row.get("kod_sekolah") or "").strip()
+                if kod.lower() in ("", "nan", "none", "null", "nat", "-"):
+                    return False
+                return True
+            
+            # Filter out NAN sekolah for display, but keep count for info
+            df_cad_valid = df_cad_all[df_cad_all.apply(is_valid_sekolah, axis=1)].copy()
+            df_cad_invalid = df_cad_all[~df_cad_all.apply(is_valid_sekolah, axis=1)].copy()
+            if not df_cad_invalid.empty:
+                st.warning(f"⚠️ Ada {len(df_cad_invalid)} cadangan dengan KOD SEKOLAH kosong/NAN - akan disembunyikan dari senarai sekolah. Sila betulkan di SUP.")
+            
             jawatan_list_all = []
-            for _, r in df_cad_all.iterrows():
+            for _, r in df_cad_valid.iterrows():
                 j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip()
-                if j and j not in jawatan_list_all:
+                if j and j.lower() not in ("", "nan", "none") and j not in jawatan_list_all:
                     jawatan_list_all.append(j)
             order_jawatan = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Selenggara Bilik Kebal"]
             jawatan_sorted = sorted(jawatan_list_all, key=lambda x: (order_jawatan.index(x) if x in order_jawatan else 99, x))
             
             # Default filter from session
             filter_jawatan = st.session_state.get("filter_jawatan_cad", [])
+            if filter_jawatan is None:
+                filter_jawatan = []
             
-            # Init df_cad_filtered as all first
-            df_cad_filtered = df_cad_all.copy()
+            # Init df_cad_filtered as valid first
+            df_cad_filtered = df_cad_valid.copy()
             if filter_jawatan:
-                df_cad_filtered = df_cad_all[df_cad_all.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan, axis=1)].copy()
+                df_cad_filtered = df_cad_valid[df_cad_valid.apply(lambda r: str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip() in filter_jawatan, axis=1)].copy()
             
             # Get sekolah list in PPD
             try:
@@ -3038,11 +3053,18 @@ elif st.session_state.role == "PPD":
             except:
                 df_sek_list = pd.DataFrame()
             
-            # Build sekolah groups dari cadangan (ikut filter)
+            # Build sekolah groups dari cadangan (ikut filter) - SKIP NAN
             sekolah_groups = {}
             for _, r in df_cad_filtered.iterrows():
-                kod_sek = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or r.get("KOD_SEKOLAH") or r.get("kod_sekolah") or "TIADA KOD").upper().strip()
-                nama_sek = str(r.get("NAMA_SEKOLAH_ASAL") or r.get("nama_sekolah_asal") or r.get("NAMA_SEKOLAH") or kod_sek)[:50]
+                kod_sek_raw = r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or r.get("KOD_SEKOLAH") or r.get("kod_sekolah") or ""
+                kod_sek = str(kod_sek_raw).strip().upper()
+                if kod_sek.lower() in ("", "nan", "none", "null", "nat", "-", "tiada kod"):
+                    continue
+                nama_sek_raw = r.get("NAMA_SEKOLAH_ASAL") or r.get("nama_sekolah_asal") or r.get("NAMA_SEKOLAH") or kod_sek
+                nama_sek = str(nama_sek_raw).strip()
+                if nama_sek.lower() in ("", "nan", "none", "null"):
+                    nama_sek = kod_sek
+                nama_sek = nama_sek[:50]
                 key = f"{kod_sek} - {nama_sek}"
                 if key not in sekolah_groups:
                     sekolah_groups[key] = []
