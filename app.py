@@ -4019,6 +4019,7 @@ elif st.session_state.role == "PPD":
                     st.markdown("---")
                     st.markdown("### 📊 Ringkasan Penempatan Penyelia ke Bilik Kebal (Column Berasingan Ikut Bilangan Penyelia)")
                     st.caption("Setiap Penyelia ada column sendiri: NAMA, IC, SEKOLAH ASAL, TELEFON, PUSAT JAGAAN. Kalau ada 2 penyelia, akan ada 2 set column. Kalau 6, akan ada 6 set.")
+                    # V27 FIX: Ringkasan penempatan - 1 baris per Penyelia, bukan semua dalam 1 baris
                     ringkas_bk = []
                     df_cad_all_bk2 = get_cadangan_df(kod_ppd=kod_ppd)
                     for _, bk_row in df_bk.iterrows():
@@ -4060,28 +4061,63 @@ elif st.session_state.role == "PPD":
                                             "id": c.get("id")
                                         })
                         
-                        row_dict = {
-                            "KOD BILIK KEBAL": kod_bk_r,
-                            "NAMA BILIK KEBAL": nama_bk_r,
-                            "ALAMAT": alamat_bk_r,
-                            "BIL PENYELIA": len(penyelia_assigned),
-                            "STATUS": "Ada" if len(penyelia_assigned)>0 else "Kosong"
-                        }
-                        for idx, pen in enumerate(penyelia_assigned, 1):
-                            row_dict[f"PENYELIA {idx} NAMA"] = pen["nama"]
-                            row_dict[f"PENYELIA {idx} IC"] = pen["ic"]
-                            row_dict[f"PENYELIA {idx} SEKOLAH ASAL"] = pen["sekolah"]
-                            row_dict[f"PENYELIA {idx} NAMA SEK ASAL"] = pen["sekolah_nama"]
-                            row_dict[f"PENYELIA {idx} TELEFON"] = pen["telefon"]
-                            row_dict[f"PENYELIA {idx} PUSAT JAGAAN"] = pen["pusat_jagaan"]
-                        
-                        ringkas_bk.append(row_dict)
+                        # V27: Buat 1 baris per penyelia, bukan gabung dalam 1 baris
+                        if penyelia_assigned:
+                            for idx, pen in enumerate(penyelia_assigned, 1):
+                                row_dict = {
+                                    "BIL": idx,
+                                    "KOD BILIK KEBAL": kod_bk_r,
+                                    "NAMA BILIK KEBAL": nama_bk_r,
+                                    "ALAMAT": alamat_bk_r,
+                                    "PENYELIA KE": f"{idx} dari {len(penyelia_assigned)}",
+                                    "NAMA PENYELIA": pen["nama"],
+                                    "IC PENYELIA": pen["ic"],
+                                    "SEKOLAH ASAL": pen["sekolah"],
+                                    "NAMA SEK ASAL": pen["sekolah_nama"],
+                                    "TELEFON": pen["telefon"],
+                                    "PUSAT JAGAAN (Di bawah Penyelia Ini)": pen["pusat_jagaan"],
+                                    "SEMUA PUSAT DI BAWAH BILIK KEBAL": pen["pusat_bawah"],
+                                    "BIL PUSAT JAGAAN": len(pen["pusat_jagaan"].split(",")) if pen["pusat_jagaan"] and pen["pusat_jagaan"] != "-" else 0,
+                                    "ID": pen["id"]
+                                }
+                                ringkas_bk.append(row_dict)
+                        else:
+                            # Jika kosong, buat 1 baris kosong
+                            ringkas_bk.append({
+                                "BIL": 0,
+                                "KOD BILIK KEBAL": kod_bk_r,
+                                "NAMA BILIK KEBAL": nama_bk_r,
+                                "ALAMAT": alamat_bk_r,
+                                "PENYELIA KE": "0",
+                                "NAMA PENYELIA": "-",
+                                "IC PENYELIA": "-",
+                                "SEKOLAH ASAL": "-",
+                                "NAMA SEK ASAL": "-",
+                                "TELEFON": "-",
+                                "PUSAT JAGAAN (Di bawah Penyelia Ini)": "-",
+                                "SEMUA PUSAT DI BAWAH BILIK KEBAL": "-",
+                                "BIL PUSAT JAGAAN": 0,
+                                "ID": "-"
+                            })
                     
                     if ringkas_bk:
                         df_ringkas_bk = pd.DataFrame(ringkas_bk)
                         df_ringkas_bk = df_ringkas_bk.fillna("-")
+                        # Sort by bilik kebal then penyelia ke
+                        try:
+                            df_ringkas_bk = df_ringkas_bk.sort_values(by=["KOD BILIK KEBAL", "BIL"])
+                        except:
+                            pass
                         st.dataframe(df_ringkas_bk, use_container_width=True, hide_index=True)
-                        st.download_button("Export Ringkasan Bilik Kebal (Column Berasingan)", to_excel(df_ringkas_bk), file_name=f"ringkasan_bilik_kebal_{kod_ppd}_column_asing_{datetime.date.today()}.xlsx", use_container_width=True)
+                        # Highlight if more than 1 penyelia per bilik kebal
+                        try:
+                            bil_bk_counts = df_ringkas_bk[df_ringkas_bk["NAMA PENYELIA"] != "-"].groupby("KOD BILIK KEBAL").size()
+                            for bk_code, cnt in bil_bk_counts.items():
+                                if cnt > 1:
+                                    st.info(f"📌 Bilik Kebal {bk_code} ada {cnt} Penyelia Kawasan - setiap penyelia ada baris sendiri di atas")
+                        except:
+                            pass
+                        st.download_button("📥 Export Ringkasan Bilik Kebal (1 Baris = 1 Penyelia)", to_excel(df_ringkas_bk), file_name=f"ringkasan_bilik_kebal_{kod_ppd}_1baris_1penyelia_{datetime.date.today()}.xlsx", use_container_width=True)
                     else:
                         st.info("Belum ada ringkasan")
                     
