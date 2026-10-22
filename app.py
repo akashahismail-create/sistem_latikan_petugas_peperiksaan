@@ -3138,141 +3138,196 @@ elif st.session_state.role == "PPD":
 
         elif menu == "selenggara":
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #e65100 0%, #ff9800 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+            <div style="background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px; border:2px solid #002171;">
                 <h2 style="margin:0; color:white;">🔐 Selenggara Bilik Kebal - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,'')}</h2>
-                <p style="margin:5px 0 0 0; color:#fff3e0;">Fungsi khas PPD sahaja - SUP tidak nampak. PPD lantik guru sebagai Selenggara Bilik Kebal untuk setiap pusat</p>
+                <p style="margin:5px 0 0 0; color:#bbdefb;">Tapak Bilik Kebal Master - PPD isi data bilik kebal ikut daerah. Penyelia Kawasan akan ditempatkan ke bilik kebal ini. SUP tidak nampak menu ini.</p>
             </div>
             """, unsafe_allow_html=True)
             
-            df_pusat_raw = get_pusat_df()
-            df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+            def get_bilik_kebal_df(kod_ppd_filter=None):
+                try:
+                    q = supa.table("bilik_kebal_master").select("*").limit(10000)
+                    if kod_ppd_filter:
+                        q = q.eq("kod_ppd", kod_ppd_filter)
+                    res = q.execute()
+                    return pd.DataFrame(res.data or [])
+                except Exception as e:
+                    st.error(f"Error load bilik_kebal_master: {e}")
+                    return pd.DataFrame()
             
-            if df_pusat_raw.empty:
-                st.warning("Tiada pusat_master")
-                st.stop()
+            df_bk = get_bilik_kebal_df(kod_ppd)
             
-            # Parse pusat
-            pusat_list_s = []
-            for _, r in df_pusat_raw.iterrows():
-                d = r.get("data") if isinstance(r.get("data"), dict) else {}
-                if isinstance(d, str):
-                    try: d = json.loads(d)
-                    except: d = {}
-                no_pusat = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
-                if not no_pusat.startswith(kod_ppd.upper()): continue
-                nama = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
-                j_calon = r.get("jumlah_calon") or d.get("JUMLAH_CALON") or 0
-                try: jc = int(float(str(j_calon) or 0))
-                except: jc = 0
-                jk = kira_kelas_dari_calon(jc)
-                pusat_list_s.append({"NO_PUSAT": no_pusat, "NAMA_PUSAT": nama, "CALON": jc, "KELAS": jk})
+            c1,c2,c3 = st.columns(3)
+            c1.metric("Bilik Kebal di PPD", len(df_bk))
+            c2.metric("Daerah", PPD_MAP.get(kod_ppd,''))
+            try:
+                res_cad = supa.table("cadangan_sup").select("*", count="exact").eq("kod_ppd", kod_ppd.lower()).limit(1).execute()
+                total_guru_ppd = res_cad.count if hasattr(res_cad,'count') else 0
+            except:
+                total_guru_ppd = 0
+            c3.metric("Guru PPD", total_guru_ppd)
             
-            df_pusat_s = pd.DataFrame(pusat_list_s)
-            if df_pusat_s.empty:
-                st.warning(f"Tiada pusat untuk PPD {kod_ppd}")
-                st.stop()
+            tab_form, tab_senarai, tab_import, tab_penyelia = st.tabs(["Tambah Bilik Kebal", "Senarai Bilik Kebal", "Import Pukal Excel", "Tempatkan Penyelia Kawasan"])
             
-            st.markdown("### 📍 Pilih Pusat Untuk Urus Selenggara Bilik Kebal")
-            pilih_pusat_sel = st.selectbox("Pilih Pusat", df_pusat_s["NO_PUSAT"].tolist(), format_func=lambda x: f"{x} - {df_pusat_s[df_pusat_s['NO_PUSAT']==x]['NAMA_PUSAT'].values[0][:30] if not df_pusat_s[df_pusat_s['NO_PUSAT']==x].empty else x}", key="pilih_pusat_selenggara")
+            with tab_form:
+                st.markdown("### Borang Daftar Bilik Kebal Baru")
+                st.caption("PPD isi form ini, data terus masuk Supabase table bilik_kebal_master")
+                with st.form("form_bilik_kebal"):
+                    col_f1, col_f2 = st.columns(2)
+                    with col_f1:
+                        kod_bk = st.text_input("KOD_BILIK_KEBAL *", placeholder="Contoh: BK-BA001 atau BA-BK01")
+                        nama_bk = st.text_input("NAMA_BILIK_KEBAL *", placeholder="Contoh: Bilik Kebal PPD Klang")
+                        kod_ppd_form = st.text_input("KOD_PPD", value=kod_ppd, disabled=True)
+                    with col_f2:
+                        alamat_bk = st.text_area("ALAMAT *", placeholder="Alamat penuh bilik kebal", height=100)
+                        catatan = st.text_area("Catatan / DATA JSON (optional)", placeholder='Contoh: {"kapasiti": 50}', height=100)
+                    submit_bk = st.form_submit_button("Simpan Bilik Kebal ke Supabase", type="primary", use_container_width=True)
+                    if submit_bk:
+                        if not kod_bk or not nama_bk or not alamat_bk:
+                            st.error("Sila isi KOD, NAMA dan ALAMAT wajib!")
+                        else:
+                            try:
+                                data_json = {}
+                                if catatan:
+                                    try:
+                                        data_json = json.loads(catatan)
+                                    except:
+                                        data_json = {"catatan": catatan}
+                                existing = supa.table("bilik_kebal_master").select("*").eq("kod_bilik_kebal", kod_bk.upper().strip()).limit(1).execute()
+                                if existing.data:
+                                    st.error(f"KOD {kod_bk} sudah wujud!")
+                                else:
+                                    payload = {
+                                        "kod_bilik_kebal": kod_bk.upper().strip(),
+                                        "nama_bilik_kebal": nama_bk.upper().strip(),
+                                        "alamat": alamat_bk.strip(),
+                                        "kod_ppd": kod_ppd.upper().strip(),
+                                        "data": data_json
+                                    }
+                                    supa.table("bilik_kebal_master").insert(payload).execute()
+                                    st.success(f"Berjaya simpan {kod_bk} - {nama_bk}")
+                                    st.balloons()
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error simpan: {e}")
             
-            # Papar selenggara sedia ada untuk pusat ini
-            def _bersih_s(v):
-                s = "" if v is None else str(v).strip()
-                return "" if s.lower() in ("", "nan", "none", "null", "nat") else s.upper()
-            
-            selenggara_sedia = []
-            for _, c in df_cad_all.iterrows():
-                p_db = _bersih_s(c.get("kod_pusat") or c.get("KOD_PUSAT"))
-                jaw = str(c.get("JAWATAN_CADANGAN") or c.get("jawatan_cadangan") or "")
-                if p_db == pilih_pusat_sel and ("SELENGGARA" in jaw.upper() or "BILIK KEBAL" in jaw.upper()):
-                    selenggara_sedia.append(c)
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("🔐 Selenggara Sedia Ada", f"{len(selenggara_sedia)}/1", delta="OK" if len(selenggara_sedia)==1 else "Perlu 1")
-            with col_b:
-                info_p = df_pusat_s[df_pusat_s["NO_PUSAT"]==pilih_pusat_sel]
-                if not info_p.empty:
-                    st.info(f"Pusat {pilih_pusat_sel} - {info_p['NAMA_PUSAT'].values[0]} - {info_p['CALON'].values[0]} calon")
-            
-            if selenggara_sedia:
-                st.markdown("**Senarai Selenggara Bilik Kebal Semasa:**")
-                rows = []
-                for c in selenggara_sedia:
-                    rows.append({"NAMA": c.get("NAMA_GURU",""), "IC": c.get("IC_GURU",""), "SEKOLAH ASAL": c.get("KOD_SEKOLAH_ASAL",""), "TELEFON": c.get("TELEFON_GURU",""), "ID": c.get("id","")})
-                df_sel_sedia = pd.DataFrame(rows)
-                st.dataframe(df_sel_sedia, use_container_width=True, hide_index=True)
-                if st.button("🗑️ Buang Semua Selenggara di Pusat Ini", key="buang_selenggara"):
-                    try:
-                        for c in selenggara_sedia:
-                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN", "jawatan_cadangan": "Pengawas Peperiksaan"}).eq("id", c.get("id")).execute()
-                        st.success("Dibuang")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(str(e))
-            
-            st.markdown("---")
-            st.markdown("### ➕ Lantik Selenggara Bilik Kebal Baru (PPD sahaja)")
-            st.caption("PPD boleh pilih mana-mana guru yang BELUM dilantik, atau guru yang sudah ada dalam pool PPD, untuk jadi Selenggara Bilik Kebal. SUP tidak akan nampak menu ini.")
-            
-            # Pool guru belum dilantik
-            def is_belum_sel(row):
-                kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
-                return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
-            df_belum = df_cad_all[df_cad_all.apply(is_belum_sel, axis=1)].copy() if not df_cad_all.empty else pd.DataFrame()
-            
-            # Jika belum ada langsung, guna semua guru PPD (allow lantik semula as selenggara)
-            if df_belum.empty and not df_cad_all.empty:
-                st.warning("Semua guru telah dilantik, paparkan semua guru PPD untuk pilih sebagai Selenggara (akan tukar pusat jika perlu)")
-                df_belum = df_cad_all.copy()
-            
-            if df_belum.empty:
-                st.warning("Tiada guru dalam PPD ini - import guru dulu")
-            else:
-                # Search
-                cari = st.text_input("🔍 Cari guru (nama / sekolah)", key="cari_selenggara")
-                if cari:
-                    mask = df_belum.apply(lambda r: cari.lower() in str(r.get("NAMA_GURU","")).lower() or cari.lower() in str(r.get("KOD_SEKOLAH_ASAL","")).lower(), axis=1)
-                    df_filtered = df_belum[mask]
+            with tab_senarai:
+                st.markdown(f"### Senarai Bilik Kebal PPD {kod_ppd}")
+                if df_bk.empty:
+                    st.info("Belum ada bilik kebal didaftarkan untuk PPD ini.")
                 else:
-                    df_filtered = df_belum
-                
-                st.write(f"Ada {len(df_filtered)} guru boleh dilantik sebagai Selenggara Bilik Kebal")
-                st.dataframe(df_filtered[["NAMA_GURU","IC_GURU","KOD_SEKOLAH_ASAL","JAWATAN_CADANGAN"]].head(100), use_container_width=True, hide_index=True)
-                
-                pilih_sel = st.multiselect("Pilih Guru Untuk Jadi Selenggara Bilik Kebal (1 orang)", df_filtered["id"].tolist() if "id" in df_filtered.columns else [], format_func=lambda x: f"{df_filtered[df_filtered['id']==x]['NAMA_GURU'].values[0]} - {df_filtered[df_filtered['id']==x]['KOD_SEKOLAH_ASAL'].values[0]} - {df_filtered[df_filtered['id']==x]['JAWATAN_CADANGAN'].values[0]}" if not df_filtered[df_filtered['id']==x].empty else str(x), key="multiselenggara")
-                
-                if pilih_sel and st.button(f"✅ Lantik {len(pilih_sel)} Sebagai Selenggara Bilik Kebal di {pilih_pusat_sel}", type="primary", use_container_width=True, key="btn_lantik_selenggara_menu"):
-                    try:
-                        ok = 0
-                        for pid in pilih_sel:
-                            supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_sel, "jawatan_cadangan": "Selenggara Bilik Kebal", "status": "DILANTIK PPD"}).eq("id", pid).execute()
-                            ok += 1
-                        st.success(f"✅ {ok} guru dilantik sebagai Selenggara Bilik Kebal di {pilih_pusat_sel}")
-                        st.balloons()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(str(e))
+                    cari_bk = st.text_input("Cari bilik kebal (kod / nama / alamat)", key="cari_bk")
+                    if cari_bk:
+                        mask = df_bk.apply(lambda r: cari_bk.lower() in str(r.get("kod_bilik_kebal","")).lower() or cari_bk.lower() in str(r.get("nama_bilik_kebal","")).lower() or cari_bk.lower() in str(r.get("alamat","")).lower(), axis=1)
+                        df_show = df_bk[mask]
+                    else:
+                        df_show = df_bk
+                    st.dataframe(df_show, use_container_width=True, hide_index=True)
+                    col_exp1, col_exp2 = st.columns(2)
+                    with col_exp1:
+                        st.download_button("Download Senarai Bilik Kebal (Excel)", to_excel(df_show), file_name=f"bilik_kebal_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
+                    with col_exp2:
+                        if st.button("Refresh", use_container_width=True):
+                            st.rerun()
+                    st.markdown("---")
+                    st.markdown("### Buang Bilik Kebal")
+                    if not df_show.empty:
+                        pilih_buang = st.selectbox("Pilih Bilik Kebal untuk buang", df_show["kod_bilik_kebal"].tolist() if "kod_bilik_kebal" in df_show.columns else [], key="buang_bk")
+                        if st.button(f"Buang {pilih_buang}", type="secondary", use_container_width=True):
+                            try:
+                                supa.table("bilik_kebal_master").delete().eq("kod_bilik_kebal", pilih_buang).execute()
+                                st.success(f"Berjaya buang {pilih_buang}")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(str(e))
             
-            st.markdown("---")
-            st.markdown("### 📊 Ringkasan Selenggara Bilik Kebal Seluruh PPD")
-            ringkas = []
-            for _, pr in df_pusat_s.iterrows():
-                no_p = pr["NO_PUSAT"]
-                cnt = 0
-                nama_g = "-"
-                for _, c in df_cad_all.iterrows():
-                    p_db = _bersih_s(c.get("kod_pusat") or c.get("KOD_PUSAT"))
-                    jaw = str(c.get("JAWATAN_CADANGAN") or "")
-                    if p_db == no_p and ("SELENGGARA" in jaw.upper() or "BILIK KEBAL" in jaw.upper()):
-                        cnt += 1
-                        nama_g = c.get("NAMA_GURU","")
-                ringkas.append({"NO PUSAT": no_p, "NAMA PUSAT": pr["NAMA_PUSAT"][:30], "SELENGGARA": cnt, "NAMA": nama_g, "STATUS": "✅ OK" if cnt>=1 else "❌ Belum"})
-            df_ringkas_sel = pd.DataFrame(ringkas)
-            st.dataframe(df_ringkas_sel, use_container_width=True, hide_index=True)
-            st.download_button("📥 Export Ringkasan Selenggara", to_excel(df_ringkas_sel), file_name=f"selenggara_{kod_ppd}.xlsx", use_container_width=True)
+            with tab_import:
+                st.markdown("### Import Pukal Bilik Kebal dari Excel")
+                st.info("Format Excel mesti ada column: KOD_BILIK_KEBAL, NAMA_BILIK_KEBAL, ALAMAT, KOD_PPD")
+                df_template = pd.DataFrame([
+                    {"KOD_BILIK_KEBAL": f"BK-{kod_ppd}01", "NAMA_BILIK_KEBAL": f"BILIK KEBAL PPD {PPD_MAP.get(kod_ppd,'')} 1", "ALAMAT": "SMK CONTOH 1, KLANG", "KOD_PPD": kod_ppd},
+                    {"KOD_BILIK_KEBAL": f"BK-{kod_ppd}02", "NAMA_BILIK_KEBAL": f"BILIK KEBAL PPD {PPD_MAP.get(kod_ppd,'')} 2", "ALAMAT": "SMK CONTOH 2, KLANG", "KOD_PPD": kod_ppd},
+                ])
+                st.download_button("Download Template Excel Bilik Kebal", to_excel(df_template), file_name=f"template_bilik_kebal_{kod_ppd}.xlsx", use_container_width=True)
+                st.markdown("---")
+                up_bk = st.file_uploader("Upload Excel Bilik Kebal", type=["xlsx","xls"], key="up_bk_excel")
+                if up_bk:
+                    try:
+                        df_up = pd.read_excel(up_bk, sheet_name=0)
+                        st.write(f"Ada {len(df_up)} baris. Column: {list(df_up.columns)}")
+                        st.dataframe(df_up.head(10), use_container_width=True)
+                        if st.button(f"Import {len(df_up)} Bilik Kebal ke Supabase", type="primary", use_container_width=True):
+                            bar = st.progress(0)
+                            ok = 0
+                            err = 0
+                            for idx, row in df_up.iterrows():
+                                try:
+                                    kod = str(row.get("KOD_BILIK_KEBAL") or row.get("kod_bilik_kebal") or "").upper().strip()
+                                    nama = str(row.get("NAMA_BILIK_KEBAL") or row.get("nama_bilik_kebal") or "").upper().strip()
+                                    alamat = str(row.get("ALAMAT") or row.get("alamat") or "").strip()
+                                    kppd = str(row.get("KOD_PPD") or row.get("kod_ppd") or kod_ppd).upper().strip()
+                                    if not kod or not nama:
+                                        err += 1
+                                        continue
+                                    dup = supa.table("bilik_kebal_master").select("*").eq("kod_bilik_kebal", kod).limit(1).execute()
+                                    if dup.data:
+                                        err += 1
+                                        continue
+                                    supa.table("bilik_kebal_master").insert({"kod_bilik_kebal": kod, "nama_bilik_kebal": nama, "alamat": alamat, "kod_ppd": kppd, "data": {}}).execute()
+                                    ok += 1
+                                except:
+                                    err += 1
+                                bar.progress((idx+1)/len(df_up))
+                            st.success(f"Selesai: {ok} berjaya, {err} gagal/duplicate")
+                            st.balloons()
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error baca Excel: {e}")
+            
+            with tab_penyelia:
+                st.markdown(f"### Penempatan Penyelia Kawasan ke Bilik Kebal - PPD {kod_ppd}")
+                st.caption("Penyelia Kawasan akan ditempatkan ke bilik kebal ikut daerah, bukan ke pusat peperiksaan biasa.")
+                if df_bk.empty:
+                    st.warning("Belum ada bilik kebal. Sila daftar bilik kebal dulu di tab Tambah / Import.")
+                else:
+                    df_cad_all_bk = get_cadangan_df(kod_ppd=kod_ppd)
+                    df_penyelia = df_cad_all_bk[df_cad_all_bk["JAWATAN_CADANGAN"].astype(str).str.contains("Penyelia Kawasan", case=False, na=False)].copy() if not df_cad_all_bk.empty and "JAWATAN_CADANGAN" in df_cad_all_bk.columns else pd.DataFrame()
+                    st.info(f"Ada {len(df_penyelia)} Penyelia Kawasan dicadangkan SUP untuk PPD {kod_ppd}")
+                    if not df_penyelia.empty:
+                        pilih_bk_tempat = st.selectbox("Pilih Bilik Kebal untuk tempatkan Penyelia", df_bk["kod_bilik_kebal"].tolist() if "kod_bilik_kebal" in df_bk.columns else [], key="pilih_bk_tempat")
+                        st.dataframe(df_penyelia[["NAMA_GURU","IC_GURU","KOD_SEKOLAH_ASAL","KOD_PUSAT","STATUS"]].head(100) if not df_penyelia.empty else df_penyelia, use_container_width=True)
+                        pilih_penyelia_bk = st.multiselect("Pilih Penyelia Kawasan untuk ditempatkan ke Bilik Kebal", df_penyelia["id"].tolist() if "id" in df_penyelia.columns else [], key="pilih_penyelia_bk")
+                        if pilih_penyelia_bk and st.button(f"Tempatkan {len(pilih_penyelia_bk)} Penyelia ke {pilih_bk_tempat}", type="primary", use_container_width=True, key="btn_tempat_penyelia_bk"):
+                            try:
+                                for pid in pilih_penyelia_bk:
+                                    supa.table("cadangan_sup").update({"kod_pusat": pilih_bk_tempat, "status": "DITEMPATKAN BILIK KEBAL"}).eq("id", pid).execute()
+                                st.success(f"{len(pilih_penyelia_bk)} Penyelia ditempatkan ke Bilik Kebal {pilih_bk_tempat}")
+                                st.balloons()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(str(e))
+                    st.markdown("---")
+                    st.markdown("### Ringkasan Penempatan Penyelia ke Bilik Kebal")
+                    ringkas_bk = []
+                    for _, bk_row in df_bk.iterrows():
+                        kod_bk_r = bk_row.get("kod_bilik_kebal","")
+                        cnt = 0
+                        nama_list = []
+                        df_cad_all_bk2 = get_cadangan_df(kod_ppd=kod_ppd)
+                        if not df_cad_all_bk2.empty:
+                            for _, c in df_cad_all_bk2.iterrows():
+                                p = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper()
+                                if p == kod_bk_r.upper():
+                                    cnt += 1
+                                    nama_list.append(str(c.get("NAMA_GURU",""))[:15])
+                        ringkas_bk.append({"KOD BILIK KEBAL": kod_bk_r, "NAMA": str(bk_row.get("nama_bilik_kebal",""))[:30], "BIL PENYELIA": cnt, "NAMA PENYELIA": ", ".join(nama_list), "STATUS": "Ada" if cnt>0 else "Kosong"})
+                    df_ringkas_bk = pd.DataFrame(ringkas_bk)
+                    st.dataframe(df_ringkas_bk, use_container_width=True, hide_index=True)
+                    st.download_button("Export Ringkasan Bilik Kebal", to_excel(df_ringkas_bk), file_name=f"ringkasan_bilik_kebal_{kod_ppd}.xlsx", use_container_width=True)
 
         elif menu == "export":
+            st.header(f"Export Data PPD {kod_ppd}")
+
             st.header(f"Export Data PPD {kod_ppd}")
 
 
