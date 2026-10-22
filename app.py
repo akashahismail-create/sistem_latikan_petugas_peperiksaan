@@ -1414,9 +1414,9 @@ elif st.session_state.role == "PPD":
         st.caption(f"{PPD_MAP.get(kod_ppd, '')}")
         add_refresh_button()
         
-        MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), 
+          MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), 
                     ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('kelulusan', '✅ Kelulusan'), 
-                    ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
+                    ('selenggara_bk', '🏦 Selenggara Bilik Kebal'), ('penyelia', '👮 Lantik Penyelia Kawasan'), ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]  
         menu = st.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get, label_visibility="collapsed", key="ppd_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
 
