@@ -1989,6 +1989,81 @@ elif st.session_state.role == "PPD":
                         rows_j.append({"NAMA": g.get("NAMA_GURU", ""), "NO IC": g.get("IC_GURU", ""), "SEKOLAH ASAL": g.get("KOD_SEKOLAH_ASAL", ""), "NAMA SEKOLAH ASAL": str(g.get("NAMA_SEKOLAH_ASAL", ""))[:30], "JANTINA": g.get("JANTINA", "") or g.get("jantina", ""), "NO TELEFON": g.get("TELEFON_GURU", "") or g.get("telefon_guru", "")})
                     df_j = pd.DataFrame(rows_j)
                     st.dataframe(df_j, use_container_width=True, hide_index=True)
+            
+            st.markdown("---")
+            st.markdown("## 📊 Hasil Janaan Keseluruhan Untuk Setiap Sekolah")
+            
+            tab1, tab2, tab3 = st.tabs(["📋 Ringkasan Semua Pusat", "🏫 Mengikut Sekolah Asal", "👥 Semua Guru Ditempatkan"])
+            
+            with tab1:
+                st.markdown("### 📋 Ringkasan Keseluruhan - Semua Pusat")
+                ringkas_all = []
+                for _, pr in df_pusat_list.iterrows():
+                    no_p = pr["NO_PUSAT"]
+                    nama_p = pr["NAMA_PUSAT"]
+                    guru_di_pusat = [v for v in tugas.values() if v["pusat"] == no_p]
+                    kp = sum(1 for v in guru_di_pusat if "Ketua Pengawas" in str(v["row"].get("JAWATAN_CADANGAN") or v["row"].get("JAWATAN") or "") and "Timbalan" not in str(v["row"].get("JAWATAN_CADANGAN") or ""))
+                    tkp = sum(1 for v in guru_di_pusat if "Timbalan" in str(v["row"].get("JAWATAN_CADANGAN") or v["row"].get("JAWATAN") or ""))
+                    peng = len(guru_di_pusat) - kp - tkp
+                    status = "✅ Cukup" if len(guru_di_pusat) > 0 else "❌ Belum Ada"
+                    ringkas_all.append({"NO PUSAT": no_p, "NAMA PUSAT": str(nama_p)[:30], "JUMLAH": len(guru_di_pusat), "KP": kp, "TKP": tkp, "PENGAWAS": peng, "STATUS": status})
+                df_ringkas_all = pd.DataFrame(ringkas_all)
+                if not df_ringkas_all.empty:
+                    st.dataframe(df_ringkas_all, use_container_width=True, hide_index=True)
+                    st.download_button("📥 Export Ringkasan Semua Pusat", to_excel(df_ringkas_all), file_name=f"ringkasan_semua_pusat_{kod_ppd}.xlsx", use_container_width=True)
+                else:
+                    st.info("Belum ada hasil janaan keseluruhan")
+            
+            with tab2:
+                st.markdown("### 🏫 Hasil Janaan Mengikut Sekolah Asal")
+                st.caption("Setiap sekolah - berapa guru ditempatkan dan ke pusat mana")
+                sekolah_groups = {}
+                for v in tugas.values():
+                    r = v["row"]
+                    kod_sek = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or "TIADA KOD").upper().strip()
+                    nama_sek = str(r.get("NAMA_SEKOLAH_ASAL") or r.get("nama_sekolah_asal") or kod_sek)[:35]
+                    key = f"{kod_sek} - {nama_sek}"
+                    if key not in sekolah_groups:
+                        sekolah_groups[key] = []
+                    sekolah_groups[key].append({"row": r, "pusat": v["pusat"]})
+                
+                if not sekolah_groups:
+                    st.info("Belum ada hasil janaan")
+                else:
+                    # Summary per sekolah
+                    summary_sekolah = []
+                    for key, guru_list in sorted(sekolah_groups.items()):
+                        kod = key.split(" - ")[0]
+                        pusat_list = list(set([g["pusat"] for g in guru_list]))
+                        summary_sekolah.append({"KOD SEKOLAH": kod, "NAMA SEKOLAH": key.split(" - ", 1)[1] if " - " in key else key, "BIL GURU": len(guru_list), "PUSAT DITEMPATKAN": ", ".join(sorted(pusat_list))})
+                    df_sum_sek = pd.DataFrame(summary_sekolah)
+                    st.dataframe(df_sum_sek, use_container_width=True, hide_index=True)
+                    st.markdown("---")
+                    st.markdown("#### 🔍 Detail Setiap Sekolah")
+                    pilih_sekolah = st.selectbox("Pilih Sekolah Untuk Lihat Detail", sorted(sekolah_groups.keys()), key="pilih_sekolah_hasil")
+                    if pilih_sekolah:
+                        detail = sekolah_groups[pilih_sekolah]
+                        st.markdown(f"**{pilih_sekolah} - {len(detail)} guru ditempatkan:**")
+                        rows_detail = []
+                        for g in detail:
+                            r = g["row"]
+                            rows_detail.append({"NAMA": r.get("NAMA_GURU", ""), "NO IC": r.get("IC_GURU", ""), "JAWATAN": r.get("JAWATAN_CADANGAN") or r.get("JAWATAN") or "", "PUSAT TUGAS": g["pusat"], "JANTINA": r.get("JANTINA", "") or r.get("jantina", ""), "TELEFON": r.get("TELEFON_GURU", "") or r.get("telefon_guru", "")})
+                        df_detail = pd.DataFrame(rows_detail)
+                        st.dataframe(df_detail, use_container_width=True, hide_index=True)
+                        st.download_button(f"📥 Export {pilih_sekolah}", to_excel(df_detail), file_name=f"hasil_{pilih_sekolah.split(' - ')[0]}_{kod_ppd}.xlsx", use_container_width=True, key=f"export_{pilih_sekolah}")
+            
+            with tab3:
+                st.markdown("### 👥 Semua Guru Ditempatkan - Keseluruhan")
+                all_guru_rows = []
+                for v in tugas.values():
+                    r = v["row"]
+                    all_guru_rows.append({"NAMA": r.get("NAMA_GURU", ""), "NO IC": r.get("IC_GURU", ""), "JAWATAN": r.get("JAWATAN_CADANGAN") or r.get("JAWATAN") or "", "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL", ""), "NAMA SEKOLAH ASAL": str(r.get("NAMA_SEKOLAH_ASAL", ""))[:25], "PUSAT TUGAS": v["pusat"], "JANTINA": r.get("JANTINA", "") or r.get("jantina", ""), "TELEFON": r.get("TELEFON_GURU", "") or r.get("telefon_guru", "")})
+                df_all_guru = pd.DataFrame(all_guru_rows)
+                if df_all_guru.empty:
+                    st.info("Belum ada guru ditempatkan")
+                else:
+                    st.dataframe(df_all_guru, use_container_width=True, hide_index=True)
+                    st.download_button("📥 Export Semua Guru Ditempatkan", to_excel(df_all_guru), file_name=f"semua_guru_ditempatkan_{kod_ppd}.xlsx", use_container_width=True)
 
         elif menu == "cadangan":
             st.header(f"Cadangan dari SUP - PPD {kod_ppd}")
