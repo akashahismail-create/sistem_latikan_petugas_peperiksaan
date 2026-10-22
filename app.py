@@ -548,10 +548,26 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         if df_norm.empty:
             return df_norm
         
-        # Deduplicate by IC_GURU + KOD_SEKOLAH_ASAL + JAWATAN to avoid duplicate cadangan from SUP
+        # V24 FIX: Deduplicate and keep latest status (HANTAR > DICADANGKAN)
         if 'IC_GURU' in df_norm.columns:
-            # Keep last occurrence (latest)
-            df_norm = df_norm.sort_values(by=['IC_GURU']).drop_duplicates(subset=['IC_GURU', 'KOD_SEKOLAH_ASAL', 'JAWATAN_CADANGAN'], keep='last')
+            # Add sort key: id descending, created_at descending if exists
+            sort_cols = []
+            if 'id' in df_norm.columns:
+                try:
+                    df_norm['id_num'] = pd.to_numeric(df_norm['id'], errors='coerce')
+                    sort_cols.append('id_num')
+                except:
+                    sort_cols.append('id')
+            if 'created_at' in df_norm.columns:
+                sort_cols.append('created_at')
+            # Sort by IC then by id/created_at descending to keep latest
+            if sort_cols:
+                df_norm = df_norm.sort_values(by=sort_cols, ascending=False)
+            # Now drop duplicates keep first (which is latest due to descending sort)
+            df_norm = df_norm.drop_duplicates(subset=['IC_GURU', 'KOD_SEKOLAH_ASAL'], keep='first')
+            # Clean helper column
+            if 'id_num' in df_norm.columns:
+                df_norm = df_norm.drop(columns=['id_num'])
         
         # Filter by PPD if requested - robust case-insensitive contains
         if kod_ppd:
@@ -1382,8 +1398,14 @@ if st.session_state.role == "SUP":
                         c3.metric("Penyelia Kawasan", counts.get("Penyelia Kawasan", 0))
                         c4.metric("Pengawas Peperiksaan", counts.get("Pengawas Peperiksaan", 0), delta=f"Perlu {total_kelas_alert if 'total_kelas_alert' in locals() else 6}")
                     except: pass
-                    st.dataframe(df_cad, use_container_width=True)
-                    st.download_button("📥 Export Cadangan", to_excel(df_cad), file_name=f"cadangan_{kod}.xlsx")
+                    # V24 FIX: Show clean without duplicate id columns
+                    clean_cols = ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "JAWATAN_CADANGAN", "STATUS"]
+                    clean_show = [c for c in clean_cols if c in df_cad.columns]
+                    df_clean_show = df_cad[clean_show] if clean_show else df_cad
+                    # Remove any duplicate columns by lowercase name
+                    df_clean_show = df_clean_show.loc[:, ~df_clean_show.columns.str.lower().duplicated()]
+                    st.dataframe(df_clean_show, use_container_width=True)
+                    st.download_button("📥 Export Cadangan", to_excel(df_clean_show), file_name=f"cadangan_{kod}.xlsx")
 
         elif menu == "hantar":
             st.header(f"Hantar Cadangan ke PPD {info.get('kod_ppd', 'BA')}")
@@ -1408,8 +1430,22 @@ if st.session_state.role == "SUP":
                 m_baru = ~(m_lulus | m_hantar)   # DICADANGKAN / TOLAK PPD - boleh dihantar (semula)
                 bil_baru = int(m_baru.sum())
                 
-                display_cols = [c for c in ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "EMAIL_GURU", "JAWATAN_CADANGAN", "PENGALAMAN_SPM", "NO_PUSAT_ASAL", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "STATUS"] if c in df_cad.columns]
-                st.dataframe(df_cad[display_cols] if display_cols else df_cad, use_container_width=True)
+                # V24 FIX: Clean duplicate columns - only show unique, readable columns
+                # Remove duplicate lowercase columns if uppercase exists
+                cols_to_show = ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "ALAMAT_RUMAH", "TELEFON_GURU", "EMAIL_GURU", "JAWATAN_CADANGAN", "PENGALAMAN_SPM", "NO_PUSAT_ASAL", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "STATUS"]
+                display_cols = [c for c in cols_to_show if c in df_cad.columns]
+                # Deduplicate columns list itself
+                seen = set()
+                uniq_display = []
+                for c in display_cols:
+                    if c.lower() not in seen:
+                        uniq_display.append(c)
+                        seen.add(c.lower())
+                # Also ensure df_cad doesn't have duplicate columns (lower + upper)
+                # Keep only upper case versions for display
+                df_display = df_cad[uniq_display].copy() if uniq_display else df_cad
+                # Rename for readability
+                st.dataframe(df_display, use_container_width=True)
                 
                 k1, k2, k3 = st.columns(3)
                 with k1: st.metric("Belum dihantar", bil_baru)
@@ -1436,7 +1472,13 @@ if st.session_state.role == "SUP":
                             st.error("Tiada ID cadangan - data tak lengkap, hubungi admin.")
                         else:
                             berjaya, gagal = hantar_ke_ppd(ids, kod_ppd_sup)
-                            if berjaya: flash("success", f"✅ Berjaya hantar {berjaya} cadangan ke PPD {kod_ppd_sup} - {PPD_MAP.get(kod_ppd_sup, '')}!")
+                            if berjaya:
+                                flash("success", f"✅ Berjaya hantar {berjaya} cadangan ke PPD {kod_ppd_sup} - {PPD_MAP.get(kod_ppd_sup, '')}!")
+                                # V24: Clear cache to force fresh data
+                                try:
+                                    st.cache_data.clear()
+                                except:
+                                    pass
                             if gagal: flash("error", "Sebahagian gagal dihantar: " + "; ".join(gagal[:3]))
                             st.rerun()
                 
