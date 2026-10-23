@@ -2438,6 +2438,7 @@ elif st.session_state.role == "PPD":
                     c4.metric("Total Perlu", int(df_f["SEKOLAH_PERLU"].sum()))
                     st.download_button(f"Export Pusat {kod_ppd}", to_excel(df_f), file_name=f"pusat_{kod_ppd}.xlsx", use_container_width=True)
 
+
         elif menu == "jana":
             st.markdown(f"""
             <div style="background: #0d47a1; padding:20px; border-radius:12px; color:white; border: 2px solid #002171; margin-bottom:20px;">
@@ -2445,7 +2446,7 @@ elif st.session_state.role == "PPD":
                     <div style="font-size:48px;">🚀</div>
                     <div>
                         <h2 style="margin:0; color:white; font-size:24px;">Jana Keseluruhan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
-                        <p style="margin:5px 0 0 0; color:#bbdefb; font-size:13px;">Paparan data dari SUP, kemudian jana petugas ke pusat peperiksaan</p>
+                        <p style="margin:5px 0 0 0; color:#bbdefb; font-size:13px;">Sub-menu: Jana Keseluruhan (Auto Poskod Terdekat) & Jana Mengikut Jawatan - Kekal Max 3 per sekolah per pusat</p>
                     </div>
                 </div>
             </div>
@@ -2461,7 +2462,7 @@ elif st.session_state.role == "PPD":
                 st.warning(f"⚠️ Belum ada cadangan dari SUP untuk PPD {kod_ppd}. Sekolah perlu cadang dulu di SUP > Cadangan Lantikan > Hantar ke PPD")
                 st.stop()
             
-            # Parse pusat
+            # Parse pusat with poskod
             rows = []
             for _, r in df_pusat_raw.iterrows():
                 d = r.get("data") if isinstance(r.get("data"), dict) else {}
@@ -2474,13 +2475,14 @@ elif st.session_state.role == "PPD":
                 kod_sek_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH_TUAN_RUMAH") or "").upper().strip()
                 j_calon = r.get("jumlah_calon") or d.get("JUMLAH_CALON") or 0
                 j_kelas = r.get("jumlah_kelas") or d.get("JUMLAH_KELAS") or 0
+                poskod_pusat = str(r.get("poskod") or d.get("POSKOD") or d.get("POSKOD_PUSAT") or "").strip()
                 try: jc = int(float(str(j_calon) or 0))
                 except: jc = 0
                 try: jk = int(float(str(j_kelas) or 0))
                 except: jk = kira_kelas_dari_calon(jc)
                 if jk == 0:
                     jk = kira_kelas_dari_calon(jc)
-                rows.append({"NO_PUSAT": no_pusat, "NAMA_PUSAT": nama, "KOD_SEKOLAH_TUAN_RUMAH": kod_sek_tuan, "JUMLAH_CALON": jc, "JUMLAH_KELAS": jk, "PETUGAS": kira_petugas_dari_kelas(jk)})
+                rows.append({"NO_PUSAT": no_pusat, "NAMA_PUSAT": nama, "KOD_SEKOLAH_TUAN_RUMAH": kod_sek_tuan, "JUMLAH_CALON": jc, "JUMLAH_KELAS": jk, "PETUGAS": kira_petugas_dari_kelas(jk), "POSKOD_PUSAT": poskod_pusat})
             
             df_pusat_ppd = pd.DataFrame(rows)
             
@@ -2488,315 +2490,406 @@ elif st.session_state.role == "PPD":
                 st.warning(f"Tiada pusat dengan prefix {kod_ppd} dalam pusat_master")
                 st.stop()
             
-            # ===== STEP 1: PAPARKAN DATA DARI SUP =====
-            st.markdown("### 📋 STEP 1: Data Dari SUP (Cadangan Guru)")
-            st.info(f"📥 Ada {len(df_cad_all)} cadangan guru dari SUP untuk PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}")
+            # ===== SUB MENU SIDEBAR UNTUK JANA =====
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("### 🚀 Sub-Menu Jana")
+            sub_jana = st.sidebar.radio(
+                "Pilih Kaedah Jana",
+                ["🌍 Jana Keseluruhan (Auto Poskod Terdekat)", "👑 Jana Mengikut Jawatan"],
+                key="sub_jana_radio",
+                label_visibility="collapsed"
+            )
+            st.sidebar.markdown("---")
             
-            # Show summary per sekolah
-            cad_per_sekolah = {}
-            for _, c in df_cad_all.iterrows():
-                k_sek = str(c.get("KOD_SEKOLAH") or c.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
-                if k_sek:
-                    cad_per_sekolah[k_sek] = cad_per_sekolah.get(k_sek, 0) + 1
+            # Common: get poskod guru & pusat for distance
+            def get_poskod_guru(row):
+                return str(row.get("POSKOD_RUMAH") or row.get("poskod_rumah") or row.get("poskod") or "").strip()
             
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("📚 Sekolah Mencadang", len(cad_per_sekolah))
-            col2.metric("👨‍🏫 Guru Dicadang", len(df_cad_all))
-            col3.metric("🏫 Pusat", len(df_pusat_ppd))
-            col4.metric("📋 Perlu Petugas", int(df_pusat_ppd["PETUGAS"].sum()))
+            def get_poskod_pusat_val(no_pusat):
+                # Cari poskod pusat dari df_pusat_ppd, kalau tak ada cuba dari sekolah_master tuan rumah
+                r = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"]==no_pusat]
+                if not r.empty:
+                    pk = str(r.iloc[0].get("POSKOD_PUSAT") or "").strip()
+                    if pk and pk.lower() not in ("none","nan",""):
+                        return pk
+                # Fallback: cari sekolah tuan rumah punya poskod dari sekolah_master
+                try:
+                    kod_tuan = str(r.iloc[0].get("KOD_SEKOLAH_TUAN_RUMAH") or "").strip() if not r.empty else ""
+                    if kod_tuan:
+                        res_sek = supa.table("sekolah_master").select("*").eq("kod_sekolah", kod_tuan).limit(1).execute()
+                        if res_sek.data:
+                            d = res_sek.data[0].get("data") or {}
+                            if isinstance(d, str):
+                                try: d = json.loads(d)
+                                except: d = {}
+                            pk = str(res_sek.data[0].get("poskod") or d.get("POSKOD") or "").strip()
+                            if pk:
+                                return pk
+                except:
+                    pass
+                # Last fallback: guna prefix poskod dari no_pusat? return empty = will use 0 distance
+                return ""
             
-            with st.expander(f"📋 Lihat {len(df_cad_all)} Cadangan Dari SUP (Data Lengkap)", expanded=False):
-                display_cols = [c for c in ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "TELEFON_GURU", "JAWATAN_CADANGAN", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "NO_PUSAT_ASAL", "STATUS"] if c in df_cad_all.columns]
-                st.dataframe(df_cad_all[display_cols] if display_cols else df_cad_all, use_container_width=True, hide_index=True)
+            def poskod_distance(pk_guru, pk_pusat):
+                try:
+                    # Ambil 5 digit poskod, kira beza numeric
+                    g = int(re.sub(r"\D","", pk_guru)[:5] or 0)
+                    p = int(re.sub(r"\D","", pk_pusat)[:5] or 0)
+                    if g==0 or p==0:
+                        return 99999  # Kalau tak ada poskod, jarak jauh
+                    return abs(g - p)
+                except:
+                    return 99999
             
-            st.markdown("---")
-            
-            # ===== STEP 2: BUTANG JANA =====
-            st.markdown("### 🚀 STEP 2: Jana Penempatan")
-            st.caption("Pilih kaedah janaan")
-            
-            col_jana1, col_jana2 = st.columns(2)
-            
-            with col_jana1:
-                st.markdown("""
-                <div style="background:#e8f5e9; border:2px solid #2e7d32; border-radius:10px; padding:15px; text-align:center;">
-                    <div style="font-size:32px;">🌍</div>
-                    <div style="font-weight:800; color:#1b5e20; margin:8px 0;">JANA KESELURUHAN</div>
-                    <div style="font-size:12px; color:#424242;">Jana semua guru ke semua pusat dalam PPD secara auto, elak sekolah sendiri</div>
-                </div>
-                """, unsafe_allow_html=True)
-                btn_jana_all = st.button("🚀 JANA KESELURUHAN - Semua Pusat", type="primary", use_container_width=True, key="btn_jana_all")
-            
-            with col_jana2:
-                st.markdown("""
-                <div style="background:#e3f2fd; border:2px solid #1565c0; border-radius:10px; padding:15px; text-align:center;">
-                    <div style="font-size:32px;">📍</div>
-                    <div style="font-weight:800; color:#0d47a1; margin:8px 0;">JANA IKUT PUSAT</div>
-                    <div style="font-size:12px; color:#424242;">Pilih satu pusat, jana guru untuk pusat tersebut sahaja</div>
-                </div>
-                """, unsafe_allow_html=True)
-                # Pilih pusat untuk jana ikut pusat
-                pilihan_pusat_jana = st.selectbox("Pilih Pusat untuk Jana", df_pusat_ppd["NO_PUSAT"].tolist(), format_func=lambda x: f"{x} - {df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x]['NAMA_PUSAT'].values[0][:25] if not df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x].empty else x}", key="pilih_pusat_jana")
-                btn_jana_pusat = st.button(f"📍 JANA UNTUK {pilihan_pusat_jana}", use_container_width=True, key="btn_jana_pusat")
-            
-            # Logic Jana Keseluruhan - STRICT MAX 3 + 1 KP 1 TKP + ANTI DOUBLE LANTIK
-            if btn_jana_all or "jana_all_result" in st.session_state:
-                if btn_jana_all:
-                    import random
-                    assignments = []
-                    # ✅ QUERY ANTI DOUBLE LANTIK: Hanya guru BELUM dilantik
-                    df_pool_all = df_cad_all.copy()
-                    def is_belum_lantik(row):
-                        kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or row.get("KOD_PUSAT_TUGAS") or row.get("kod_pusat_tugas") or "").strip()
-                        return kp == "" or kp.lower() in ("none", "null", "nan", "nat", "-")
-                    df_pool = df_pool_all[df_pool_all.apply(is_belum_lantik, axis=1)].copy()
-                    jumlah_belum = len(df_pool)
-                    jumlah_sudah = len(df_pool_all) - jumlah_belum
-                    if jumlah_sudah > 0:
-                        st.info(f"ℹ️ {jumlah_sudah} guru telah dilantik di Penempatan Manual - tidak akan dijana lagi. {jumlah_belum} guru belum dilantik akan dijana.")
-                    if df_pool.empty:
-                        st.warning("⚠️ Semua guru telah dilantik! Tiada guru belum dilantik untuk dijana. Sila Batal Janaan jika perlu.")
-                        st.stop()
-                    pusat_info_map = {}
-                    for _, p in df_pusat_ppd.iterrows():
-                        pusat_info_map[p["NO_PUSAT"]] = {"KOD_TUAN": str(p.get("KOD_SEKOLAH_TUAN_RUMAH", "") or "").upper().strip(), "NAMA": p.get("NAMA_PUSAT", ""), "PETUGAS": int(p.get("PETUGAS", 0))}
-                    pusat_order = df_pusat_ppd["NO_PUSAT"].tolist()
-                    random.shuffle(pusat_order)
-                    pusat_sekolah_count = {}
-                    used_ic = set()
-                    def cari_guru_layak(pool_df, kod_tuan_pusat, pusat_no, jawatan_filter=None, exclude_ic=None):
-                        eligible = pool_df.copy()
-                        if eligible.empty:
-                            return eligible
-                        if exclude_ic:
-                            eligible = eligible[~eligible["IC_GURU"].isin(exclude_ic)]
-                        if kod_tuan_pusat:
-                            eligible = eligible[~eligible["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_pusat)]
-                        def check_max3(row):
-                            k = str(row.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
-                            # Normalisasi key
-                            return pusat_sekolah_count.get((pusat_no, k), 0) < 3 if k else True
-                        eligible["CHECK_MAX"] = eligible.apply(check_max3, axis=1)
-                        eligible = eligible[eligible["CHECK_MAX"] == True]
-                        if eligible.empty:
-                            return eligible
-                        if jawatan_filter and "JAWATAN_CADANGAN" in eligible.columns:
-                            fj = eligible[eligible["JAWATAN_CADANGAN"].astype(str).str.contains(jawatan_filter, case=False, na=False)]
-                            if not fj.empty:
-                                eligible = fj
-                        if len(eligible) > 1:
-                            eligible = eligible.sample(frac=1, random_state=random.randint(1, 100000))
-                        return eligible
-                    for no_pusat in pusat_order:
-                        info = pusat_info_map.get(no_pusat, {})
-                        kod_tuan = info.get("KOD_TUAN", "")
-                        petugas_perlu = info.get("PETUGAS", 0)
-                        if petugas_perlu <= 0:
-                            continue
-                        need_kp = 1 if petugas_perlu >= 1 else 0
-                        need_tkp = 1 if petugas_perlu >= 2 else 0
-                        need_pengawas = max(0, petugas_perlu - need_kp - need_tkp)
-                        for _ in range(need_kp):
-                            pool_eligible = cari_guru_layak(df_pool, kod_tuan, no_pusat, "Ketua Pengawas", used_ic)
-                            if pool_eligible.empty:
-                                pool_eligible = cari_guru_layak(df_pool, kod_tuan, no_pusat, None, used_ic)
-                            if pool_eligible.empty:
-                                break
-                            chosen = pool_eligible.iloc[0]
-                            assignments.append({"id": chosen.get("id", ""), "NAMA_GURU": chosen.get("NAMA_GURU", ""), "IC_GURU": chosen.get("IC_GURU", ""), "JAWATAN_ASAL": chosen.get("JAWATAN_CADANGAN", ""), "JAWATAN_CADANGAN": "Ketua Pengawas", "JAWATAN": "Ketua Pengawas", "KOD_SEKOLAH_ASAL": str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper(), "NAMA_SEKOLAH_ASAL": chosen.get("NAMA_SEKOLAH_ASAL", ""), "JANTINA": chosen.get("JANTINA", "") or chosen.get("jantina", ""), "TELEFON_GURU": chosen.get("TELEFON_GURU", "") or chosen.get("telefon_guru", ""), "NO_PUSAT_TUGAS": no_pusat, "NAMA_PUSAT_TUGAS": info.get("NAMA", ""), "STATUS": "DIJANA PPD"})
-                            used_ic.add(chosen.get("IC_GURU", ""))
-                            kod_norm = str(chosen.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
-                            k = (no_pusat, kod_norm)
-                            pusat_sekolah_count[k] = pusat_sekolah_count.get(k, 0) + 1
-                            df_pool = df_pool[~df_pool["IC_GURU"].isin([chosen.get("IC_GURU", "")])]
-                        for _ in range(need_tkp):
-                            pool_eligible = cari_guru_layak(df_pool, kod_tuan, no_pusat, "Timbalan", used_ic)
-                            if pool_eligible.empty:
-                                pool_eligible = cari_guru_layak(df_pool, kod_tuan, no_pusat, None, used_ic)
-                            if pool_eligible.empty:
-                                break
-                            chosen = pool_eligible.iloc[0]
-                            assignments.append({"id": chosen.get("id", ""), "NAMA_GURU": chosen.get("NAMA_GURU", ""), "IC_GURU": chosen.get("IC_GURU", ""), "JAWATAN_ASAL": chosen.get("JAWATAN_CADANGAN", ""), "JAWATAN_CADANGAN": "Timbalan Ketua Pengawas", "JAWATAN": "Timbalan Ketua Pengawas", "KOD_SEKOLAH_ASAL": str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper(), "NAMA_SEKOLAH_ASAL": chosen.get("NAMA_SEKOLAH_ASAL", ""), "JANTINA": chosen.get("JANTINA", "") or chosen.get("jantina", ""), "TELEFON_GURU": chosen.get("TELEFON_GURU", "") or chosen.get("telefon_guru", ""), "NO_PUSAT_TUGAS": no_pusat, "NAMA_PUSAT_TUGAS": info.get("NAMA", ""), "STATUS": "DIJANA PPD"})
-                            used_ic.add(chosen.get("IC_GURU", ""))
-                            kod_norm = str(chosen.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
-                            k = (no_pusat, kod_norm)
-                            pusat_sekolah_count[k] = pusat_sekolah_count.get(k, 0) + 1
-                            df_pool = df_pool[~df_pool["IC_GURU"].isin([chosen.get("IC_GURU", "")])]
-                        for _ in range(need_pengawas):
-                            pool_eligible = cari_guru_layak(df_pool, kod_tuan, no_pusat, "Pengawas", used_ic)
-                            if pool_eligible.empty:
-                                pool_eligible = cari_guru_layak(df_pool, kod_tuan, no_pusat, None, used_ic)
-                            if pool_eligible.empty:
-                                break
-                            chosen = pool_eligible.iloc[0]
-                            assignments.append({"id": chosen.get("id", ""), "NAMA_GURU": chosen.get("NAMA_GURU", ""), "IC_GURU": chosen.get("IC_GURU", ""), "JAWATAN_ASAL": chosen.get("JAWATAN_CADANGAN", ""), "JAWATAN_CADANGAN": "Pengawas Peperiksaan", "JAWATAN": "Pengawas Peperiksaan", "KOD_SEKOLAH_ASAL": str(chosen.get("KOD_SEKOLAH_ASAL", "")).upper(), "NAMA_SEKOLAH_ASAL": chosen.get("NAMA_SEKOLAH_ASAL", ""), "JANTINA": chosen.get("JANTINA", "") or chosen.get("jantina", ""), "TELEFON_GURU": chosen.get("TELEFON_GURU", "") or chosen.get("telefon_guru", ""), "NO_PUSAT_TUGAS": no_pusat, "NAMA_PUSAT_TUGAS": info.get("NAMA", ""), "STATUS": "DIJANA PPD"})
-                            used_ic.add(chosen.get("IC_GURU", ""))
-                            kod_norm = str(chosen.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
-                            k = (no_pusat, kod_norm)
-                            pusat_sekolah_count[k] = pusat_sekolah_count.get(k, 0) + 1
-                            df_pool = df_pool[~df_pool["IC_GURU"].isin([chosen.get("IC_GURU", "")])]
-                    
-                    df_assign = pd.DataFrame(assignments)
-                    st.session_state["jana_all_result"] = df_assign.to_dict('records')
-                    st.session_state["jana_type"] = "keseluruhan"
+            # ===== SUB MENU 1: JANA KESELURUHAN AUTO POSKOD TERDEKAT =====
+            if "Jana Keseluruhan" in sub_jana:
+                st.markdown("### 🌍 Jana Keseluruhan - Auto Poskod Terdekat")
+                st.info("Sistem akan baca POSKOD RUMAH guru vs POSKOD PUSAT, susun pusat paling dekat dahulu. Kalau pusat dah penuh (1 KP + 1 TKP + N Pengawas), auto lompat ke pusat kedua terdekat. Kekal Max 3 guru dari sekolah sama ke pusat sama & elak sekolah sendiri.")
                 
-                # Display result
-                df_assign = pd.DataFrame(st.session_state.get("jana_all_result", []))
-                if not df_assign.empty:
-                    st.success(f"✅ Berjaya jana {len(df_assign)} guru ke {len(df_pusat_ppd)} pusat!")
+                # STEP 1: Papar data dari SUP
+                st.markdown("#### 📋 STEP 1: Data Dari SUP")
+                cad_per_sekolah = {}
+                for _, c in df_cad_all.iterrows():
+                    k_sek = str(c.get("KOD_SEKOLAH") or c.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
+                    if k_sek:
+                        cad_per_sekolah[k_sek] = cad_per_sekolah.get(k_sek, 0) + 1
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("📚 Sekolah Mencadang", len(cad_per_sekolah))
+                col2.metric("👨‍🏫 Guru Dicadang", len(df_cad_all))
+                col3.metric("🏫 Pusat", len(df_pusat_ppd))
+                col4.metric("📋 Perlu Petugas", int(df_pusat_ppd["PETUGAS"].sum()))
+                
+                with st.expander(f"📋 Lihat {len(df_cad_all)} Cadangan Dari SUP", expanded=False):
+                    display_cols = [c for c in ["NAMA_GURU", "IC_GURU", "JANTINA", "POSKOD_RUMAH", "TELEFON_GURU", "JAWATAN_CADANGAN", "KOD_SEKOLAH_ASAL", "NAMA_SEKOLAH_ASAL", "NO_PUSAT_ASAL", "STATUS"] if c in df_cad_all.columns]
+                    st.dataframe(df_cad_all[display_cols] if display_cols else df_cad_all, use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                st.markdown("#### 🚀 STEP 2: Jana Auto Poskod Terdekat")
+                
+                col_jana_all, col_clear = st.columns([3,1])
+                with col_jana_all:
+                    btn_jana_all = st.button("🌍 JANA KESELURUHAN - Auto Poskod Terdekat (1 KP + 1 TKP + Pengawas)", type="primary", use_container_width=True, key="btn_jana_all_poskod")
+                with col_clear:
+                    if st.button("🗑️ Clear", use_container_width=True, key="clear_jana_all_poskod"):
+                        if "jana_all_result" in st.session_state:
+                            del st.session_state["jana_all_result"]
+                        st.rerun()
+                
+                if btn_jana_all or "jana_all_result" in st.session_state:
+                    if btn_jana_all:
+                        import random
+                        assignments = []
+                        df_pool_all = df_cad_all.copy()
+                        def is_belum_lantik(row):
+                            kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
+                            return kp == "" or kp.lower() in ("none", "null", "nan", "nat", "-")
+                        df_pool = df_pool_all[df_pool_all.apply(is_belum_lantik, axis=1)].copy()
+                        jumlah_belum = len(df_pool)
+                        jumlah_sudah = len(df_pool_all) - jumlah_belum
+                        if jumlah_sudah > 0:
+                            st.info(f"ℹ️ {jumlah_sudah} guru telah dilantik - tidak dijana lagi. {jumlah_belum} guru belum dilantik akan dijana ikut poskod terdekat.")
+                        if df_pool.empty:
+                            st.warning("⚠️ Semua guru telah dilantik! Tiada guru belum dilantik.")
+                            st.stop()
+                        
+                        # Build pusat info map with poskod
+                        pusat_info_map = {}
+                        for _, p in df_pusat_ppd.iterrows():
+                            pusat_info_map[p["NO_PUSAT"]] = {
+                                "KOD_TUAN": str(p.get("KOD_SEKOLAH_TUAN_RUMAH", "") or "").upper().strip(),
+                                "NAMA": p.get("NAMA_PUSAT", ""),
+                                "PETUGAS": int(p.get("PETUGAS", 0)),
+                                "POSKOD": str(p.get("POSKOD_PUSAT") or "").strip(),
+                                "JUMLAH_KELAS": int(p.get("JUMLAH_KELAS", 0))
+                            }
+                        
+                        # Precompute guru poskod
+                        df_pool["POSKOD_GURU_NORM"] = df_pool.apply(lambda r: get_poskod_guru(r), axis=1)
+                        
+                        # Sort guru by random to avoid bias, but we will assign closest
+                        df_pool_shuffled = df_pool.sample(frac=1, random_state=random.randint(1, 100000)).reset_index(drop=True)
+                        
+                        pusat_sekolah_count = {}  # (no_pusat, kod_sekolah_asal) -> count
+                        pusat_total_assigned = {no: 0 for no in pusat_info_map.keys()}  # total assigned per pusat
+                        pusat_kp_assigned = {no: 0 for no in pusat_info_map.keys()}
+                        pusat_tkp_assigned = {no: 0 for no in pusat_info_map.keys()}
+                        used_ic = set()
+                        
+                        def cari_pusat_terdekat_untuk_guru(guru_row, jawatan_filter=None):
+                            # Return list pusat sorted by poskod distance
+                            poskod_guru = str(guru_row.get("POSKOD_GURU_NORM") or "").strip()
+                            kod_sekolah_guru = str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
+                            ic_guru = str(guru_row.get("IC_GURU") or guru_row.get("ic_guru") or "")
+                            
+                            # Build distance list
+                            jarak_list = []
+                            for no_pusat, info in pusat_info_map.items():
+                                # Elak sekolah sendiri
+                                if info["KOD_TUAN"] and kod_sekolah_guru and info["KOD_TUAN"] == kod_sekolah_guru:
+                                    continue
+                                # Check max 3
+                                if pusat_sekolah_count.get((no_pusat, kod_sekolah_guru), 0) >= 3:
+                                    continue
+                                # Check if pusat dah penuh
+                                if pusat_total_assigned.get(no_pusat, 0) >= info["PETUGAS"]:
+                                    continue
+                                # Check jawatan specific full
+                                jaw = str(guru_row.get("JAWATAN_CADANGAN") or "").upper()
+                                if "KETUA PENGAWAS" in jaw and "TIMBALAN" not in jaw:
+                                    if pusat_kp_assigned.get(no_pusat, 0) >= 1:
+                                        continue
+                                elif "TIMBALAN" in jaw:
+                                    if pusat_tkp_assigned.get(no_pusat, 0) >= 1:
+                                        continue
+                                
+                                # Kira jarak poskod
+                                poskod_pusat_val = get_poskod_pusat_val(no_pusat) or info.get("POSKOD", "")
+                                jarak = poskod_distance(poskod_guru, poskod_pusat_val)
+                                jarak_list.append((jarak, no_pusat))
+                            
+                            # Sort by jarak
+                            jarak_list.sort(key=lambda x: x[0])
+                            return [no for _, no in jarak_list]
+                        
+                        # First pass: assign KP
+                        for _, guru_row in df_pool_shuffled.iterrows():
+                            ic = str(guru_row.get("IC_GURU") or "")
+                            if ic in used_ic:
+                                continue
+                            jaw = str(guru_row.get("JAWATAN_CADANGAN") or "").upper()
+                            if "KETUA PENGAWAS" not in jaw or "TIMBALAN" in jaw:
+                                continue
+                            # Cari pusat terdekat
+                            pusat_candidates = cari_pusat_terdekat_untuk_guru(guru_row)
+                            if not pusat_candidates:
+                                continue
+                            chosen = pusat_candidates[0]
+                            # Assign
+                            assignments.append({
+                                "IC_GURU": ic,
+                                "NAMA_GURU": guru_row.get("NAMA_GURU", ""),
+                                "KOD_SEKOLAH_ASAL": str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper(),
+                                "NAMA_SEKOLAH_ASAL": guru_row.get("NAMA_SEKOLAH_ASAL", ""),
+                                "JAWATAN_CADANGAN": guru_row.get("JAWATAN_CADANGAN", ""),
+                                "POSKOD_RUMAH": guru_row.get("POSKOD_GURU_NORM", ""),
+                                "NO_PUSAT_TUGAS": chosen,
+                                "NAMA_PUSAT_TUGAS": pusat_info_map[chosen]["NAMA"],
+                                "JARAK_POSKOD": "Terdekat",
+                                "id": guru_row.get("id", "")
+                            })
+                            used_ic.add(ic)
+                            pusat_sekolah_count[(chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper())] = pusat_sekolah_count.get((chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper()), 0) + 1
+                            pusat_total_assigned[chosen] = pusat_total_assigned.get(chosen, 0) + 1
+                            pusat_kp_assigned[chosen] = pusat_kp_assigned.get(chosen, 0) + 1
+                        
+                        # Second pass: TKP
+                        for _, guru_row in df_pool_shuffled.iterrows():
+                            ic = str(guru_row.get("IC_GURU") or "")
+                            if ic in used_ic:
+                                continue
+                            jaw = str(guru_row.get("JAWATAN_CADANGAN") or "").upper()
+                            if "TIMBALAN" not in jaw:
+                                continue
+                            pusat_candidates = cari_pusat_terdekat_untuk_guru(guru_row)
+                            if not pusat_candidates:
+                                continue
+                            chosen = pusat_candidates[0]
+                            assignments.append({
+                                "IC_GURU": ic,
+                                "NAMA_GURU": guru_row.get("NAMA_GURU", ""),
+                                "KOD_SEKOLAH_ASAL": str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper(),
+                                "NAMA_SEKOLAH_ASAL": guru_row.get("NAMA_SEKOLAH_ASAL", ""),
+                                "JAWATAN_CADANGAN": guru_row.get("JAWATAN_CADANGAN", ""),
+                                "POSKOD_RUMAH": guru_row.get("POSKOD_GURU_NORM", ""),
+                                "NO_PUSAT_TUGAS": chosen,
+                                "NAMA_PUSAT_TUGAS": pusat_info_map[chosen]["NAMA"],
+                                "JARAK_POSKOD": "Terdekat",
+                                "id": guru_row.get("id", "")
+                            })
+                            used_ic.add(ic)
+                            pusat_sekolah_count[(chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper())] = pusat_sekolah_count.get((chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper()), 0) + 1
+                            pusat_total_assigned[chosen] = pusat_total_assigned.get(chosen, 0) + 1
+                            pusat_tkp_assigned[chosen] = pusat_tkp_assigned.get(chosen, 0) + 1
+                        
+                        # Third pass: Pengawas & others
+                        for _, guru_row in df_pool_shuffled.iterrows():
+                            ic = str(guru_row.get("IC_GURU") or "")
+                            if ic in used_ic:
+                                continue
+                            # Skip if already assigned as KP/TKP (handled)
+                            jaw = str(guru_row.get("JAWATAN_CADANGAN") or "").upper()
+                            if "KETUA PENGAWAS" in jaw and "TIMBALAN" not in jaw:
+                                continue
+                            if "TIMBALAN" in jaw:
+                                continue
+                            pusat_candidates = cari_pusat_terdekat_untuk_guru(guru_row)
+                            if not pusat_candidates:
+                                continue
+                            chosen = pusat_candidates[0]
+                            # Kira jarak sebenar untuk display
+                            poskod_guru = str(guru_row.get("POSKOD_GURU_NORM") or "")
+                            poskod_pusat_val = get_poskod_pusat_val(chosen) or pusat_info_map[chosen].get("POSKOD","")
+                            jarak_val = poskod_distance(poskod_guru, poskod_pusat_val)
+                            assignments.append({
+                                "IC_GURU": ic,
+                                "NAMA_GURU": guru_row.get("NAMA_GURU", ""),
+                                "KOD_SEKOLAH_ASAL": str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper(),
+                                "NAMA_SEKOLAH_ASAL": guru_row.get("NAMA_SEKOLAH_ASAL", ""),
+                                "JAWATAN_CADANGAN": guru_row.get("JAWATAN_CADANGAN", ""),
+                                "POSKOD_RUMAH": poskod_guru,
+                                "POSKOD_PUSAT": poskod_pusat_val,
+                                "NO_PUSAT_TUGAS": chosen,
+                                "NAMA_PUSAT_TUGAS": pusat_info_map[chosen]["NAMA"],
+                                "JARAK_POSKOD": jarak_val,
+                                "id": guru_row.get("id", "")
+                            })
+                            used_ic.add(ic)
+                            pusat_sekolah_count[(chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper())] = pusat_sekolah_count.get((chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper()), 0) + 1
+                            pusat_total_assigned[chosen] = pusat_total_assigned.get(chosen, 0) + 1
+                        
+                        st.session_state["jana_all_result"] = assignments
+                        st.success(f"✅ Berjaya jana {len(assignments)} guru ikut poskod terdekat!")
+                    else:
+                        assignments = st.session_state.get("jana_all_result", [])
                     
-                    # Summary per pusat
-                    st.markdown("#### 📊 Ringkasan Per Pusat")
-                    summary = []
-                    for no_pusat in df_pusat_ppd["NO_PUSAT"].tolist():
-                        count = len(df_assign[df_assign["NO_PUSAT_TUGAS"] == no_pusat])
-                        nama = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat]["NAMA_PUSAT"].values[0] if not df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat].empty else ""
-                        perlu = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat]["PETUGAS"].values[0] if not df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == no_pusat].empty else 0
-                        status = "🟢 Cukup" if count >= perlu else "🟡 Belum Cukup" if count > 0 else "🔴 Belum Ada"
-                        summary.append({"NO_PUSAT": no_pusat, "NAMA_PUSAT": nama[:30], "PERLU": perlu, "DIJANA": count, "STATUS": status})
-                    
-                    st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
-                    
-                    st.markdown("#### 👥 Senarai Penempatan (Jana Keseluruhan)")
-                    st.dataframe(df_assign, use_container_width=True, hide_index=True)
-                    
-                    col_save, col_clear = st.columns(2)
-                    with col_save:
-                        if st.button("💾 Simpan Hasil Janaan Ke DB", type="primary", use_container_width=True, key="save_jana_all"):
+                    if st.session_state.get("jana_all_result"):
+                        df_assign = pd.DataFrame(st.session_state["jana_all_result"])
+                        st.dataframe(df_assign, use_container_width=True, hide_index=True)
+                        
+                        # Summary max 3 check
+                        sekolah_count_check = {}
+                        for a in assignments:
+                            key = (a.get("NO_PUSAT_TUGAS",""), a.get("KOD_SEKOLAH_ASAL",""))
+                            sekolah_count_check[key] = sekolah_count_check.get(key, 0) + 1
+                        pelanggaran = [(k,v) for k,v in sekolah_count_check.items() if v>3]
+                        if pelanggaran:
+                            st.error(f"❌ Ada {len(pelanggaran)} pelanggaran Max 3:")
+                            for (pusat, sek), cnt in pelanggaran[:10]:
+                                st.error(f"   {sek} -> {pusat}: {cnt} orang")
+                        else:
+                            st.success("✅ Semakan Max 3 OK - Tiada sekolah lebih 3 orang di pusat sama")
+                        
+                        if st.button("💾 Simpan Jana Keseluruhan (Poskod Terdekat) ke DB", type="primary", use_container_width=True, key="simpan_jana_poskod"):
                             try:
-                                saved = 0
-                                for _, r in df_assign.iterrows():
-                                    try:
-                                        if r.get("id"):
-                                            supa.table("cadangan_sup").update({"kod_pusat": r["NO_PUSAT_TUGAS"], "status": "DIJANA PPD"}).eq("id", r["id"]).execute()
-                                        else:
-                                            supa.table("cadangan_sup").update({"kod_pusat": r["NO_PUSAT_TUGAS"]}).eq("ic_guru", r["IC_GURU"]).execute()
-                                        saved += 1
-                                    except Exception as e:
-                                        st.error(f"Gagal simpan {r['NAMA_GURU']}: {e}")
-                                st.success(f"✅ Berjaya simpan {saved} penempatan!")
+                                for a in assignments:
+                                    id_g = a.get("id")
+                                    if id_g:
+                                        supa.table("cadangan_sup").update({"kod_pusat": a.get("NO_PUSAT_TUGAS"), "status": "DILANTIK PPD"}).eq("id", id_g).execute()
+                                    else:
+                                        supa.table("cadangan_sup").update({"kod_pusat": a.get("NO_PUSAT_TUGAS"), "status": "DILANTIK PPD"}).eq("ic_guru", a.get("IC_GURU")).execute()
+                                st.success(f"✅ {len(assignments)} penempatan disimpan!")
                                 st.balloons()
                             except Exception as e:
-                                st.error(f"Error simpan: {e}")
-                    with col_clear:
-                        if st.button("🗑️ Clear Hasil Janaan", use_container_width=True, key="clear_jana_all"):
-                            if "jana_all_result" in st.session_state:
-                                del st.session_state["jana_all_result"]
-                            st.rerun()
-                    
-                    st.download_button("📥 Export Hasil Jana Keseluruhan", to_excel(df_assign), file_name=f"jana_keseluruhan_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
+                                st.error(f"Gagal simpan: {e}")
+                        
+                        st.download_button(f"📥 Export Jana Poskod Terdekat", to_excel(df_assign), file_name=f"jana_poskod_terdekat_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
             
-            # Logic Jana Ikut Pusat
-            if btn_jana_pusat or ("jana_pusat_result" in st.session_state and st.session_state.get("jana_pusat_no") == pilihan_pusat_jana):
-                if btn_jana_pusat:
-                    # Jana untuk satu pusat sahaja
-                    pusat_info = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == pilihan_pusat_jana]
-                    perlu = int(pusat_info["PETUGAS"].values[0]) if not pusat_info.empty else 10
-                    
-                    # Filter guru yang belum ada pusat tugas atau yang sesuai
-                    df_available = df_cad_all.copy()
-                    
-                    # Elak sekolah tuan rumah
-                    tuan_rumah_kod = str(pusat_info["KOD_SEKOLAH_TUAN_RUMAH"].values[0] if not pusat_info.empty else "").upper().strip()
-                    if tuan_rumah_kod:
-                        df_available = df_available[~df_available["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.contains(tuan_rumah_kod, na=False)]
-                    
-                    # STRICT MAX 3 untuk jana ikut pusat juga
-                    # Kira berapa guru dari setiap sekolah sudah ada di pusat ini
-                    sekolah_count_pusat = {}
-                    # Dari DB
-                    for _, c in df_cad_all.iterrows():
-                        p_db = str(c.get("kod_pusat") or c.get("KOD_PUSAT") or "").upper().strip()
-                        if p_db == pilihan_pusat_jana:
-                            kod = str(c.get("KOD_SEKOLAH_ASAL") or c.get("kod_sekolah_asal") or "").upper().strip()
-                            if kod:
-                                sekolah_count_pusat[kod] = sekolah_count_pusat.get(kod, 0) + 1
-                    # Dari session
-                    for p in st.session_state.get("jana_all_result", []) or []:
-                        if str(p.get("NO_PUSAT_TUGAS") or "").upper().strip() == pilihan_pusat_jana:
-                            kod = str(p.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
-                            if kod:
-                                sekolah_count_pusat[kod] = sekolah_count_pusat.get(kod, 0) + 1
-                    
-                    st.info(f"Semakan sedia ada di {pilihan_pusat_jana}: {sekolah_count_pusat}")
-                    
-                    def check_max3_ikut_pusat(row):
-                        k = str(row.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
-                        return sekolah_count_pusat.get(k, 0) < 3 if k else True
-                    
-                    df_available["CHECK_MAX3"] = df_available.apply(check_max3_ikut_pusat, axis=1)
-                    df_before = len(df_available)
-                    df_available = df_available[df_available["CHECK_MAX3"] == True].copy()
-                    df_after = len(df_available)
-                    if df_before > df_after:
-                        st.warning(f"📋 {df_before - df_after} guru ditapis - sekolah sudah ada 3 orang di {pilihan_pusat_jana} (Max 3)")
-                    
-                    # Ambil sebanyak yang perlu, prioriti ikut jawatan
-                    jawatan_order = {"Ketua Pengawas": 1, "Timbalan Ketua Pengawas": 2, "Penyelia Kawasan": 3, "Pengawas Peperiksaan": 4}
-                    df_available["JAWATAN_ORDER"] = df_available["JAWATAN_CADANGAN"].map(jawatan_order).fillna(5)
-                    df_available = df_available.sort_values("JAWATAN_ORDER")
-                    
-                    # Random untuk elak bias
-                    import random
-                    if len(df_available) > 1:
-                        df_available = df_available.sample(frac=1, random_state=random.randint(1, 10000)).reset_index(drop=True)
-                    
-                    assignments = []
-                    for _, row in df_available.iterrows():
-                        if len(assignments) >= perlu:
-                            break
-                        kod_row = str(row.get("KOD_SEKOLAH_ASAL", "") or "").upper().strip()
-                        if kod_row and sekolah_count_pusat.get(kod_row, 0) >= 3:
-                            continue
-                        assignments.append({
-                            "id": row.get("id", ""),
-                            "NAMA_GURU": row.get("NAMA_GURU", ""),
-                            "IC_GURU": row.get("IC_GURU", ""),
-                            "JAWATAN_CADANGAN": row.get("JAWATAN_CADANGAN", ""),
-                            "JAWATAN": row.get("JAWATAN_CADANGAN", ""),
-                            "KOD_SEKOLAH_ASAL": row.get("KOD_SEKOLAH_ASAL", ""),
-                            "NAMA_SEKOLAH_ASAL": row.get("NAMA_SEKOLAH_ASAL", ""),
-                            "NO_PUSAT_TUGAS": pilihan_pusat_jana,
-                            "STATUS": "DIJANA PPD"
-                        })
-                        if kod_row:
-                            sekolah_count_pusat[kod_row] = sekolah_count_pusat.get(kod_row, 0) + 1
-                    
-                    df_assign_pusat = pd.DataFrame(assignments)
-                    st.session_state["jana_pusat_result"] = df_assign_pusat.to_dict('records')
-                    st.session_state["jana_pusat_no"] = pilihan_pusat_jana
+            # ===== SUB MENU 2: JANA MENGIKUT JAWATAN =====
+            else:
+                st.markdown("### 👑 Jana Mengikut Jawatan")
+                st.info("Pilih jawatan, sistem akan paparkan sidebar ikut jawatan tersebut untuk jana. Kekal Max 3 & poskod terdekat dalam jawatan tersebut.")
                 
-                df_assign_pusat = pd.DataFrame(st.session_state.get("jana_pusat_result", []))
-                if not df_assign_pusat.empty and st.session_state.get("jana_pusat_no") == pilihan_pusat_jana:
-                    pusat_nama = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == pilihan_pusat_jana]["NAMA_PUSAT"].values[0] if not df_pusat_ppd[df_pusat_ppd["NO_PUSAT"] == pilihan_pusat_jana].empty else ""
-                    st.success(f"✅ Berjaya jana {len(df_assign_pusat)} guru untuk pusat {pilihan_pusat_jana} - {pusat_nama}")
+                # Sidebar ikut jawatan
+                st.sidebar.markdown("#### 👑 Pilih Jawatan")
+                pilih_jawatan_jana = st.sidebar.selectbox(
+                    "Jawatan",
+                    ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Penyelia Kawasan", "Selenggara Bilik Kebal"],
+                    key="pilih_jawatan_jana_sidebar"
+                )
+                st.sidebar.markdown(f"**Jawatan Dipilih:** {pilih_jawatan_jana}")
+                
+                # Filter guru by jawatan
+                df_jawatan = df_cad_all[df_cad_all.apply(lambda r: pilih_jawatan_jana.upper() in str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or "").upper(), axis=1)].copy()
+                df_belum_jawatan = df_jawatan[df_jawatan.apply(lambda r: str(r.get("kod_pusat") or r.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat"), axis=1)].copy()
+                
+                st.markdown(f"#### 📋 {pilih_jawatan_jana} - {len(df_belum_jawatan)} belum dilantik")
+                if df_belum_jawatan.empty:
+                    st.warning(f"Tiada {pilih_jawatan_jana} belum dilantik")
+                else:
+                    display_j = df_belum_jawatan[["NAMA_GURU", "IC_GURU", "KOD_SEKOLAH_ASAL", "POSKOD_RUMAH", "JAWATAN_CADANGAN"]].head(100) if all(c in df_belum_jawatan.columns for c in ["NAMA_GURU","IC_GURU"]) else df_belum_jawatan
+                    st.dataframe(display_j, use_container_width=True, hide_index=True)
                     
-                    st.markdown(f"#### 👥 Hasil Jana Untuk Pusat {pilihan_pusat_jana}")
-                    st.dataframe(df_assign_pusat, use_container_width=True, hide_index=True)
+                    # Pilih pusat
+                    pilihan_pusat_jawatan = st.selectbox(
+                        f"Pilih Pusat untuk {pilih_jawatan_jana}",
+                        df_pusat_ppd["NO_PUSAT"].tolist(),
+                        format_func=lambda x: f"{x} - {df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x]['NAMA_PUSAT'].values[0][:30] if not df_pusat_ppd[df_pusat_ppd['NO_PUSAT']==x].empty else x}",
+                        key=f"pilih_pusat_jawatan_{pilih_jawatan_jana}"
+                    )
                     
-                    col_save2, col_clear2 = st.columns(2)
-                    with col_save2:
-                        if st.button(f"💾 Simpan Untuk {pilihan_pusat_jana}", type="primary", use_container_width=True, key="save_jana_pusat"):
+                    st.markdown(f"**Jana {pilih_jawatan_jana} ke {pilihan_pusat_jawatan}**")
+                    
+                    # Auto suggest closest by poskod for this pusat
+                    info_pusat = df_pusat_ppd[df_pusat_ppd["NO_PUSAT"]==pilihan_pusat_jawatan]
+                    kod_tuan = str(info_pusat["KOD_SEKOLAH_TUAN_RUMAH"].values[0] if not info_pusat.empty else "").upper().strip()
+                    poskod_pusat_val = get_poskod_pusat_val(pilihan_pusat_jawatan)
+                    
+                    st.caption(f"Pusat {pilihan_pusat_jawatan} - Tuan Rumah: {kod_tuan} - Poskod Pusat: {poskod_pusat_val or 'Tiada (akan guna jarak 0)'} - Max 3 per sekolah")
+                    
+                    # Filter eligible: not same school, max 3
+                    # Count current in pusat
+                    res_curr = supa.table("cadangan_sup").select("*").eq("kod_pusat", pilihan_pusat_jawatan).limit(5000).execute()
+                    df_curr = pd.DataFrame(res_curr.data or [])
+                    sekolah_count_curr = {}
+                    if not df_curr.empty:
+                        for _, r in df_curr.iterrows():
+                            ks = str(r.get("kod_sekolah_asal") or "").upper().strip()
+                            sekolah_count_curr[ks] = sekolah_count_curr.get(ks, 0) + 1
+                    
+                    eligible_list = []
+                    for _, r in df_belum_jawatan.iterrows():
+                        ks = str(r.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
+                        if kod_tuan and ks == kod_tuan:
+                            continue
+                        if sekolah_count_curr.get(ks, 0) >= 3:
+                            continue
+                        # Kira jarak poskod
+                        pk_guru = str(r.get("POSKOD_RUMAH") or "")
+                        jarak = poskod_distance(pk_guru, poskod_pusat_val)
+                        eligible_list.append((jarak, r))
+                    
+                    eligible_list.sort(key=lambda x: x[0])
+                    df_eligible_sorted = pd.DataFrame([r for _, r in eligible_list]) if eligible_list else pd.DataFrame()
+                    
+                    if df_eligible_sorted.empty:
+                        st.warning("Tiada calon layak (mungkin semua sekolah sama atau max 3)")
+                    else:
+                        st.markdown(f"**{len(df_eligible_sorted)} calon {pilih_jawatan_jana} layak (disusun poskod terdekat ke {pilihan_pusat_jawatan}):**")
+                        # Show with jarak
+                        display_eligible = []
+                        for jarak, r in eligible_list[:50]:
+                            display_eligible.append({
+                                "JARAK_POSKOD": jarak if jarak!=99999 else "Tiada poskod",
+                                "NAMA GURU": r.get("NAMA_GURU",""),
+                                "IC": r.get("IC_GURU",""),
+                                "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL",""),
+                                "POSKOD RUMAH": r.get("POSKOD_RUMAH",""),
+                                "JAWATAN": r.get("JAWATAN_CADANGAN",""),
+                                "id": r.get("id","")
+                            })
+                        df_disp = pd.DataFrame(display_eligible)
+                        st.dataframe(df_disp, use_container_width=True, hide_index=True)
+                        
+                        # Multi select
+                        pilih_guru_jawatan = st.multiselect(
+                            f"Pilih {pilih_jawatan_jana} untuk {pilihan_pusat_jawatan} (ikut poskod terdekat, max 3 per sekolah)",
+                            df_disp["id"].tolist() if "id" in df_disp.columns else [],
+                            format_func=lambda x: f"{df_disp[df_disp['id']==x]['NAMA GURU'].values[0]} - {df_disp[df_disp['id']==x]['SEKOLAH ASAL'].values[0]} - Jarak: {df_disp[df_disp['id']==x]['JARAK_POSKOD'].values[0]}" if not df_disp[df_disp['id']==x].empty else str(x),
+                            key=f"pilih_guru_jawatan_{pilih_jawatan_jana}_{pilihan_pusat_jawatan}"
+                        )
+                        
+                        if st.button(f"✅ Lantik {len(pilih_guru_jawatan)} {pilih_jawatan_jana} ke {pilihan_pusat_jawatan} (Poskod Terdekat)", type="primary", use_container_width=True, key=f"btn_lantik_jawatan_{pilih_jawatan_jana}"):
                             try:
-                                saved = 0
-                                for _, r in df_assign_pusat.iterrows():
-                                    try:
-                                        if r.get("id"):
-                                            supa.table("cadangan_sup").update({"kod_pusat": pilihan_pusat_jana, "status": "DIJANA PPD"}).eq("id", r["id"]).execute()
-                                        saved += 1
-                                    except Exception as e:
-                                        st.error(f"Gagal: {e}")
-                                st.success(f"✅ Simpan {saved} untuk {pilihan_pusat_jana}")
+                                berjaya = 0
+                                for gid in pilih_guru_jawatan:
+                                    supa.table("cadangan_sup").update({"kod_pusat": pilihan_pusat_jawatan, "status": "DILANTIK PPD"}).eq("id", gid).execute()
+                                    berjaya += 1
+                                st.success(f"✅ {berjaya} {pilih_jawatan_jana} dilantik ke {pilihan_pusat_jawatan} ikut poskod terdekat")
                                 st.balloons()
+                                st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
-                    with col_clear2:
-                        if st.button("🗑️ Clear", use_container_width=True, key="clear_jana_pusat"):
-                            if "jana_pusat_result" in st.session_state:
-                                del st.session_state["jana_pusat_result"]
-                            st.rerun()
-                    
-                    st.download_button(f"📥 Export Jana {pilihan_pusat_jana}", to_excel(df_assign_pusat), file_name=f"jana_{pilihan_pusat_jana}_{datetime.date.today()}.xlsx", use_container_width=True)
+
 
         elif menu == "hasil":
             st.header(f"Hasil Janaan - PPD {kod_ppd}")
