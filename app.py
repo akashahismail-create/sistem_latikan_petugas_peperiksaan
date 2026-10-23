@@ -922,29 +922,37 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
                 if col in df_norm.columns:
                     df_norm = df_norm.drop(columns=[col])
         
-        # Filter by PPD if requested - robust case-insensitive contains
+        # Filter by PPD if requested - STRICT FILTER (FIX untuk isu Sepang nampak Klang)
         if kod_ppd:
             kod_ppd_u = kod_ppd.strip().upper()
             try:
-                # Filter where KOD_PPD matches or is empty (include if no PPD info but school code belongs to PPD via sekolah_master)
-                mask = df_norm['KOD_PPD'].astype(str).str.upper().str.contains(kod_ppd_u, na=False)
-                # Also include if KOD_SEKOLAH_ASAL starts with something? But for BA, all BA schools have KOD_PPD BA - try also fetch sekolah list
-                # If mask gives zero, try not filtering strictly and let all pass, then later filter via sekolah_master mapping
-                if mask.sum() > 0:
-                    df_norm = df_norm[mask | (df_norm['KOD_PPD'] == '') | (df_norm['KOD_PPD'].isna())]
-                # If still, try to get sekolah codes for this PPD and filter by those
+                # Step 1: Get list of sekolah kod for this PPD from sekolah_master
+                kod_list = []
                 try:
                     res_sek = supa.table("sekolah_master").select("kod_sekolah").eq("kod_ppd", kod_ppd_u).limit(2000).execute()
-                    kod_list = [str(s.get('kod_sekolah','')).upper() for s in (res_sek.data or [])]
-                    if kod_list:
-                        mask2 = df_norm['KOD_SEKOLAH_ASAL'].isin(kod_list)
-                        if mask2.sum() > 0:
-                            # Combine both masks
-                            df_norm = df_norm[mask | mask2]
+                    kod_list = [str(s.get('kod_sekolah','')).upper().strip() for s in (res_sek.data or []) if str(s.get('kod_sekolah','')).strip()]
+                except:
+                    kod_list = []
+                
+                # Step 2: Strict filter - only allow if KOD_PPD exact match OR KOD_SEKOLAH_ASAL in kod_list
+                # NOT include empty KOD_PPD unless sekolah is in list
+                if kod_list:
+                    # Exact match for KOD_PPD (not contains) + sekolah in list
+                    mask_ppd_exact = df_norm['KOD_PPD'].astype(str).str.upper().str.strip() == kod_ppd_u
+                    mask_sek_in_list = df_norm['KOD_SEKOLAH_ASAL'].astype(str).str.upper().str.strip().isin(kod_list)
+                    # Strict: only keep if either PPD matches exactly OR sekolah is in this PPD's list
+                    df_norm = df_norm[mask_ppd_exact | mask_sek_in_list].copy()
+                else:
+                    # Fallback if sekolah_master empty - filter exact PPD only, no empty allowed
+                    mask_ppd_exact = df_norm['KOD_PPD'].astype(str).str.upper().str.strip() == kod_ppd_u
+                    df_norm = df_norm[mask_ppd_exact].copy()
+            except Exception as e:
+                # On error, try exact match only
+                try:
+                    kod_ppd_u = kod_ppd.strip().upper()
+                    df_norm = df_norm[df_norm['KOD_PPD'].astype(str).str.upper().str.strip() == kod_ppd_u].copy()
                 except:
                     pass
-            except Exception as e:
-                pass
         
         if kod_sekolah:
             kod_s_u = kod_sekolah.strip().upper()
@@ -4283,9 +4291,27 @@ elif st.session_state.role == "PPD":
             except:
                 df_sek_list = pd.DataFrame()
             
-            # Build sekolah groups dari cadangan (ikut filter) - SKIP NAN
+            # Build sekolah groups dari cadangan (ikut filter) - SKIP NAN + STRICT PPD CHECK
+            # Safety: get sekolah list for this PPD again to ensure no cross-PPD leak
+            kod_list_ppd_check = []
+            try:
+                res_sek_check = supa.table("sekolah_master").select("kod_sekolah").eq("kod_ppd", kod_ppd.upper()).limit(2000).execute()
+                kod_list_ppd_check = [str(s.get('kod_sekolah','')).upper().strip() for s in (res_sek_check.data or [])]
+            except:
+                kod_list_ppd_check = []
+            
             sekolah_groups = {}
             for _, r in df_cad_filtered.iterrows():
+                # Extra strict check: if sekolah code not in PPD list and KOD_PPD != requested PPD, skip
+                kppd_row = str(r.get("KOD_PPD") or "").upper().strip()
+                ksek_row = str(r.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
+                if kod_list_ppd_check:
+                    if ksek_row not in kod_list_ppd_check and kppd_row != kod_ppd.upper():
+                        continue
+                else:
+                    # If no list, check KOD_PPD exact
+                    if kppd_row and kppd_row != kod_ppd.upper():
+                        continue
                 kod_sek_raw = r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or r.get("KOD_SEKOLAH") or r.get("kod_sekolah") or ""
                 kod_sek = str(kod_sek_raw).strip().upper()
                 if kod_sek.lower() in ("", "nan", "none", "null", "nat", "-", "tiada kod"):
