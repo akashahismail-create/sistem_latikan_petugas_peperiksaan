@@ -590,9 +590,19 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
             ksa = row_dict.get('KOD_SEKOLAH_ASAL') or row_dict.get('kod_sekolah_asal') or row_dict.get('KOD_SEKOLAH') or row_dict.get('kod_sekolah') or row_dict.get('kod_sekolah_tuan_rumah') or ''
             row_dict['KOD_SEKOLAH_ASAL'] = str(ksa).strip().upper()
             
-            # NAMA
-            ng = row_dict.get('NAMA_GURU') or row_dict.get('nama_guru') or row_dict.get('NAMA GURU') or ''
-            row_dict['NAMA_GURU'] = str(ng).strip().upper()
+            # NAMA - FIX: Jangan biarkan hilang bila hantar
+            ng = row_dict.get('NAMA_GURU') or row_dict.get('nama_guru') or row_dict.get('NAMA GURU') or row_dict.get('NAMA') or row_dict.get('nama') or ''
+            if not str(ng).strip() or str(ng).strip().upper() in ["NAN","NONE","","KOSONG"]:
+                for fallback_key in ["NAMA_GURU","nama_guru","NAMA","nama","NAMA GURU"]:
+                    if fallback_key in row_dict and str(row_dict[fallback_key]).strip():
+                        ng = row_dict[fallback_key]
+                        break
+            ng_str = str(ng).strip()
+            if not ng_str:
+                ic_fallback = row_dict.get('IC_GURU') or row_dict.get('ic_guru') or 'TANPA NAMA'
+                ng_str = f"{ic_fallback} (Nama tiada - akan dipulihkan)"
+            row_dict['NAMA_GURU'] = ng_str.upper()
+            row_dict['nama_guru'] = ng_str
             
             # NAMA SEKOLAH ASAL - V28 FIX
             nsa = row_dict.get('NAMA_SEKOLAH_ASAL') or row_dict.get('nama_sekolah_asal') or row_dict.get('NAMA_SEKOLAH') or row_dict.get('nama_sekolah') or row_dict.get('NAMA SEKOLAH ASAL') or ''
@@ -714,28 +724,22 @@ def _id_py(x):
     return x
 
 def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
-    """V25 FIX: Update by IC + sekolah to ensure all duplicate rows become HANTAR, not just by id"""
+    """FIX V26: Hanya update STATUS, jangan sentuh nama_guru / kod_ppd supaya nama tak hilang"""
     berjaya, gagal = 0, []
-    # If df_sasaran provided, also get IC list to update all duplicates
     ic_list = []
-    sekolah_list = []
     if df_sasaran is not None and not df_sasaran.empty:
         try:
             if 'IC_GURU' in df_sasaran.columns:
                 ic_list = df_sasaran['IC_GURU'].astype(str).str.strip().tolist()
-            if 'KOD_SEKOLAH_ASAL' in df_sasaran.columns:
-                sekolah_list = df_sasaran['KOD_SEKOLAH_ASAL'].astype(str).str.strip().str.upper().tolist()
         except:
             pass
     
-    # First, update by id (original)
     for i in range(0, len(ids), 100):
         kelompok = ids[i:i + 100]
         payloads_to_try = [
-            {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD", "kod_ppd": kod_ppd, "KOD_PPD": kod_ppd},
             {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"},
-            {"status": "HANTAR KE PPD", "kod_ppd": kod_ppd},
-            {"STATUS": "HANTAR KE PPD", "KOD_PPD": kod_ppd},
+            {"status": "HANTAR KE PPD"},
+            {"STATUS": "HANTAR KE PPD"},
         ]
         success = False
         last_err = ""
@@ -752,18 +756,14 @@ def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
         else:
             gagal.append(last_err)
     
-    # Second, ensure all rows with same IC + sekolah also updated to HANTAR (to fix duplicate bug)
-    # This ensures even if there are 2 rows id 19 and 140 with same IC, both become HANTAR
     if ic_list:
-        for ic_val, sek_val in zip(ic_list, sekolah_list):
+        for ic_val in ic_list:
+            if not ic_val or ic_val.lower() in ["nan","none",""]:
+                continue
             try:
-                # Update all rows with same IC
-                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
+                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
             except:
-                try:
-                    supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
-                except:
-                    pass
+                pass
             try:
                 supa.table("cadangan_sup").update({"STATUS": "HANTAR KE PPD"}).eq("IC_GURU", ic_val).execute()
             except:
