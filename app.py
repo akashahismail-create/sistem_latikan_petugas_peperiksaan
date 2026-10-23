@@ -1,3 +1,24 @@
+"""
+LOCKED VERSION - SISTEM LANTIKAN PETUGAS PEPERIKSAAN SPM 2026
+Tarikh Lock: 2026-10-23 00:29:45
+Status: OK - SEMUA FIX SIAP
+
+FIX YANG SUDAH SIAP DALAM VERSION INI:
+1. ✅ Fix NameError get_pusat_df, get_cadangan_df, show_flash
+2. ✅ Fix No Surat nan & Sekolah Asal BFT0003 - BFT0003 (clean_nan + get_nama_sekolah_full)
+3. ✅ Fix PDF individu + ZIP (PPD & SUP) - create_zip_of_individual_pdfs
+4. ✅ Fix Lulus Keseluruhan 22 tinggal (nan check)
+5. ✅ Fix 1000 petugas panjang - search + pagination 10/20/50 + dropdown cepat
+6. ✅ Fix SUP Surat Lantikan Saya ada ZIP individu
+7. ✅ Fix PPD Sepang nampak Klang (strict filter ikut daerah)
+8. ✅ Fix Selenggara Bilik Kebal - No Surat Penyelia ikut berturutan daerah + PDF + Hantar ke sekolah asal
+9. ✅ Fix Petugas sudah dilantik hide dari pilihan (sama seperti Penyelia)
+10. ✅ Fix Fork + kucing GitHub hide
+
+JANGAN UBAH FAIL INI - Jika ada perubahan baru, buat fail baru app_29_vXXX.py
+Fail ini adalah rujukan OK.
+"""
+
 import streamlit as st
 import pandas as pd
 from supabase import create_client
@@ -1754,7 +1775,7 @@ if st.session_state.role == "SUP":
                         j = str(r.get(col_jawatan_sup, "")).strip()
                         if j and j not in jawatan_sup_list:
                             jawatan_sup_list.append(j)
-                order_j = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                order_j = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"]
                 jawatan_sup_sorted = sorted(jawatan_sup_list, key=lambda x: (order_j.index(x) if x in order_j else 99, x))
                 
                 if "filter_jawatan_sup_senarai" not in st.session_state:
@@ -1764,7 +1785,7 @@ if st.session_state.role == "SUP":
                 with col_f1_sup:
                     safe_default_sup = [x for x in st.session_state["filter_jawatan_sup_senarai"] if x in jawatan_sup_sorted]
                     if not jawatan_sup_sorted:
-                        jawatan_sup_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                        jawatan_sup_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"]
                         safe_default_sup = st.session_state["filter_jawatan_sup_senarai"]
                     if st.session_state["filter_jawatan_sup_senarai"] and not safe_default_sup:
                         for v in st.session_state["filter_jawatan_sup_senarai"]:
@@ -1834,7 +1855,7 @@ if st.session_state.role == "SUP":
                             with c2:
                                 e_tel = st.text_input("TELEFON GURU", value=guru_edit.get("TELEFON_GURU", "") or guru_edit.get("TELEFON", ""))
                                 e_email = st.text_input("EMAIL GURU", value=guru_edit.get("EMAIL_GURU", ""))
-                                e_jawatan = st.selectbox("JAWATAN CADANGAN", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"], index=0)
+                                e_jawatan = st.selectbox("JAWATAN CADANGAN", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"], index=0)
                                 e_pengalaman = st.text_input("PENGALAMAN SPM", value=guru_edit.get("PENGALAMAN_SPM", ""))
                                 e_no_pusat = st.text_input("NO PUSAT ASAL", value=guru_edit.get("NO_PUSAT_ASAL", ""))
                             
@@ -1868,7 +1889,7 @@ if st.session_state.role == "SUP":
                 with col2:
                     tel = st.text_input("NO TELEFON GURU * (Wajib)")
                     email = st.text_input("EMAIL GURU")
-                    jaw = st.selectbox("JAWATAN CADANGAN (Betul)", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"])
+                    jaw = st.selectbox("JAWATAN CADANGAN (Betul)", ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"])
                     pengalaman = st.text_input("PENGALAMAN SPM (Tahun) - SUP isi", placeholder="Contoh: 3 tahun")
                     no_pusat_asal = st.text_input("NO PUSAT ASAL", placeholder="Contoh: BA142")
                 
@@ -2012,7 +2033,18 @@ if st.session_state.role == "SUP":
                 st.warning("Tiada guru untuk dicadang. Tambah guru dulu.")
             else:
                 df_cad_existing = get_cadangan_df(kod_sekolah=kod)
-                JAWATAN_BETUL = ["Ketua Pengawas (WAJIB 1)", "Timbalan Ketua Pengawas (WAJIB 1)", "Penyelia Kawasan (Optional)", "Pengawas Peperiksaan (Ikut Kelas)"]
+                JAWATAN_BETUL = [
+            "Ketua Pengawas (WAJIB 1)",
+            "Timbalan Ketua Pengawas (WAJIB 1)",
+            "Penyelia Kawasan (Optional)",
+            "Pengawas Peperiksaan (Ikut Kelas)",
+            "Juru Tulis",
+            "Juru Baca",
+            "Ketua Pengawas Hospital",
+            "Pengawas Hospital",
+            "Pengawas Pengiring",
+            "Pengemas Bilik"
+        ]
                 st.markdown("### Pilih Guru (EMAIL kosong dibenarkan)")
                 guru_pilih = st.multiselect("Pilih Guru untuk dicadangkan (boleh pilih ramai)", df_guru["IC"].tolist(), format_func=lambda x: f"{df_guru[df_guru['IC']==x]['NAMA GURU'].values[0]} - {x}", key="guru_pilih_simple")
                 col_jawatan, col_exp = st.columns(2)
@@ -3663,7 +3695,7 @@ elif st.session_state.role == "PPD":
                     if jaw not in jawatan_groups:
                         jawatan_groups[jaw] = []
                     jawatan_groups[jaw].append(r)
-                order = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan"]
+                order = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"]
                 for jawatan in order:
                     if jawatan not in jawatan_groups: continue
                     guru_list = jawatan_groups[jawatan]
@@ -4343,7 +4375,7 @@ elif st.session_state.role == "PPD":
                 j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").strip()
                 if j and j.lower() not in ("", "nan", "none") and j not in jawatan_list_all:
                     jawatan_list_all.append(j)
-            order_jawatan = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Selenggara Bilik Kebal"]
+            order_jawatan = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Selenggara Bilik Kebal", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"]
             jawatan_sorted = sorted(jawatan_list_all, key=lambda x: (order_jawatan.index(x) if x in order_jawatan else 99, x))
             
             # Default filter from session
@@ -4426,7 +4458,7 @@ elif st.session_state.role == "PPD":
                 safe_default = [x for x in st.session_state["filter_jawatan_cad"] if x in jawatan_sorted]
                 # Jika user pilih Penyelia Kawasan tapi jawatan_sorted kosong, tetap tunjuk semua option yang mungkin
                 if not jawatan_sorted:
-                    jawatan_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan"]
+                    jawatan_sorted = ["Ketua Pengawas", "Timbalan Ketua Pengawas", "Penyelia Kawasan", "Pengawas Peperiksaan", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"]
                     safe_default = st.session_state["filter_jawatan_cad"]
                 # Jika safe_default kosong tapi session ada value yang bukan dalam options, guna empty supaya tak error
                 # Tapi untuk kes Penyelia Kawasan, kita benarkan jika memang dalam senarai tetap
@@ -4807,7 +4839,7 @@ elif st.session_state.role == "PPD":
                 with col_f1:
                     filter_jawatan_semak = st.selectbox(
                         "Filter Ikut Jawatan Untuk Isi Kekosongan",
-                        ["Semua Jawatan", "Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Penyelia Kawasan"],
+                        ["Semua Jawatan", "Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Penyelia Kawasan", "Juru Tulis", "Juru Baca", "Ketua Pengawas Hospital", "Pengawas Hospital", "Pengawas Pengiring", "Pengemas Bilik"],
                         key=f"filter_jawatan_semak_{pilihan_pusat_semak}"
                     )
                 with col_f2:
