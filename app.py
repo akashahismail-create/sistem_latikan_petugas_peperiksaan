@@ -1537,7 +1537,7 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         story.append(Paragraph("Dengan segala hormatnya perkara di atas adalah dirujuk.", style_normal))
         story.append(Spacer(1,4))
         # Point 2 - dilantik
-        story.append(Paragraph(f"2. &nbsp;&nbsp;Dilantik sebagai <b>{jawatan}</b> di <b>{display_pusat}</b>", style_normal))
+        story.append(Paragraph(f"2. &nbsp;&nbsp;Tuan dilantik sebagai <b>{jawatan}</b> di <b>{display_pusat}</b>", style_normal))
         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Sekolah Asal: <b>{display_sek_asal}</b>", style_normal))
         story.append(Spacer(1,4))
         # Point 3 - elaun - pecah jadi 2 paragraph supaya tak berterabur
