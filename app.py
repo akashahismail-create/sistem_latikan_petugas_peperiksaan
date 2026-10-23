@@ -1568,21 +1568,54 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         kod_ppd = clean_nan(kod_ppd) or "BA"
         ppd_name = clean_nan(ppd_name) or kod_ppd
         tarikh = clean_nan(tarikh) or "23 Jun 2026"
-        bilik_kebal = clean_nan(bilik_kebal) or clean_nan(kod_bilik_kebal) 
+        bilik_kebal = clean_nan(bilik_kebal) or clean_nan(kod_bilik_kebal) or "CB12 - SMK TELOK PANGLIMA GARANG"
         
         if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper() and sek_asal not in nama_sek_asal:
             display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
         else:
             display_sek_asal = nama_sek_asal if nama_sek_asal else sek_asal
-        if nama_pusat and nama_pusat.upper() != pusat.upper() and pusat not in nama_pusat:
-            display_pusat = f"{pusat} - {nama_pusat}"
-        else:
-            display_pusat = nama_pusat if nama_pusat else pusat
+        # ===== FIX NAMA PUSAT - AMBIL DARI PUSAT_MASTER SUPABASE (140 SEKOLAH) =====
+        # No Pusat = kod pusat tempat bertugas (BB017)
+        # Nama Pusat = nama sekolah dari pusat_master.nama_pusat
         
-        # No pusat untuk display - ambil dari pusat
+        # Cuba dapatkan nama pusat dari pusat_master jika nama_pusat kosong atau sama dengan kod
+        nama_pusat_from_master = ""
+        try:
+            # Kalau supa ada, query pusat_master
+            if 'supa' in globals() or 'supa' in locals():
+                try:
+                    # Query by no_pusat or kod_pusat
+                    for col_cari in ["no_pusat", "kod_pusat", "NO_PUSAT", "KOD_PUSAT"]:
+                        try:
+                            res_pusat = supa.table("pusat_master").select("*").eq(col_cari, pusat.upper().strip()).limit(1).execute()
+                            if res_pusat.data:
+                                row_p = res_pusat.data[0]
+                                nama_pusat_from_master = row_p.get("nama_pusat") or row_p.get("NAMA_PUSAT") or row_p.get("nama") or ""
+                                if nama_pusat_from_master:
+                                    break
+                        except:
+                            continue
+                except:
+                    pass
+        except:
+            pass
+        
+        # Tentukan display_pusat - keutamaan: dari pusat_master > nama_pusat yang diberi > kod pusat
+        if nama_pusat_from_master and str(nama_pusat_from_master).lower() not in ("nan","none",""):
+            display_pusat = f"{nama_pusat_from_master}".upper().strip()
+            nama_pusat_final = display_pusat
+        elif nama_pusat and str(nama_pusat).lower() not in ("nan","none","") and nama_pusat.upper() != pusat.upper():
+            display_pusat = f"{nama_pusat}".upper().strip()
+            nama_pusat_final = display_pusat
+        else:
+            display_pusat = f"{pusat}".upper().strip()
+            nama_pusat_final = display_pusat
+        
+        # No pusat untuk display - ambil dari pusat (tempat bertugas, bukan sekolah asal)
         no_pusat_display = pusat.split("-")[0].strip() if "-" in pusat else pusat
         if len(no_pusat_display) < 3:
             no_pusat_display = pusat
+        no_pusat_display = no_pusat_display.upper().strip()
         
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
