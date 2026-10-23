@@ -4385,11 +4385,25 @@ elif st.session_state.role == "PPD":
                 st.markdown("### ✅ Kelulusan Keseluruhan - Lulus Semua & Jana Surat Keseluruhan")
                 st.caption("Semua guru yang telah dilantik (DILANTIK PPD) di PPD ini akan diluluskan sekaligus. No Surat auto berturutan ikut daerah, tak berulang.")
                 
+                def is_valid_no_surat(ns):
+                    s = str(ns or "").strip()
+                    return s != "" and s.lower() not in ("nan","none","null","")
+                
+                def is_true_lulus(row):
+                    status = str(row.get("status") or row.get("STATUS") or "").upper()
+                    ns = row.get("no_surat") or ""
+                    # True lulus = status contains LULUS and has valid no_surat
+                    return "LULUS" in status and is_valid_no_surat(ns)
+                
+                def is_belum_lulus(row):
+                    # Belum lulus = not true lulus, and has pusat assigned
+                    return not is_true_lulus(row)
+                
                 df_sudah = df_cad_all[df_cad_all.apply(lambda r: str(r.get("kod_pusat") or r.get("KOD_PUSAT") or "").strip() != "" and str(r.get("kod_pusat") or "").lower() not in ("none","null","nan"), axis=1)].copy() if not df_cad_all.empty else pd.DataFrame()
                 
-                # Only those not yet LULUS (DILANTIK PPD)
-                df_belum_lulus = df_sudah[df_sudah.apply(lambda r: str(r.get("status") or r.get("STATUS") or "").upper() in ("DILANTIK PPD", "DILANTIK", "LULUS PPD SEPARUH", ""), axis=1)].copy() if not df_sudah.empty else pd.DataFrame()
-                df_sudah_lulus = df_sudah[df_sudah.apply(lambda r: str(r.get("status") or "").upper() == "LULUS PPD" and str(r.get("no_surat") or "").strip() != "", axis=1)].copy() if not df_sudah.empty else pd.DataFrame()
+                # FIX: Belum lulus = semua yang belum ada no_surat valid ATAU status bukan LULUS PPD
+                df_belum_lulus = df_sudah[df_sudah.apply(is_belum_lulus, axis=1)].copy() if not df_sudah.empty else pd.DataFrame()
+                df_sudah_lulus = df_sudah[df_sudah.apply(is_true_lulus, axis=1)].copy() if not df_sudah.empty else pd.DataFrame()
                 
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("Total Dilantik", len(df_sudah))
@@ -4410,12 +4424,15 @@ elif st.session_state.role == "PPD":
                 else:
                     st.markdown(f"#### 📝 {len(df_belum_lulus)} Guru Perlu Diluluskan - No Surat Berturutan {max_no_global+1} hingga {max_no_global+len(df_belum_lulus)}")
                     
-                    # Preview
+                    # Preview - FIX nan
                     preview_rows = []
                     cur_no = max_no_global + 1
                     for _, r in df_belum_lulus.iterrows():
                         existing_ns = str(r.get("no_surat") or "").strip()
-                        if existing_ns:
+                        # If existing is nan/none/null, treat as no existing
+                        if existing_ns.lower() in ("nan","none","null",""):
+                            existing_ns = ""
+                        if existing_ns and existing_ns.lower() not in ("nan","none",""):
                             no_baru = existing_ns
                         else:
                             no_baru = get_next_no_surat_format(kod_ppd, cur_no)
@@ -4443,7 +4460,9 @@ elif st.session_state.role == "PPD":
                                 for _, r in df_belum_lulus.iterrows():
                                     id_g = r.get("id","")
                                     existing_ns = str(r.get("no_surat") or "").strip()
-                                    if existing_ns:
+                                    if existing_ns.lower() in ("nan","none","null",""):
+                                        existing_ns = ""
+                                    if existing_ns and existing_ns.lower() not in ("nan","none",""):
                                         no_surat_baru = existing_ns
                                     else:
                                         no_surat_baru = get_next_no_surat_format(kod_ppd, cur_no)
