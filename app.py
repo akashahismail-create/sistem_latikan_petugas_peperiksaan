@@ -366,6 +366,7 @@ def get_nama_sekolah_full(kod_sek, fallback=""):
         return fallback or str(kod_sek)
 
 def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh):
+    """Generate surat - PPD punya akan diganti dengan template JPN jika ada (JPN selaraskan)"""
     # Bersihkan semua input dari nan
     nama = clean_nan(nama) or "Nama Guru"
     ic = clean_nan(ic)
@@ -378,11 +379,57 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     kod_ppd = clean_nan(kod_ppd) or "BA"
     ppd_name = clean_nan(ppd_name) or kod_ppd
     
+    # === CEK TEMPLATE JPN DULU - Jika JPN dah selaraskan, guna template JPN (PPD punya diganti) ===
+    try:
+        # Try load from surat_templates_jpn table
+        tmpl_res = supa.table("surat_templates_jpn").select("template_html").eq("jawatan", jawatan.upper().strip()).limit(1).execute()
+        if tmpl_res.data and len(tmpl_res.data) > 0:
+            tmpl_html = tmpl_res.data[0].get("template_html")
+            if tmpl_html and len(tmpl_html) > 50:
+                # Guna template JPN - ganti placeholder
+                html = tmpl_html
+                replacements = {
+                    "NAMA": nama,
+                    "IC": ic,
+                    "JAWATAN": jawatan,
+                    "SEKOLAH_ASAL": sek_asal,
+                    "NAMA_SEKOLAH_ASAL": nama_sek_asal or get_nama_sekolah_full(sek_asal, "") if "get_nama_sekolah_full" in globals() else sek_asal,
+                    "PUSAT": pusat,
+                    "NAMA_PUSAT": nama_pusat or pusat,
+                    "NO_SURAT": no_surat,
+                    "PPD": kod_ppd,
+                    "PPD_NAME": ppd_name,
+                    "TARIKH": tarikh,
+                    "KOD_PUSAT": pusat,
+                    "KOD_PPD": kod_ppd
+                }
+                for k,v in replacements.items():
+                    html = html.replace("{{"+k+"}}", str(v)).replace("{{ "+k+" }}", str(v)).replace("{{"+k.lower()+"}}", str(v))
+                # Wrap if not html
+                if "<html>" not in html.lower():
+                    html = f"<html><head><meta charset='UTF-8'></head><body>{html}</body></html>"
+                return html
+    except Exception as e:
+        # If table not exists or error, fallback to old PPD template
+        pass
+    
+    try:
+        # Try session state JPN templates
+        if "jpn_templates" in st.session_state:
+            tmpl = st.session_state.jpn_templates.get(jawatan.upper().strip()) or st.session_state.jpn_templates.get(jawatan)
+            if tmpl and len(tmpl) > 50:
+                html = tmpl
+                for k,v in {"NAMA": nama, "IC": ic, "JAWATAN": jawatan, "SEKOLAH_ASAL": sek_asal, "PUSAT": pusat, "NO_SURAT": no_surat, "PPD": kod_ppd, "TARIKH": tarikh}.items():
+                    html = html.replace("{{"+k+"}}", str(v))
+                return html
+    except:
+        pass
+    
+    # === FALLBACK: Template lama PPD (jika JPN belum sediakan) ===
     # Dapatkan nama penuh sekolah asal - bukan sekadar kod
     if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper():
         display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
     else:
-        # Cuba lookup nama penuh
         try:
             full_nama = get_nama_sekolah_full(sek_asal, nama_sek_asal)
             if full_nama.upper() != sek_asal.upper():
@@ -392,7 +439,6 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
         except:
             display_sek_asal = sek_asal or "Sekolah Asal"
     
-    # Pusat display
     if nama_pusat and nama_pusat.upper() != pusat.upper():
         display_pusat = f"{pusat} - {nama_pusat}"
     else:
@@ -411,7 +457,7 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     html += '<div class="surat"><div class="header">'
     html += '<h2>JABATAN PENDIDIKAN NEGERI SELANGOR</h2>'
     html += f'<h3>PEJABAT PENDIDIKAN DAERAH {kod_ppd} - {ppd_name}</h3>'
-    html += f'<p>No Surat: {no_surat}</p></div>'
+    html += f'<p>No Surat: {no_surat} | [Template JPN Selaras - Jika ada template JPN, surat ini akan diganti]</p></div>'
     html += '<div class="kandungan">'
     html += f'<p>Tarikh: {tarikh}</p>'
     html += '<p><strong>Tuan/Puan,</strong></p>'
@@ -432,9 +478,9 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     html += '<div class="footer"><p><strong>MALAYSIA MADANI</strong><br><strong>BERKHIDMAT UNTUK NEGARA</strong></p>'
     html += '<div class="tandatangan"><div><p>Yang benar,</p><br><br><br>'
     html += f'<p>_________________________<br><strong>Pegawai Pendidikan Daerah<br>PPD {kod_ppd} - {ppd_name}</strong></p></div>'
-    html += '<div style="text-align:right;"><p>b.p Pengarah Pendidikan<br>Jabatan Pendidikan Negeri Selangor</p></div></div></div></div></div>'
-    html += '</body></html>'
+    html += '<div style="text-align:right;"><p>b.p Pengarah Pendidikan<br>Jabatan Pendidikan Negeri Selangor</p></div></div></div></div></body></html>'
     return html
+
 
 def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, no_rujukan=""):
     """Generate surat lantikan as PDF bytes - untuk download PDF - FIX nan & sekolah asal"""
@@ -578,90 +624,241 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
 
 
 def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURAT LANTIKAN KESELURUHAN"):
-    """Generate kolektif PDF untuk banyak surat - FORMAT RASMI KPM JPN SELANGOR (Logo tepi kiri + Ruj Kanan = No Surat)"""
+    """Generate kolektif PDF untuk banyak surat"""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, Image
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
         from reportlab.lib import colors
         import io
-        import os
-        import tempfile
-        import requests
         
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
         styles = getSampleStyleSheet()
-        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=13, alignment=1, spaceAfter=6, leading=14)
-        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=11, alignment=1, spaceAfter=6)
-        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=4)
-        style_ruj = ParagraphStyle('RujCustom', parent=styles['Normal'], fontSize=9, alignment=2, leading=11)  # 2 = right
-        style_header = ParagraphStyle('HeaderCustom', parent=styles['Normal'], fontSize=10, leading=12)
+        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=4)
+        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=11, alignment=1, spaceAfter=3)
+        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=3)
         
         story = []
-        
-        # HEADER RASMI - Logo tepi kiri (if available, use text placeholder)
-        # KPM Header
-        header_text = """<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR<br/><font size=8>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam</font>"""
-        # We use table for logo tepi kiri effect - since image download may fail, use JATA placeholder
-        story.append(Paragraph(header_text, style_header))
-        story.append(Spacer(1, 2))
-        story.append(Paragraph("<hr/>", style_normal))
-        
-        # Ruj Kami kanan - No Surat kolektif
-        no_surat_kolektif = surat_list[0].get('no_surat') if surat_list else 'JPN.SPP.HHJH/PPD.BA/0001'
-        from datetime import date
-        tarikh_str = date.today().strftime('%d %B %Y')
-        ruj_html = f"""<font size=9>Ruj. Kami: {no_surat_kolektif}<br/>Tarikh: {tarikh_str}</font>"""
-        story.append(Paragraph(ruj_html, style_ruj))
+        story.append(Paragraph(f"{title}", style_title))
+        story.append(Paragraph(f"PPD {kod_ppd} - {ppd_name} - {len(surat_list)} Guru", style_heading))
         story.append(Spacer(1, 6))
         
-        story.append(Paragraph(f"<b>{title}</b>", style_title))
-        story.append(Paragraph(f"PPD {kod_ppd} - {ppd_name} - {len(surat_list)} Guru", style_heading))
-        story.append(Spacer(1, 8))
-        
         for idx, s in enumerate(surat_list, start=1):
-            nama = s.get('nama','') or s.get('NAMA','')
-            ic = s.get('ic','') or s.get('IC','')
+            nama = s.get('nama','')
+            ic = s.get('ic','')
             jawatan = s.get('jawatan') or s.get('JAWATAN') or ''
-            sek_asal = s.get('sekolah_asal') or s.get('SEKOLAH ASAL') or s.get('sek_asal_code') or ''
-            nama_sek_asal = s.get('nama_sekolah_asal') or s.get('NAMA SEKOLAH ASAL') or ''
+            sek_asal = s.get('sekolah_asal') or s.get('SEKOLAH ASAL') or ''
             pusat = s.get('pusat') or s.get('PUSAT') or ''
             no_surat = s.get('no_surat') or s.get('NO SURAT') or s.get('NO SURAT BARU') or ''
             nama_pusat = s.get('nama_pusat') or s.get('NAMA PUSAT') or ''
-            bilik_kebal = s.get('bilik_kebal') or s.get('BILIK KEBAL') or ''
             
-            # Format rasmi per guru - guna template yang sama seperti individu
             isi = f"""
             <b>{idx}. {nama} ({ic}) - {jawatan}</b><br/>
-            <font size=8>
-            No Surat: <b>{no_surat}</b> | Sekolah Asal: {sek_asal} - {nama_sek_asal} | Pusat: {pusat} - {nama_pusat}<br/>
-            Bilik Kebal: {bilik_kebal}<br/>
-            Tuan/Puan telah dilantik sebagai <b>{jawatan}</b> SPM 2026 di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
-            Elaun: Mengikut jawatan (rujuk surat individu)<br/>
-            </font>
+            No Surat: <b>{no_surat}</b> | Sekolah Asal: {sek_asal} | Pusat: {pusat} - {nama_pusat}<br/>
+            Tuan/Puan telah dilantik sebagai {jawatan} SPM 2026 di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
             """
             story.append(Paragraph(isi, style_normal))
-            story.append(Spacer(1, 6))
-            if idx % 5 == 0 and idx < len(surat_list):
+            story.append(Spacer(1, 4))
+            if idx % 6 == 0:
                 story.append(PageBreak())
-                # Repeat header on new page
-                story.append(Paragraph(header_text, style_header))
-                story.append(Paragraph("<hr/>", style_normal))
-                story.append(Paragraph(ruj_html, style_ruj))
-                story.append(Spacer(1, 6))
-        
-        # Footer rasmi
-        story.append(Spacer(1, 12))
-        story.append(Paragraph("<b>MALAYSIA MADANI - BERKHIDMAT UNTUK NEGARA</b><br/><br/>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)<br/>Pengarah Pendidikan, JPN Selangor", style_normal))
         
         doc.build(story)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
     except Exception as e:
-        print(f"Error kolektif: {e}")
+        return None
+
+
+def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, no_rujukan=""):
+    """Generate surat lantikan as PDF bytes - untuk download PDF - FIX nan & sekolah asal"""
+    # Bersihkan
+    try:
+        nama = clean_nan(nama) or "Nama Guru"
+        ic = clean_nan(ic)
+        jawatan = clean_nan(jawatan) or "Petugas Peperiksaan"
+        sek_asal = clean_nan(sek_asal)
+        nama_sek_asal = clean_nan(nama_sek_asal)
+        pusat = clean_nan(pusat)
+        nama_pusat = clean_nan(nama_pusat)
+        no_surat = clean_nan(no_surat) or "JPN.SPP.HHJH/0001"
+        kod_ppd = clean_nan(kod_ppd) or "BA"
+        ppd_name = clean_nan(ppd_name) or kod_ppd
+        tarikh = clean_nan(tarikh) or str(datetime.date.today())
+        
+        # Nama penuh sekolah
+        if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper():
+            display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
+        else:
+            try:
+                full_nama = get_nama_sekolah_full(sek_asal, nama_sek_asal)
+                display_sek_asal = full_nama if full_nama.upper() != sek_asal.upper() else f"{sek_asal} - {full_nama}" if full_nama else sek_asal
+            except:
+                display_sek_asal = sek_asal
+        
+        display_pusat = f"{pusat} - {nama_pusat}" if nama_pusat and nama_pusat.upper() != pusat.upper() else pusat
+    except:
+        display_sek_asal = sek_asal
+        display_pusat = pusat
+    
+    # Cuba dengan reportlab
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        import io
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=20*mm, leftMargin=20*mm, topMargin=15*mm, bottomMargin=15*mm)
+        
+        styles = getSampleStyleSheet()
+        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=6)
+        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=12, alignment=1, spaceAfter=4)
+        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=4)
+        
+        story = []
+        story.append(Paragraph("JABATAN PENDIDIKAN NEGERI SELANGOR", style_title))
+        story.append(Paragraph(f"PEJABAT PENDIDIKAN DAERAH {ppd_name.upper() or kod_ppd}", style_heading))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"<b>SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026</b>", style_heading))
+        story.append(Spacer(1, 8))
+        story.append(Paragraph(f"<b>No Rujukan: {no_surat}</b>", style_normal))
+        story.append(Paragraph(f"Tarikh: {tarikh}", style_normal))
+        story.append(Spacer(1, 8))
+        
+        isi = f"""
+        <b>Tuan/Puan {nama} ({ic})</b><br/>
+        {jawatan}<br/>
+        {display_sek_asal}<br/><br/>
+        Tuan/Puan,<br/><br/>
+        <b>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM 2026</b><br/><br/>
+        Dengan hormatnya dimaklumkan bahawa tuan/puan telah dilantik sebagai <b>{jawatan}</b> bagi Peperiksaan SPM Tahun 2026.<br/><br/>
+        <b>Butiran Penempatan:</b><br/>
+        - Sekolah Asal: {display_sek_asal}<br/>
+        - Pusat Peperiksaan Ditugaskan: {display_pusat}<br/>
+        - No Surat Lantikan: {no_surat}<br/>
+        - Kod PPD: {kod_ppd} - {ppd_name}<br/><br/>
+        Tuan/puan dikehendaki melapor diri di pusat peperiksaan yang ditetapkan pada tarikh dan masa yang akan dimaklumkan kelak.<br/><br/>
+        Kerjasama tuan/puan amatlah dihargai dan didahului dengan ucapan terima kasih.<br/><br/>
+        Sekian.<br/><br/>
+        <b>"BERKHIDMAT UNTUK NEGARA"</b><br/><br/>
+        Saya yang menjalankan amanah,<br/><br/><br/>
+        <b>PEGAWAI PENDIDIKAN DAERAH</b><br/>
+        {ppd_name}<br/>
+        PPD {kod_ppd}<br/>
+        """
+        story.append(Paragraph(isi, style_normal))
+        story.append(Spacer(1, 12))
+        
+        data_footer = [
+            [f"No Surat: {no_surat}", f"Pusat: {display_pusat}"],
+            [f"Sekolah Asal: {display_sek_asal}", f"Jawatan: {jawatan}"]
+        ]
+        t = Table(data_footer, colWidths=[85*mm, 85*mm])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f5f5f5')),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ]))
+        story.append(t)
+        
+        doc.build(story)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+        return pdf_bytes
+    except Exception as e:
+        # Fallback simple canvas
+        try:
+            import io
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            buffer = io.BytesIO()
+            c = canvas.Canvas(buffer, pagesize=A4)
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(50, 800, f"SURAT LANTIKAN SPM 2026 - {kod_ppd}")
+            c.setFont("Helvetica", 10)
+            y = 780
+            lines = [
+                f"No Surat: {no_surat}",
+                f"Nama: {nama}",
+                f"IC: {ic}",
+                f"Jawatan: {jawatan}",
+                f"Sekolah Asal: {display_sek_asal}",
+                f"Pusat Tugas: {display_pusat}",
+                f"Tarikh: {tarikh}",
+                f"PPD: {kod_ppd} - {ppd_name}",
+                "",
+                "Tuan/Puan telah dilantik sebagai petugas peperiksaan SPM 2026.",
+                f"Sila lapor diri di pusat {pusat}.",
+            ]
+            for line in lines:
+                c.drawString(50, y, line[:100])
+                y -= 20
+                if y < 50:
+                    c.showPage()
+                    y = 800
+            c.save()
+            return buffer.getvalue()
+        except Exception as e2:
+            # Ultimate fallback: return HTML as bytes with pdf mime (still downloadable)
+            try:
+                html_fallback = generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh)
+                return html_fallback.encode('utf-8')
+            except:
+                return None
+
+
+def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURAT LANTIKAN KESELURUHAN"):
+    """Generate kolektif PDF untuk banyak surat"""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
+        from reportlab.lib import colors
+        import io
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
+        styles = getSampleStyleSheet()
+        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=4)
+        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=11, alignment=1, spaceAfter=3)
+        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=3)
+        
+        story = []
+        story.append(Paragraph(f"{title}", style_title))
+        story.append(Paragraph(f"PPD {kod_ppd} - {ppd_name} - {len(surat_list)} Guru", style_heading))
+        story.append(Spacer(1, 6))
+        
+        for idx, s in enumerate(surat_list, start=1):
+            nama = s.get('nama','')
+            ic = s.get('ic','')
+            jawatan = s.get('jawatan') or s.get('JAWATAN') or ''
+            sek_asal = s.get('sekolah_asal') or s.get('SEKOLAH ASAL') or ''
+            pusat = s.get('pusat') or s.get('PUSAT') or ''
+            no_surat = s.get('no_surat') or s.get('NO SURAT') or s.get('NO SURAT BARU') or ''
+            nama_pusat = s.get('nama_pusat') or s.get('NAMA PUSAT') or ''
+            
+            isi = f"""
+            <b>{idx}. {nama} ({ic}) - {jawatan}</b><br/>
+            No Surat: <b>{no_surat}</b> | Sekolah Asal: {sek_asal} | Pusat: {pusat} - {nama_pusat}<br/>
+            Tuan/Puan telah dilantik sebagai {jawatan} SPM 2026 di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
+            """
+            story.append(Paragraph(isi, style_normal))
+            story.append(Spacer(1, 4))
+            if idx % 6 == 0:
+                story.append(PageBreak())
+        
+        doc.build(story)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+        return pdf_bytes
+    except Exception as e:
         return None
 
 
