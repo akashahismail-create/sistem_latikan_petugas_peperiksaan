@@ -10,6 +10,49 @@ import re
 # ================= CONFIGURATION =================
 st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 
+
+# ===== HIDE FORK & GITHUB CAT BUTTON (PPD MINTA BUANG) =====
+def hide_fork_github():
+    try:
+        import streamlit as st
+        st.markdown("""
+        <style>
+        /* Hide Fork button and GitHub cat */
+        header {visibility: hidden !important;}
+        header * {visibility: hidden !important;}
+        [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
+        [data-testid="stToolbar"] {display: none !important;}
+        [data-testid="stDecoration"] {display: none !important;}
+        .stAppDeployButton {display: none !important; visibility: hidden !important;}
+        /* Hide GitHub icon / Fork */
+        a[href*="github"] {display: none !important;}
+        button[kind="header"] {display: none !important;}
+        /* Hide top right menu - Fork, Share etc */
+        #MainMenu {visibility: hidden !important;}
+        footer {visibility: hidden !important;}
+        /* Extra: hide any element containing Fork text */
+        div:has(> button:has-text("Fork")) {display: none !important;}
+
+        /* ===== TAMBAHAN HIDE FORK GITHUB - CONFIRM HILANG ===== */
+        header[data-testid="stHeader"] {display: none !important;}
+        .viewerBadge_container__1QSob {display: none !important;}
+        .styles_viewerBadge__1yB5_ {display: none !important;}
+        a.viewerBadge_link__1S137 {display: none !important;}
+        /* Streamlit Cloud Fork button */
+        [data-testid="stAppViewContainer"] > header {display: none !important;}
+        iframe[title="streamlitApp"] {display: none !important;}
+
+        </style>
+        """, unsafe_allow_html=True)
+    except:
+        pass
+
+try:
+    hide_fork_github()
+except:
+    pass
+
+
 SUPABASE_URL = "https://gnmaijhugkkvxejvsotk.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdubWFpamh1Z2trdnhlanZzb3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0ODc4OTcsImV4cCI6MjEwODA2Mzg5N30.1YWg71nCwnQzP-KUzTdHR4rZAVCAesbKVqvVC1-X6lw"
 
