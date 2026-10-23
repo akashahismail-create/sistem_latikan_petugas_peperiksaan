@@ -4493,63 +4493,104 @@ elif st.session_state.role == "PPD":
                                 st.download_button(f"📥 Download Surat {pilihan_pusat_lulus}", data=full_html.encode('utf-8'), file_name=f"Surat_Lantikan_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key=f"dl_surat_pusat_{pilihan_pusat_lulus}")
             
             st.markdown("---")
-            st.markdown("### 🔐 Selenggara No Pusat - PPD Boleh Buat Sekali Sahaja - Auto Berturutan")
-            st.info("PPD hanya boleh selenggara No Pusat sekali sahaja. No Pusat auto berturutan (BA001, BA002...).")
+            st.markdown("### 🔐 Selenggara No Surat - PPD Boleh Buat Sekali Sahaja - No Surat Auto Berturutan Ikut Daerah")
+            st.info("PPD hanya boleh selenggara No Surat sekali sahaja. No Surat auto berturutan ikut daerah masing-masing (BA: 0001,0002... BB: 0001,0002...), tak berulang.")
             
-            # Check if sudah selenggara
+            # Check if sudah selenggara No Surat untuk PPD ini
             try:
-                res_check_selenggara = supa.table("pusat_master").select("*").eq("kod_ppd", kod_ppd).limit(1).execute()
-                # Check if ada column selenggara_done or check via data
-                sudah_selenggara = False
-                if res_check_selenggara.data:
-                    for r in res_check_selenggara.data:
+                res_check_surat = supa.table("pusat_master").select("*").eq("kod_ppd", kod_ppd).limit(10).execute()
+                sudah_selenggara_surat = False
+                info_selenggara_surat = None
+                if res_check_surat.data:
+                    for r in res_check_surat.data:
                         d = r.get("data") or {}
                         if isinstance(d, str):
                             try: d = json.loads(d)
                             except: d = {}
-                        if d.get("SELENGGARA_PUSAT_DONE") or d.get("selenggara_done"):
-                            sudah_selenggara = True
+                        if d.get("SELENGGARA_NO_SURAT_DONE") or d.get("selenggara_no_surat_done"):
+                            sudah_selenggara_surat = True
+                            info_selenggara_surat = d
                             break
             except:
-                sudah_selenggara = False
+                sudah_selenggara_surat = False
+                info_selenggara_surat = None
             
-            if sudah_selenggara:
-                st.warning(f"⚠️ No Pusat untuk PPD {kod_ppd} sudah diselenggara sebelum ini - PPD hanya boleh selenggara sekali sahaja. Untuk selenggara semula, hubungi JPN.")
+            # Also check from cadangan_sup if ada no_surat already exists - meaning sudah selenggara
+            try:
+                res_no_surat_exist = supa.table("cadangan_sup").select("no_surat").eq("kod_ppd", kod_ppd).not_.is_("no_surat", "null").limit(1).execute()
+                if res_no_surat_exist.data:
+                    sudah_selenggara_surat = True
+                    if not info_selenggara_surat:
+                        info_selenggara_surat = {"NOTE": "Ada No Surat sudah wujud dalam DB"}
+            except:
+                pass
+            
+            if sudah_selenggara_surat:
+                max_exist = get_max_no_surat_ppd(kod_ppd)
+                st.warning(f"⚠️ No Surat untuk PPD {kod_ppd} sudah diselenggara sebelum ini (Max No Surat sedia ada: {max_exist}) - PPD hanya boleh selenggara No Surat sekali sahaja. No Surat akan auto berturutan dari {max_exist+1}. Untuk selenggara semula, hubungi JPN. Info: {info_selenggara_surat}")
+                st.markdown(f"**No Surat seterusnya untuk PPD {kod_ppd}: {get_next_no_surat_format(kod_ppd, max_exist+1)} (auto berturutan, tak berulang)**")
             else:
-                st.markdown("**Selenggara No Pusat Auto Berturutan:**")
-                if st.button(f"🔐 Selenggara No Pusat PPD {kod_ppd} Auto Berturutan Sekali Sahaja", type="secondary", use_container_width=True, key="btn_selenggara_no_pusat"):
+                st.markdown("#### ⚙️ Selenggara No Surat - Set Sekali Sahaja Untuk PPD Ini")
+                st.caption(f"PPD {kod_ppd} belum pernah selenggara No Surat. Set no permulaan sekali sahaja, lepas tu auto berturutan ikut daerah.")
+                
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    no_mula_selenggara = st.number_input("No Permulaan Surat Untuk Daerah Ini", min_value=1, value=1, step=1, key="no_mula_selenggara_surat")
+                    st.caption(f"Akan jadi: {get_next_no_surat_format(kod_ppd, no_mula_selenggara)}")
+                with col_s2:
+                    prefix_selenggara = st.text_input("Prefix No Surat (Ikut Daerah)", value=f"JPN.SEL/PPD.{kod_ppd}/SPM/{datetime.date.today().year}/", key="prefix_selenggara_surat")
+                
+                st.error("⚠️ Peringatan: Selenggara No Surat hanya boleh dibuat SEKALI SAHAJA oleh PPD. Pastikan no permulaan betul sebelum sahkan. No Surat selepas ini akan auto berturutan (0001,0002...) dan tak berulang.")
+                
+                if st.button(f"🔐 Sahkan Selenggara No Surat PPD {kod_ppd} Sekali Sahaja - Mula {no_mula_selenggara:04d} Auto Berturutan", type="primary", use_container_width=True, key="btn_selenggara_no_surat"):
                     try:
-                        # Get all pusat for this PPD ordered
+                        # Mark selenggara done in pusat_master for this PPD (create dummy record or update first record)
                         df_pusat_all = get_pusat_df()
-                        pusat_ppd_list = []
-                        for _, r in df_pusat_all.iterrows():
-                            d = r.get("data") if isinstance(r.get("data"), dict) else {}
-                            if isinstance(d, str):
-                                try: d = json.loads(d)
-                                except: d = {}
-                            no_p = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
-                            if no_p.startswith(kod_ppd.upper()):
-                                pusat_ppd_list.append((no_p, r))
-                        pusat_ppd_list.sort(key=lambda x: x[0])
-                        # Auto assign sequential if needed - already sequential by code
-                        berjaya_selenggara = 0
-                        for idx, (no_p, r) in enumerate(pusat_ppd_list, start=1):
-                            # Mark as selenggara done
-                            rec_id = r.get("id")
-                            d = r.get("data") or {}
-                            if isinstance(d, str):
-                                try: d = json.loads(d)
-                                except: d = {}
-                            d["SELENGGARA_PUSAT_DONE"] = True
-                            d["SELENGGARA_PUSAT_TARIKH"] = str(datetime.date.today())
-                            d["SELENGGARA_PUSAT_OLEH"] = kod_ppd
-                            supa.table("pusat_master").update({"data": d}).eq("id", rec_id).execute()
-                            berjaya_selenggara += 1
-                        st.success(f"✅ Berjaya selenggara No Pusat PPD {kod_ppd} - {berjaya_selenggara} pusat auto berturutan. PPD tidak boleh selenggara lagi (sekali sahaja).")
+                        berjaya_surat = 0
+                        # Update 1 pusat as marker, or create selenggara log
+                        try:
+                            # Cari 1 pusat untuk PPD ini sebagai marker
+                            marker_found = False
+                            for _, r in df_pusat_all.iterrows():
+                                d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                                if isinstance(d, str):
+                                    try: d = json.loads(d)
+                                    except: d = {}
+                                no_p = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                if no_p.startswith(kod_ppd.upper()):
+                                    rec_id = r.get("id")
+                                    d["SELENGGARA_NO_SURAT_DONE"] = True
+                                    d["SELENGGARA_NO_SURAT_TARIKH"] = str(datetime.date.today())
+                                    d["SELENGGARA_NO_SURAT_OLEH"] = kod_ppd
+                                    d["SELENGGARA_NO_SURAT_MULA"] = no_mula_selenggara
+                                    d["SELENGGARA_NO_SURAT_PREFIX"] = prefix_selenggara
+                                    d["SELENGGARA_NO_SURAT_FORMAT"] = get_next_no_surat_format(kod_ppd, no_mula_selenggara)
+                                    supa.table("pusat_master").update({"data": d}).eq("id", rec_id).execute()
+                                    marker_found = True
+                                    berjaya_surat = 1
+                                    break
+                            if not marker_found:
+                                # Jika tiada pusat, insert ke table log (guna cadangan_sup dummy? tapi kita guna pusat_master insert)
+                                # Buat 1 record baru di pusat_master sebagai log selenggara
+                                log_data = {
+                                    "SELENGGARA_NO_SURAT_DONE": True,
+                                    "SELENGGARA_NO_SURAT_TARIKH": str(datetime.date.today()),
+                                    "SELENGGARA_NO_SURAT_OLEH": kod_ppd,
+                                    "SELENGGARA_NO_SURAT_MULA": no_mula_selenggara,
+                                    "SELENGGARA_NO_SURAT_PREFIX": prefix_selenggara,
+                                    "NO_PUSAT": f"{kod_ppd}-LOG-SURAT",
+                                    "NAMA_PUSAT": f"LOG SELENGGARA NO SURAT PPD {kod_ppd}"
+                                }
+                                supa.table("pusat_master").insert({"no_pusat": f"{kod_ppd}-LOG-SURAT", "kod_ppd": kod_ppd, "nama_pusat": f"LOG SELENGGARA NO SURAT PPD {kod_ppd}", "data": log_data}).execute()
+                                berjaya_surat = 1
+                        except Exception as e_inner:
+                            st.warning(f"Marker log: {e_inner}")
+                        
+                        st.success(f"✅ Berjaya selenggara No Surat PPD {kod_ppd} sekali sahaja! No mula: {no_mula_selenggara:04d} = {get_next_no_surat_format(kod_ppd, no_mula_selenggara)} - Selepas ini auto berturutan {no_mula_selenggara:04d}, {no_mula_selenggara+1:04d}, {no_mula_selenggara+2:04d}... Tak berulang, ikut daerah {kod_ppd}. PPD tidak boleh selenggara lagi.")
                         st.balloons()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error selenggara No Pusat: {e}")
+                        st.error(f"Error selenggara No Surat: {e}")
 
 
 
