@@ -81,6 +81,23 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 def get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
+@st.cache_data(ttl=600, show_spinner=False)
+def get_jpn_templates_cached_fast():
+    try:
+        res = supa.table("surat_templates_jpn").select("jawatan, template_html").execute()
+        return {r["jawatan"].upper(): r["template_html"] for r in res.data} if res.data else {}
+    except:
+        return {}
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_cadangan_df_light():
+    try:
+        res = supa.table("cadangan_sup").select("id, KOD_PPD, KOD_PUSAT, JAWATAN_CADANGAN, NAMA_GURU, STATUS").limit(500).execute()
+        return pd.DataFrame(res.data or [])
+    except:
+        return pd.DataFrame()
+
+
 supa = get_supabase()
 
 # Clear cache helper - untuk refresh button cepat
@@ -3721,7 +3738,8 @@ elif st.session_state.role == "PPD":
                     st.error(str(e))
 
         elif menu == "jpn_template_surat":
-            st.header("📄 Template Surat Lantikan Mengikut Jawatan - JPN Selaraskan")
+            st.header("📄 Template Surat Lantikan Mengikut Jawatan - JPN Selaraskan (LAJU)")
+            st.success("✅ Version LAJU - Tak load 2000 rekod, cache 10 minit")
             st.warning("⚠️ Surat lama PPD akan diganti dengan template JPN ini (setiap jawatan berbeza) - PPD punya auto terganti")
             
             JAWATAN_LIST_JPN = [
@@ -3739,68 +3757,67 @@ elif st.session_state.role == "PPD":
             ]
             
             DEFAULT_TEMPLATES_JPN = {
-                "KETUA PENGAWAS": "<html><body><div style='border:3px double #000; padding:30px;'><h2 style='text-align:center;'>SURAT LANTIKAN KETUA PENGAWAS SPM 2026<br>JABATAN PENDIDIKAN NEGERI SELANGOR</h2><p>No: {{NO_SURAT}} | Tarikh: {{TARIKH}}</p><p>Tuan/Puan <b>{{NAMA}}</b> ({{IC}}) telah dilantik sebagai <b>KETUA PENGAWAS</b> di pusat {{PUSAT}} ({{NAMA_PUSAT}}). Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}. PPD: {{PPD}}.</p><p><b>Tanggungjawab KP:</b> Mengetuai semua petugas, memastikan kelancaran peperiksaan, bertanggungjawab ke atas bilik kebal.</p></div></body></html>",
-                "TIMBALAN KETUA PENGAWAS": "<html><body><div style='border:2px solid #e65100; padding:30px;'><h2>SURAT LANTIKAN TIMBALAN KETUA PENGAWAS SPM 2026</h2><p>Tuan/Puan {{NAMA}} dilantik sebagai TIMBALAN KETUA PENGAWAS di {{PUSAT}}. No: {{NO_SURAT}}</p></div></body></html>",
-                "PENGAWAS PEPERIKSAAN": "<html><body><div style='border:2px solid #1b5e20; padding:30px;'><h2>SURAT LANTIKAN PENGAWAS PEPERIKSAAN SPM 2026</h2><p>Tuan/Puan {{NAMA}} dilantik sebagai PENGAWAS PEPERIKSAAN di {{PUSAT}}.</p></div></body></html>",
-                "JURU TULIS": "<html><body><div style='border:2px solid #4527a0; padding:30px;'><h2 style='color:#4527a0;'>SURAT LANTIKAN JURU TULIS SPM 2026 (Pengawas Khas - Tambahan)</h2><p>Tuan/Puan {{NAMA}} dilantik sebagai JURU TULIS untuk calon berkeperluan khas di {{PUSAT}}. Lantikan Khas, tidak termasuk dalam 19 petugas biasa.</p><p>No: {{NO_SURAT}} | PPD: {{PPD}}</p></div></body></html>",
-                "JURU BACA": "<html><body><div style='border:2px solid #006064; padding:30px;'><h2 style='color:#006064;'>SURAT LANTIKAN JURU BACA SPM 2026 (Pengawas Khas)</h2><p>Tuan/Puan {{NAMA}} dilantik sebagai JURU BACA di {{PUSAT}}.</p></div></body></html>",
-                "KETUA PENGAWAS HOSPITAL": "<html><body><div style='border:2px solid #b71c1c; padding:30px;'><h2>SURAT LANTIKAN KETUA PENGAWAS HOSPITAL</h2><p>{{NAMA}} - {{PUSAT}}</p></div></body></html>",
+                "KETUA PENGAWAS": "<html><body><div style='border:3px double #000; padding:30px; text-align:center;'><h2>SURAT LANTIKAN KETUA PENGAWAS SPM 2026<br>JABATAN PENDIDIKAN NEGERI SELANGOR</h2><p>No: {{NO_SURAT}} | Tarikh: {{TARIKH}}</p><p>Tuan/Puan <b>{{NAMA}}</b> ({{IC}}) dilantik sebagai <b>KETUA PENGAWAS</b> di pusat {{PUSAT}} ({{NAMA_PUSAT}}). Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}. PPD: {{PPD}}.</p><p><b>Tugas KP:</b> Mengetuai semua petugas, tanggungjawab bilik kebal.</p><br><p>Pengarah JPN Selangor</p></div></body></html>",
+                "TIMBALAN KETUA PENGAWAS": "<html><body><div style='border:2px solid #e65100; padding:30px;'><h2>SURAT LANTIKAN TIMBALAN KETUA PENGAWAS SPM 2026</h2><p>Tuan/Puan {{NAMA}} ({{IC}}) dilantik sebagai TIMBALAN KETUA PENGAWAS di {{PUSAT}}. No: {{NO_SURAT}}</p><p>PPD: {{PPD}} - Sekolah Asal: {{SEKOLAH_ASAL}}</p></div></body></html>",
+                "PENGAWAS PEPERIKSAAN": "<html><body><div style='border:2px solid #1b5e20; padding:30px;'><h2>SURAT LANTIKAN PENGAWAS PEPERIKSAAN SPM 2026</h2><p>{{NAMA}} - {{PUSAT}} - PPD {{PPD}}</p><p>No: {{NO_SURAT}}</p></div></body></html>",
+                "JURU TULIS": "<html><body><div style='border:3px solid #4527a0; padding:30px;'><h2 style='color:#4527a0; text-align:center;'>SURAT LANTIKAN JURU TULIS SPM 2026<br>(Pengawas Khas - Tambahan)</h2><p>Tuan/Puan <b>{{NAMA}}</b> dilantik sebagai JURU TULIS untuk calon berkeperluan khas di pusat {{PUSAT}} ({{NAMA_PUSAT}}).</p><p><b>Nota:</b> Lantikan Khas, tidak termasuk dalam 19 petugas biasa.</p><p>No: {{NO_SURAT}} | PPD: {{PPD}} | Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}</p></div></body></html>",
+                "JURU BACA": "<html><body><div style='border:3px solid #006064; padding:30px;'><h2 style='color:#006064; text-align:center;'>SURAT LANTIKAN JURU BACA SPM 2026 (Pengawas Khas)</h2><p>{{NAMA}} dilantik sebagai JURU BACA di {{PUSAT}}. No: {{NO_SURAT}} | PPD: {{PPD}}</p></div></body></html>",
+                "KETUA PENGAWAS HOSPITAL": "<html><body><div style='border:2px solid #b71c1c; padding:30px;'><h2>SURAT LANTIKAN KETUA PENGAWAS HOSPITAL</h2><p>{{NAMA}} - {{PUSAT}} - PPD {{PPD}}</p></div></body></html>",
                 "PENGAWAS HOSPITAL": "<html><body><div style='border:2px solid #c62828; padding:30px;'><h2>SURAT LANTIKAN PENGAWAS HOSPITAL</h2><p>{{NAMA}} - {{PUSAT}}</p></div></body></html>",
                 "PENGAWAS PENGIRING": "<html><body><div style='border:2px solid #2e7d32; padding:30px;'><h2>SURAT LANTIKAN PENGAWAS PENGIRING</h2><p>{{NAMA}} - {{PUSAT}}</p></div></body></html>",
-                "PENGEMAS BILIK": "<html><body><div style='border:2px solid #e65100; padding:30px;'><h2>SURAT LANTIKAN PENGEMAS BILIK (Pengawas Khas)</h2><p>{{NAMA}} - {{PUSAT}}</p></div></body></html>",
-                "PENYELIA KAWASAN": "<html><body><div style='border:2px solid #4a148c; padding:30px;'><h2>SURAT LANTIKAN PENYELIA KAWASAN</h2><p>{{NAMA}} - Daerah {{PPD}}</p></div></body></html>",
-                "SELENGGARA BILIK KEBAL": "<html><body><div style='border:2px solid #000; padding:30px;'><h2>SURAT LANTIKAN SELENGGARA BILIK KEBAL</h2><p>{{NAMA}} - {{PUSAT}}</p></div></body></html>"
+                "PENGEMAS BILIK": "<html><body><div style='border:2px solid #e65100; padding:30px;'><h2>SURAT LANTIKAN PENGEMAS BILIK (Pengawas Khas - Tambahan)</h2><p>{{NAMA}} - {{PUSAT}} | No: {{NO_SURAT}}</p></div></body></html>",
+                "PENYELIA KAWASAN": "<html><body><div style='border:2px solid #4a148c; padding:30px;'><h2>SURAT LANTIKAN PENYELIA KAWASAN</h2><p>{{NAMA}} - Daerah {{PPD}} | No: {{NO_SURAT}}</p></div></body></html>",
+                "SELENGGARA BILIK KEBAL": "<html><body><div style='border:2px solid #000; padding:30px;'><h2>SURAT LANTIKAN SELENGGARA BILIK KEBAL</h2><p>{{NAMA}} - {{PUSAT}} - PPD {{PPD}} | No: {{NO_SURAT}}</p></div></body></html>"
             }
             
-            try:
-                res = supa.table("surat_templates_jpn").select("*").execute()
-                db_templates = {r["jawatan"].upper(): r["template_html"] for r in res.data} if res.data else {}
-            except:
-                db_templates = {}
+            # FAST LOAD - cache 10 minit, tak load cadangan 2000 rekod
+            with st.spinner("Loading template (cache 10 min)..."):
+                db_templates = get_jpn_templates_cached_fast()
             
-            pilih_jawatan = st.selectbox("Pilih Jawatan Untuk Edit", JAWATAN_LIST_JPN, key="jpn_pilih_jawatan_template")
+            pilih_jawatan = st.selectbox("Pilih Jawatan Untuk Edit Template (LAJU - Tak Buffering)", JAWATAN_LIST_JPN, key="jpn_pilih_jawatan_laju")
             
-            current = db_templates.get(pilih_jawatan.upper()) or st.session_state.get("jpn_templates", {}).get(pilih_jawatan) or DEFAULT_TEMPLATES_JPN.get(pilih_jawatan, "")
+            current_html = db_templates.get(pilih_jawatan.upper()) or DEFAULT_TEMPLATES_JPN.get(pilih_jawatan, "")
             
-            st.markdown(f"### Template: {pilih_jawatan}")
-            edited = st.text_area(f"Edit HTML - {pilih_jawatan}", value=current, height=350, key=f"jpn_edit_{pilih_jawatan}")
+            st.markdown(f"### Edit Template: {pilih_jawatan}")
+            edited_html = st.text_area(f"HTML Template {pilih_jawatan}", value=current_html, height=350, key=f"edit_{pilih_jawatan}_laju")
             
             st.caption("Placeholder: {{NAMA}}, {{IC}}, {{JAWATAN}}, {{SEKOLAH_ASAL}}, {{NAMA_SEKOLAH_ASAL}}, {{PUSAT}}, {{NAMA_PUSAT}}, {{NO_SURAT}}, {{PPD}}, {{TARIKH}}")
             
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns([1,1,1])
             with col1:
-                if st.button("💾 Simpan Template JPN (PPD punya akan diganti)", type="primary", use_container_width=True, key=f"save_{pilih_jawatan}"):
+                if st.button(f"💾 Simpan Template JPN - {pilih_jawatan}", type="primary", use_container_width=True, key=f"save_{pilih_jawatan}_laju"):
                     try:
-                        try:
-                            existing = supa.table("surat_templates_jpn").select("id").eq("jawatan", pilih_jawatan).execute()
-                            if existing.data:
-                                supa.table("surat_templates_jpn").update({"template_html": edited, "updated_at": str(datetime.datetime.now())}).eq("jawatan", pilih_jawatan).execute()
-                            else:
-                                supa.table("surat_templates_jpn").insert({"jawatan": pilih_jawatan, "template_html": edited, "created_at": str(datetime.datetime.now())}).execute()
-                            st.success(f"✅ Template {pilih_jawatan} disimpan - PPD punya akan auto guna template JPN ini")
-                        except Exception as e:
-                            if "jpn_templates" not in st.session_state:
-                                st.session_state.jpn_templates = {}
-                            st.session_state.jpn_templates[pilih_jawatan] = edited
-                            st.success(f"✅ {pilih_jawatan} disimpan (session) - {str(e)[:150]}")
-                        st.rerun()
+                        existing = supa.table("surat_templates_jpn").select("id").eq("jawatan", pilih_jawatan).execute()
+                        if existing.data:
+                            supa.table("surat_templates_jpn").update({"template_html": edited_html}).eq("jawatan", pilih_jawatan).execute()
+                        else:
+                            supa.table("surat_templates_jpn").insert({"jawatan": pilih_jawatan, "template_html": edited_html}).execute()
+                        st.cache_data.clear()
+                        st.success(f"✅ Template {pilih_jawatan} disimpan - PPD punya akan auto guna template JPN ini (cache cleared)")
+                        st.balloons()
                     except Exception as e:
-                        st.error(str(e))
+                        st.error(f"Error simpan: {e}")
+                        st.info("SQL: CREATE TABLE IF NOT EXISTS surat_templates_jpn (id SERIAL PRIMARY KEY, jawatan TEXT UNIQUE, template_html TEXT);")
             
             with col2:
-                if st.button("👁️ Preview", use_container_width=True, key=f"preview_{pilih_jawatan}"):
+                if st.button(f"👁️ Preview {pilih_jawatan}", use_container_width=True, key=f"preview_{pilih_jawatan}_laju"):
                     dummy = {"NAMA": "ALI BIN ABU", "IC": "800101-10-1234", "JAWATAN": pilih_jawatan, "SEKOLAH_ASAL": "BEA0001", "NAMA_SEKOLAH_ASAL": "SK CONTOH", "PUSAT": "BA001", "NAMA_PUSAT": "SMK CONTOH", "NO_SURAT": f"JPN.SPM2026/{pilih_jawatan[:3]}/0001", "PPD": "PETALING UTAMA", "TARIKH": str(datetime.date.today())}
-                    html = edited
+                    html_preview = edited_html
                     for k,v in dummy.items():
-                        html = html.replace("{{"+k+"}}", v).replace("{{ "+k+" }}", v)
-                    st.markdown(html, unsafe_allow_html=True)
+                        html_preview = html_preview.replace("{{"+k+"}}", v).replace("{{ "+k+" }}", v)
+                    st.markdown(html_preview, unsafe_allow_html=True)
+            
+            with col3:
+                if st.button("🔄 Clear Cache (Kalau slow)", use_container_width=True, key="clear_cache_template"):
+                    st.cache_data.clear()
+                    st.rerun()
             
             st.markdown("---")
             st.markdown("### Status Semua Template JPN (PPD akan guna ini)")
             status_list = []
             for j in JAWATAN_LIST_JPN:
-                t = db_templates.get(j.upper()) or st.session_state.get("jpn_templates", {}).get(j) or DEFAULT_TEMPLATES_JPN.get(j, "")
-                status_list.append({"JAWATAN": j, "PANJANG": len(t), "STATUS": "✅ Ada - PPD akan guna JPN" if len(t)>50 else "❌ Belum - PPD guna template lama"})
+                t = db_templates.get(j.upper()) or DEFAULT_TEMPLATES_JPN.get(j, "")
+                status_list.append({"JAWATAN": j, "PANJANG": len(t), "STATUS": "✅ Ada - PPD guna JPN" if len(t)>50 else "❌ Belum"})
             st.dataframe(pd.DataFrame(status_list), use_container_width=True, hide_index=True)
 
         elif menu == "jpn_jana_surat":
