@@ -558,7 +558,14 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
                 row_dict[key_upper] = str(val).strip()
                 row_dict[key_lower] = str(val).strip()
             
-            if 'STATUS' not in row_dict or not row_dict['STATUS']:
+            # Lajur `status` (top-level) ialah SUMBER SEBENAR - ia dikemas kini oleh Hantar / Jana / Lulus.
+            # STATUS dalam JSON `data` hanya nilai semasa insert ("DICADANGKAN") dan tak pernah dikemas kini,
+            # jadi ia tak boleh menimpa lajur `status` (punca paparan kekal "belum dihantar").
+            _top = r.get('status')
+            if _top is not None and not (isinstance(_top, float) and pd.isna(_top)) and str(_top).strip():
+                row_dict['STATUS'] = str(_top).strip()
+                row_dict['status'] = str(_top).strip()
+            elif 'STATUS' not in row_dict or not row_dict['STATUS']:
                 row_dict['STATUS'] = row_dict.get('status') or 'DICADANGKAN'
             
             norm_rows.append(row_dict)
@@ -573,9 +580,11 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
             def status_priority(s):
                 s = str(s).upper()
                 if 'LULUS' in s:
-                    return 3
+                    return 5
+                if any(x in s for x in ('DILANTIK', 'DIJANA', 'DITEMPATKAN', 'SURAT')):
+                    return 4
                 if 'HANTAR' in s:
-                    return 2
+                    return 3
                 return 1
             try:
                 df_norm['status_prio'] = df_norm['STATUS'].apply(status_priority)
@@ -636,11 +645,6 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
         
         return df_norm
     except Exception as e:
-        # Return empty but log
-        try:
-            print(f"get_cadangan_df error: {e}")
-        except:
-            pass
         return pd.DataFrame()
 
 def flash(level, msg):
@@ -1050,14 +1054,6 @@ if st.session_state.role == "SUP":
             else:
                 st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
                 st.info("Sistem cuba cari pusat dengan kod_sekolah_tuan_rumah = kod sekolah anda. Hubungi PPD untuk semak pusat sekolah anda di table pusat_master.")
-                # Show all pusat for debugging
-                try:
-                    df_all = get_pusat_df()
-                    if not df_all.empty:
-                        st.caption(f"Debug: Ada {len(df_all)} pusat dalam DB. 10 pertama:")
-                        st.dataframe(df_all.head(10), use_container_width=True)
-                except:
-                    pass
             
             c1, c2, c3, c4 = st.columns(4)
             with c1: st.metric("Jumlah Guru", len(df_guru))
@@ -1441,7 +1437,6 @@ if st.session_state.role == "SUP":
                                 
                                 if not inserted:
                                     st.error(f"❌ Gagal {ic} - {nama}: {fail_msg[:500]}")
-                                    st.code(fail_msg[:1000])
                             
                             if ok_count > 0:
                                 st.success(f"✅ Berjaya cadang {ok_count}/{len(guru_pilih)} guru sebagai {jawatan_clean} ke pusat {pusat_pilih} - SEMUA maklumat lengkap!")
@@ -1808,8 +1803,6 @@ if st.session_state.role == "SUP":
                                 
                             except Exception as e:
                                 st.error(f"Error generate surat: {e}")
-                                import traceback
-                                st.error(traceback.format_exc())
 
 # ================= ROLE: PPD =================
 elif st.session_state.role == "PPD":
@@ -2065,8 +2058,6 @@ elif st.session_state.role == "PPD":
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error simpan: {e}")
-                                import traceback
-                                st.code(traceback.format_exc())
                     
                     with col_reset:
                         if st.button("🔄 Reset Auto (Kira Semula)", use_container_width=True, key=f"reset_auto_{kod_ppd}"):
@@ -2163,8 +2154,6 @@ elif st.session_state.role == "PPD":
                 
             except Exception as e:
                 st.error(f"Error dashboard PPD: {e}")
-                import traceback
-                st.code(traceback.format_exc())
                 # Fallback simple
                 try:
                     cnt_sekolah = supa.table("sekolah_master").select("kod_sekolah", count="exact").eq("kod_ppd", kod_ppd).execute()
@@ -3371,10 +3360,8 @@ elif st.session_state.role == "PPD":
             else:
                 df_cad_filtered = df_cad_valid.copy()
             
-            # Debug info if filter gives 0 but data has Penyelia
             if active_filter and len(df_cad_filtered) == 0:
-                total_pk = len(df_cad_valid[df_cad_valid['JAWATAN_CADANGAN_NORM'].str.contains('penyelia', na=False)])
-                st.warning(f"⚠️ Filter {active_filter} jumpa 0, tapi dalam DB ada {total_pk} Penyelia Kawasan (mungkin ejaan berbeza). Senarai jawatan dalam data: {df_cad_valid['JAWATAN_CADANGAN'].unique().tolist()[:10]}")
+                st.info("Tiada guru yang sepadan dengan penapis jawatan yang dipilih.")
             
             if st.session_state.get("filter_jawatan_cad"):
                 st.success(f"✅ Filter aktif: {', '.join(st.session_state.get('filter_jawatan_cad', []))} - Jumpa {len(df_cad_filtered)} guru")
@@ -3813,7 +3800,7 @@ elif st.session_state.role == "PPD":
                 if up_bk:
                     try:
                         df_up = pd.read_excel(up_bk, sheet_name=0)
-                        st.write(f"Ada {len(df_up)} baris. Column: {list(df_up.columns)}")
+                        st.write(f"Ada {len(df_up)} baris.")
                         st.dataframe(df_up.head(10), use_container_width=True)
                         if st.button(f"Import {len(df_up)} Bilik Kebal ke Supabase", type="primary", use_container_width=True):
                             bar = st.progress(0)
@@ -4465,8 +4452,6 @@ elif st.session_state.role == "PPD":
                                     
                                 except Exception as e:
                                     st.error(f"Error jana surat: {e}")
-                                    import traceback
-                                    st.error(traceback.format_exc())
                             
                             # Show generated surat if exists
                             if f"surat_pk_html_{kod_ppd}" in st.session_state:
@@ -4867,7 +4852,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
             if up_master:
                 try:
                     df_m = pd.read_excel(up_master, sheet_name=0)
-                    st.write(f"File ada {len(df_m)} baris. Column: {list(df_m.columns)}")
+                    st.write(f"File ada {len(df_m)} baris.")
                     st.dataframe(df_m.head(10), use_container_width=True)
                     if st.button(f"🚀 Import {len(df_m)} Guru ke Supabase (Batch 500)", type="primary", use_container_width=True):
                         bar = st.progress(0)
@@ -4950,7 +4935,6 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
 
         elif menu == "admin":
             st.header("Admin - Check Tables & Connection")
-            st.code(f"URL: {SUPABASE_URL}\nKEY: {SUPABASE_KEY[:20]}...{SUPABASE_KEY[-10:]} (Active)")
             for t in ["sekolah_master", "pusat_master", "guru_master", "cadangan_sup"]:
                 try:
                     res = supa.table(t).select("*", count="exact").limit(1).execute()
