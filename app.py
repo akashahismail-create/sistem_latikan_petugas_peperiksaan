@@ -3904,16 +3904,23 @@ elif st.session_state.role == "PPD":
                     st.info("Belum ada KP")
                 
                 st.markdown("**Pilih KP Baru:**")
-                # ✅ QUERY BARU: Hanya guru BELUM dilantik
+                # ✅ FIX: Hanya guru BELUM dilantik - keluarkan yang sudah ada kod_pusat atau status LULUS/SURAT
                 kod_tuan_m = info_pusat["KOD_TUAN"].values[0] if not info_pusat.empty else ""
                 df_kp_calon_all = df_cad_all.copy()
-                # Filter hanya belum dilantik
                 def is_belum_kp(row):
                     kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
-                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                    stt = str(row.get("status") or row.get("STATUS") or "").upper()
+                    ns = str(row.get("no_surat") or "").strip()
+                    # Sudah dilantik jika ada kod_pusat ATAU status LULUS/DILANTIK ATAU ada no_surat sah
+                    if kp != "" and kp.lower() not in ("none","null","nan","nat","-"):
+                        return False
+                    if "LULUS" in stt or "DILANTIK" in stt or "SURAT" in stt:
+                        if ns and ns.lower() not in ("none","null","nan",""):
+                            return False
+                    return True
                 df_kp_calon = df_kp_calon_all[df_kp_calon_all.apply(is_belum_kp, axis=1)].copy()
-                # Hanya KP
-                df_kp_calon = df_kp_calon[df_kp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Ketua Pengawas", case=False, na=False)]
+                # Hanya KP (bukan Timbalan)
+                df_kp_calon = df_kp_calon[df_kp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Ketua Pengawas", case=False, na=False) & ~df_kp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Timbalan", case=False, na=False)]
                 # Elak sekolah sendiri
                 if kod_tuan_m:
                     df_kp_calon = df_kp_calon[~df_kp_calon["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_m)]
@@ -3991,11 +3998,18 @@ elif st.session_state.role == "PPD":
                     st.info("Belum ada TKP")
                 
                 st.markdown("**Pilih TKP Baru:**")
-                # ✅ QUERY BARU: Hanya guru BELUM dilantik
+                # ✅ FIX: Hanya guru BELUM dilantik - keluarkan yang sudah dilantik
                 df_tkp_calon_all = df_cad_all.copy()
                 def is_belum_tkp(row):
                     kp = str(row.get("kod_pusat") or row.get("KOD_PUSAT") or "").strip()
-                    return kp == "" or kp.lower() in ("none", "null", "nan", "nat")
+                    stt = str(row.get("status") or row.get("STATUS") or "").upper()
+                    ns = str(row.get("no_surat") or "").strip()
+                    if kp != "" and kp.lower() not in ("none","null","nan","nat","-"):
+                        return False
+                    if "LULUS" in stt or "DILANTIK" in stt or "SURAT" in stt:
+                        if ns and ns.lower() not in ("none","null","nan",""):
+                            return False
+                    return True
                 df_tkp_calon = df_tkp_calon_all[df_tkp_calon_all.apply(is_belum_tkp, axis=1)].copy()
                 df_tkp_calon = df_tkp_calon[df_tkp_calon["JAWATAN_CADANGAN"].astype(str).str.contains("Timbalan", case=False, na=False)]
                 if kod_tuan_m:
@@ -4066,7 +4080,22 @@ elif st.session_state.role == "PPD":
                 else:
                     st.info(f"Belum ada Pengawas - perlu {perlu_pengawas}")
                 
-                st.markdown("**Pilih Pengawas Baru:**")
+                st.markdown("**Pilih Pengawas Baru (Hanya Belum Dilantik - yang sudah lantik disembunyikan):**")
+                # FIX: Filter hanya belum dilantik untuk Pengawas juga
+                def is_belum_peng_manual(r):
+                    kp = str(r.get("kod_pusat") or r.get("KOD_PUSAT") or "").strip()
+                    stt = str(r.get("status") or r.get("STATUS") or "").upper()
+                    ns = str(r.get("no_surat") or "").strip()
+                    if kp != "" and kp.lower() not in ("none","null","nan","nat","-"):
+                        return False
+                    if "LULUS" in stt and ns and ns.lower() not in ("none","null","nan",""):
+                        return False
+                    return True
+                # Apply to df_cad_all for Pengawas list
+                try:
+                    df_cad_all_filtered_peng = df_cad_all[df_cad_all.apply(is_belum_peng_manual, axis=1)].copy()
+                except:
+                    df_cad_all_filtered_peng = df_cad_all.copy()
                 # ✅ QUERY BARU: Hanya guru BELUM dilantik
                 df_peng_calon_all = df_cad_all.copy()
                 def is_belum_peng(row):
@@ -5491,13 +5520,27 @@ elif st.session_state.role == "PPD":
                     if not df_cad_all_bk.empty:
                         col_jaw = "JAWATAN_CADANGAN" if "JAWATAN_CADANGAN" in df_cad_all_bk.columns else "jawatan_cadangan" if "jawatan_cadangan" in df_cad_all_bk.columns else None
                         if col_jaw:
-                            df_penyelia = df_cad_all_bk[df_cad_all_bk[col_jaw].astype(str).str.contains("Penyelia Kawasan", case=False, na=False)].copy()
+                            df_penyelia_all = df_cad_all_bk[df_cad_all_bk[col_jaw].astype(str).str.contains("Penyelia Kawasan", case=False, na=False)].copy()
+                        else:
+                            df_penyelia_all = pd.DataFrame()
+                        # FIX: Keluarkan yang sudah dilantik - hanya tinggalkan belum dilantik
+                        def is_belum_penyelia(r):
+                            kp = str(r.get("kod_pusat") or r.get("KOD_PUSAT") or r.get("kod_bilik_kebal") or "").strip()
+                            return kp == "" or kp.lower() in ("none","null","nan","nat","-")
+                        if not df_penyelia_all.empty:
+                            df_penyelia = df_penyelia_all[df_penyelia_all.apply(is_belum_penyelia, axis=1)].copy()
+                            sudah = len(df_penyelia_all) - len(df_penyelia)
                         else:
                             df_penyelia = pd.DataFrame()
+                            sudah = 0
                     else:
                         df_penyelia = pd.DataFrame()
+                        sudah = 0
                     
-                    st.info(f"Ada {len(df_penyelia)} Penyelia Kawasan dicadangkan SUP untuk PPD {kod_ppd}")
+                    if sudah > 0:
+                        st.info(f"Ada {len(df_penyelia_all)} Penyelia dicadangkan, {sudah} sudah dilantik (disembunyikan), {len(df_penyelia)} belum dilantik - hanya yang belum dilantik dipaparkan untuk pilihan")
+                    else:
+                        st.info(f"Ada {len(df_penyelia)} Penyelia Kawasan dicadangkan SUP untuk PPD {kod_ppd} (belum dilantik)")
                     
                     if not df_penyelia.empty:
                         df_pusat_raw_all = get_pusat_df()
