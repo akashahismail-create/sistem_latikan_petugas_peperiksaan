@@ -5601,10 +5601,70 @@ elif st.session_state.role == "PPD":
                 df_display_all = pd.DataFrame(display_rows)
                 st.dataframe(df_display_all, use_container_width=True, hide_index=True)
                 
-                # ===== INDIVIDU SEORANG - DOWNLOAD PDF SETIAP GURU =====
+                # ===== INDIVIDU SEORANG - DOWNLOAD PDF SETIAP GURU - FIX UNTUK 1000 GURU (PAGINATION + SEARCH) =====
                 st.markdown("---")
-                st.markdown("#### 📄 Surat Individu Seorang - Download PDF Per Guru")
-                for idx, row in df_display_all.iterrows():
+                st.markdown("#### 📄 Surat Individu Seorang - Download PDF Per Guru (Optimized untuk 1000+ guru)")
+                st.info(f"Total {len(df_display_all)} guru - Jika 1000 petugas, senarai akan panjang. Guna search & pagination di bawah, atau download ZIP untuk semua sekaligus.")
+                
+                # Search & Filter
+                col_search1, col_search2, col_search3 = st.columns([2,1,1])
+                with col_search1:
+                    search_nama = st.text_input("🔍 Cari Nama Guru / IC / Sekolah Asal / Pusat", placeholder="Taip nama, IC, BFT0003, BA021...", key=f"search_ind_{kod_ppd}")
+                with col_search2:
+                    filter_pusat = st.selectbox("Filter Pusat", ["Semua"] + sorted(df_display_all["PUSAT TUGAS"].astype(str).unique().tolist()), key=f"filter_pusat_ind_{kod_ppd}")
+                with col_search3:
+                    per_page = st.selectbox("Per Page", [10,20,50,100], index=1, key=f"per_page_ind_{kod_ppd}")
+                
+                # Filter
+                df_filtered_ind = df_display_all.copy()
+                if search_nama:
+                    s = search_nama.lower()
+                    df_filtered_ind = df_filtered_ind[df_filtered_ind.apply(lambda r: s in str(r["NAMA GURU"]).lower() or s in str(r["IC"]).lower() or s in str(r["SEKOLAH ASAL"]).lower() or s in str(r["PUSAT TUGAS"]).lower() or s in str(r["NO SURAT"]).lower(), axis=1)]
+                if filter_pusat != "Semua":
+                    df_filtered_ind = df_filtered_ind[df_filtered_ind["PUSAT TUGAS"].astype(str) == filter_pusat]
+                
+                st.caption(f"Jumpa {len(df_filtered_ind)} guru (dari {len(df_display_all)}). Papar {per_page} per halaman.")
+                
+                # Pagination
+                total_pages = max(1, (len(df_filtered_ind) + per_page -1)//per_page)
+                page_num = st.number_input(f"Halaman 1-{total_pages}", min_value=1, max_value=total_pages, value=1, step=1, key=f"page_ind_{kod_ppd}")
+                start_idx = (page_num-1)*per_page
+                end_idx = start_idx + per_page
+                df_page = df_filtered_ind.iloc[start_idx:end_idx]
+                
+                # Quick select dropdown untuk download 1 guru sahaja tanpa scroll panjang
+                st.markdown("**⚡ Download Cepat 1 Guru (tanpa scroll):**")
+                options_guru = [f"{i+1}. {r['NAMA GURU']} | {r['IC']} | {r['SEKOLAH ASAL']}->{r['PUSAT TUGAS']} | {r['NO SURAT']}" for i, r in df_filtered_ind.iterrows()]
+                if options_guru:
+                    pilih_guru_idx = st.selectbox("Pilih Guru untuk Download PDF Individu", range(len(options_guru)), format_func=lambda x: options_guru[x], key=f"select_guru_ind_{kod_ppd}")
+                    if st.button("📥 Jana & Download PDF Guru Terpilih", type="primary", key=f"btn_dl_selected_guru_{kod_ppd}"):
+                        try:
+                            row_sel = df_filtered_ind.iloc[pilih_guru_idx]
+                            nama_g = str(row_sel["NAMA GURU"]).strip()
+                            ic_g = str(row_sel["IC"]).strip()
+                            jaw_g = str(row_sel["JAWATAN"]).strip()
+                            sek_asal = str(row_sel["SEKOLAH ASAL"]).strip()
+                            nama_sek_asal_full = str(row_sel["NAMA SEKOLAH ASAL"]).strip()
+                            pusat_t = str(row_sel["PUSAT TUGAS"]).strip()
+                            nama_pusat_full = str(row_sel["NAMA PUSAT"]).strip()
+                            no_surat_g = str(row_sel["NO SURAT"]).strip()
+                            def clean_s(s):
+                                s = str(s).strip()
+                                return "" if s.lower() in ("nan","none","null","") else s
+                            nama_g = clean_s(nama_g) or "GURU"
+                            no_surat_g = clean_s(no_surat_g) or "JPN.SPP.HHJH/0001"
+                            pdf_sel = generate_surat_pdf_bytes(nama_g, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), no_surat_g)
+                            if pdf_sel:
+                                st.download_button(f"📥 Download PDF {nama_g}", data=pdf_sel, file_name=f"Surat_{nama_g.replace(' ','_')}_{no_surat_g.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_selected_guru_{kod_ppd}_{pilih_guru_idx}", use_container_width=True)
+                                st.success(f"PDF {nama_g} siap!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                
+                st.markdown("---")
+                # Table view with download buttons - only for current page to avoid 1000 buttons at once
+                st.markdown(f"**Senarai Halaman {page_num} ({len(df_page)} guru):**")
+                # Use columns for header
+                for idx_local, (idx_global, row) in enumerate(df_page.iterrows()):
                     try:
                         nama_g = row["NAMA GURU"]
                         ic_g = row["IC"]
@@ -5614,61 +5674,27 @@ elif st.session_state.role == "PPD":
                         pusat_t = row["PUSAT TUGAS"]
                         nama_pusat_full = row["NAMA PUSAT"]
                         no_surat_g = row["NO SURAT"]
-                        
-                        # Bersihkan nan
-                        def clean_s(s):
+                        def clean_s2(s):
                             s = str(s).strip()
                             return "" if s.lower() in ("nan","none","null","") else s
-                        
-                        nama_g = clean_s(nama_g) or "GURU"
-                        no_surat_g = clean_s(no_surat_g) or f"JPN.SPP.HHJH/{idx+1:04d}"
-                        
-                        # Generate PDF individu
+                        nama_g_clean = clean_s2(nama_g) or "GURU"
+                        no_surat_g_clean = clean_s2(no_surat_g) or f"JPN.SPP.HHJH/{idx_global+1:04d}"
+                        # Lazy generate PDF only when button clicked? Generate now but limited to per_page
                         try:
-                            pdf_individu = generate_surat_pdf_bytes(
-                                nama_g, ic_g, jaw_g,
-                                sek_asal, nama_sek_asal_full,
-                                pusat_t, nama_pusat_full,
-                                no_surat_g,
-                                kod_ppd, PPD_MAP.get(kod_ppd,""),
-                                datetime.date.today().strftime('%d %B %Y'),
-                                no_surat_g
-                            )
+                            pdf_individu = generate_surat_pdf_bytes(nama_g_clean, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g_clean, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), no_surat_g_clean)
                         except:
                             pdf_individu = None
-                        
                         col_nama, col_info, col_dl = st.columns([2,2,1])
                         with col_nama:
-                            st.markdown(f"**{idx+1}. {nama_g}** ({ic_g}) - {jaw_g}")
-                            st.caption(f"{sek_asal} -> {pusat_t} | No: {no_surat_g}")
+                            st.markdown(f"**{start_idx+idx_local+1}. {nama_g_clean}** ({ic_g}) - {jaw_g}")
+                            st.caption(f"{sek_asal} -> {pusat_t} | No: {no_surat_g_clean}")
                         with col_info:
-                            st.caption(f"Sekolah Asal: {sek_asal} | Pusat: {pusat_t}")
+                            st.caption(f"Sekolah: {sek_asal} | Pusat: {pusat_t}")
                         with col_dl:
                             if pdf_individu:
-                                st.download_button(
-                                    f"📥 PDF",
-                                    data=pdf_individu,
-                                    file_name=f"Surat_{nama_g.replace(' ','_')}_{no_surat_g.replace('/','_')}.pdf",
-                                    mime="application/pdf",
-                                    key=f"dl_individu_{kod_ppd}_{idx}_{row['id']}",
-                                    use_container_width=True
-                                )
-                            else:
-                                # Fallback HTML
-                                try:
-                                    html_ind = generate_surat_html(nama_g, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
-                                    st.download_button(
-                                        f"📥 HTML",
-                                        data=html_ind.encode('utf-8'),
-                                        file_name=f"Surat_{nama_g.replace(' ','_')}.html",
-                                        mime="text/html",
-                                        key=f"dl_individu_html_{kod_ppd}_{idx}_{row['id']}",
-                                        use_container_width=True
-                                    )
-                                except:
-                                    st.caption("Gagal jana")
+                                st.download_button(f"📥 PDF", data=pdf_individu, file_name=f"Surat_{nama_g_clean.replace(' ','_')}_{no_surat_g_clean.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_individu_{kod_ppd}_{page_num}_{idx_global}_{row['id']}", use_container_width=True)
                     except Exception as e:
-                        st.error(f"Error guru {idx}: {e}")
+                        st.error(f"Error guru {idx_global}: {e}")
                 st.markdown("---")
                 
                 # Generate PDF Keseluruhan - INDIVIDU DALAM ZIP
@@ -6438,10 +6464,70 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                 df_display_all = pd.DataFrame(display_rows)
                 st.dataframe(df_display_all, use_container_width=True, hide_index=True)
                 
-                # ===== INDIVIDU SEORANG - DOWNLOAD PDF SETIAP GURU =====
+                # ===== INDIVIDU SEORANG - DOWNLOAD PDF SETIAP GURU - FIX UNTUK 1000 GURU (PAGINATION + SEARCH) =====
                 st.markdown("---")
-                st.markdown("#### 📄 Surat Individu Seorang - Download PDF Per Guru")
-                for idx, row in df_display_all.iterrows():
+                st.markdown("#### 📄 Surat Individu Seorang - Download PDF Per Guru (Optimized untuk 1000+ guru)")
+                st.info(f"Total {len(df_display_all)} guru - Jika 1000 petugas, senarai akan panjang. Guna search & pagination di bawah, atau download ZIP untuk semua sekaligus.")
+                
+                # Search & Filter
+                col_search1, col_search2, col_search3 = st.columns([2,1,1])
+                with col_search1:
+                    search_nama = st.text_input("🔍 Cari Nama Guru / IC / Sekolah Asal / Pusat", placeholder="Taip nama, IC, BFT0003, BA021...", key=f"search_ind_{kod_ppd}")
+                with col_search2:
+                    filter_pusat = st.selectbox("Filter Pusat", ["Semua"] + sorted(df_display_all["PUSAT TUGAS"].astype(str).unique().tolist()), key=f"filter_pusat_ind_{kod_ppd}")
+                with col_search3:
+                    per_page = st.selectbox("Per Page", [10,20,50,100], index=1, key=f"per_page_ind_{kod_ppd}")
+                
+                # Filter
+                df_filtered_ind = df_display_all.copy()
+                if search_nama:
+                    s = search_nama.lower()
+                    df_filtered_ind = df_filtered_ind[df_filtered_ind.apply(lambda r: s in str(r["NAMA GURU"]).lower() or s in str(r["IC"]).lower() or s in str(r["SEKOLAH ASAL"]).lower() or s in str(r["PUSAT TUGAS"]).lower() or s in str(r["NO SURAT"]).lower(), axis=1)]
+                if filter_pusat != "Semua":
+                    df_filtered_ind = df_filtered_ind[df_filtered_ind["PUSAT TUGAS"].astype(str) == filter_pusat]
+                
+                st.caption(f"Jumpa {len(df_filtered_ind)} guru (dari {len(df_display_all)}). Papar {per_page} per halaman.")
+                
+                # Pagination
+                total_pages = max(1, (len(df_filtered_ind) + per_page -1)//per_page)
+                page_num = st.number_input(f"Halaman 1-{total_pages}", min_value=1, max_value=total_pages, value=1, step=1, key=f"page_ind_{kod_ppd}")
+                start_idx = (page_num-1)*per_page
+                end_idx = start_idx + per_page
+                df_page = df_filtered_ind.iloc[start_idx:end_idx]
+                
+                # Quick select dropdown untuk download 1 guru sahaja tanpa scroll panjang
+                st.markdown("**⚡ Download Cepat 1 Guru (tanpa scroll):**")
+                options_guru = [f"{i+1}. {r['NAMA GURU']} | {r['IC']} | {r['SEKOLAH ASAL']}->{r['PUSAT TUGAS']} | {r['NO SURAT']}" for i, r in df_filtered_ind.iterrows()]
+                if options_guru:
+                    pilih_guru_idx = st.selectbox("Pilih Guru untuk Download PDF Individu", range(len(options_guru)), format_func=lambda x: options_guru[x], key=f"select_guru_ind_{kod_ppd}")
+                    if st.button("📥 Jana & Download PDF Guru Terpilih", type="primary", key=f"btn_dl_selected_guru_{kod_ppd}"):
+                        try:
+                            row_sel = df_filtered_ind.iloc[pilih_guru_idx]
+                            nama_g = str(row_sel["NAMA GURU"]).strip()
+                            ic_g = str(row_sel["IC"]).strip()
+                            jaw_g = str(row_sel["JAWATAN"]).strip()
+                            sek_asal = str(row_sel["SEKOLAH ASAL"]).strip()
+                            nama_sek_asal_full = str(row_sel["NAMA SEKOLAH ASAL"]).strip()
+                            pusat_t = str(row_sel["PUSAT TUGAS"]).strip()
+                            nama_pusat_full = str(row_sel["NAMA PUSAT"]).strip()
+                            no_surat_g = str(row_sel["NO SURAT"]).strip()
+                            def clean_s(s):
+                                s = str(s).strip()
+                                return "" if s.lower() in ("nan","none","null","") else s
+                            nama_g = clean_s(nama_g) or "GURU"
+                            no_surat_g = clean_s(no_surat_g) or "JPN.SPP.HHJH/0001"
+                            pdf_sel = generate_surat_pdf_bytes(nama_g, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), no_surat_g)
+                            if pdf_sel:
+                                st.download_button(f"📥 Download PDF {nama_g}", data=pdf_sel, file_name=f"Surat_{nama_g.replace(' ','_')}_{no_surat_g.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_selected_guru_{kod_ppd}_{pilih_guru_idx}", use_container_width=True)
+                                st.success(f"PDF {nama_g} siap!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                
+                st.markdown("---")
+                # Table view with download buttons - only for current page to avoid 1000 buttons at once
+                st.markdown(f"**Senarai Halaman {page_num} ({len(df_page)} guru):**")
+                # Use columns for header
+                for idx_local, (idx_global, row) in enumerate(df_page.iterrows()):
                     try:
                         nama_g = row["NAMA GURU"]
                         ic_g = row["IC"]
@@ -6451,61 +6537,27 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         pusat_t = row["PUSAT TUGAS"]
                         nama_pusat_full = row["NAMA PUSAT"]
                         no_surat_g = row["NO SURAT"]
-                        
-                        # Bersihkan nan
-                        def clean_s(s):
+                        def clean_s2(s):
                             s = str(s).strip()
                             return "" if s.lower() in ("nan","none","null","") else s
-                        
-                        nama_g = clean_s(nama_g) or "GURU"
-                        no_surat_g = clean_s(no_surat_g) or f"JPN.SPP.HHJH/{idx+1:04d}"
-                        
-                        # Generate PDF individu
+                        nama_g_clean = clean_s2(nama_g) or "GURU"
+                        no_surat_g_clean = clean_s2(no_surat_g) or f"JPN.SPP.HHJH/{idx_global+1:04d}"
+                        # Lazy generate PDF only when button clicked? Generate now but limited to per_page
                         try:
-                            pdf_individu = generate_surat_pdf_bytes(
-                                nama_g, ic_g, jaw_g,
-                                sek_asal, nama_sek_asal_full,
-                                pusat_t, nama_pusat_full,
-                                no_surat_g,
-                                kod_ppd, PPD_MAP.get(kod_ppd,""),
-                                datetime.date.today().strftime('%d %B %Y'),
-                                no_surat_g
-                            )
+                            pdf_individu = generate_surat_pdf_bytes(nama_g_clean, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g_clean, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), no_surat_g_clean)
                         except:
                             pdf_individu = None
-                        
                         col_nama, col_info, col_dl = st.columns([2,2,1])
                         with col_nama:
-                            st.markdown(f"**{idx+1}. {nama_g}** ({ic_g}) - {jaw_g}")
-                            st.caption(f"{sek_asal} -> {pusat_t} | No: {no_surat_g}")
+                            st.markdown(f"**{start_idx+idx_local+1}. {nama_g_clean}** ({ic_g}) - {jaw_g}")
+                            st.caption(f"{sek_asal} -> {pusat_t} | No: {no_surat_g_clean}")
                         with col_info:
-                            st.caption(f"Sekolah Asal: {sek_asal} | Pusat: {pusat_t}")
+                            st.caption(f"Sekolah: {sek_asal} | Pusat: {pusat_t}")
                         with col_dl:
                             if pdf_individu:
-                                st.download_button(
-                                    f"📥 PDF",
-                                    data=pdf_individu,
-                                    file_name=f"Surat_{nama_g.replace(' ','_')}_{no_surat_g.replace('/','_')}.pdf",
-                                    mime="application/pdf",
-                                    key=f"dl_individu_{kod_ppd}_{idx}_{row['id']}",
-                                    use_container_width=True
-                                )
-                            else:
-                                # Fallback HTML
-                                try:
-                                    html_ind = generate_surat_html(nama_g, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
-                                    st.download_button(
-                                        f"📥 HTML",
-                                        data=html_ind.encode('utf-8'),
-                                        file_name=f"Surat_{nama_g.replace(' ','_')}.html",
-                                        mime="text/html",
-                                        key=f"dl_individu_html_{kod_ppd}_{idx}_{row['id']}",
-                                        use_container_width=True
-                                    )
-                                except:
-                                    st.caption("Gagal jana")
+                                st.download_button(f"📥 PDF", data=pdf_individu, file_name=f"Surat_{nama_g_clean.replace(' ','_')}_{no_surat_g_clean.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_individu_{kod_ppd}_{page_num}_{idx_global}_{row['id']}", use_container_width=True)
                     except Exception as e:
-                        st.error(f"Error guru {idx}: {e}")
+                        st.error(f"Error guru {idx_global}: {e}")
                 st.markdown("---")
                 
                 # Generate PDF Keseluruhan - INDIVIDU DALAM ZIP
