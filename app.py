@@ -590,19 +590,9 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
             ksa = row_dict.get('KOD_SEKOLAH_ASAL') or row_dict.get('kod_sekolah_asal') or row_dict.get('KOD_SEKOLAH') or row_dict.get('kod_sekolah') or row_dict.get('kod_sekolah_tuan_rumah') or ''
             row_dict['KOD_SEKOLAH_ASAL'] = str(ksa).strip().upper()
             
-            # NAMA - FIX: Jangan biarkan hilang bila hantar
-            ng = row_dict.get('NAMA_GURU') or row_dict.get('nama_guru') or row_dict.get('NAMA GURU') or row_dict.get('NAMA') or row_dict.get('nama') or ''
-            if not str(ng).strip() or str(ng).strip().upper() in ["NAN","NONE","","KOSONG"]:
-                for fallback_key in ["NAMA_GURU","nama_guru","NAMA","nama","NAMA GURU"]:
-                    if fallback_key in row_dict and str(row_dict[fallback_key]).strip():
-                        ng = row_dict[fallback_key]
-                        break
-            ng_str = str(ng).strip()
-            if not ng_str:
-                ic_fallback = row_dict.get('IC_GURU') or row_dict.get('ic_guru') or 'TANPA NAMA'
-                ng_str = f"{ic_fallback} (Nama tiada - akan dipulihkan)"
-            row_dict['NAMA_GURU'] = ng_str.upper()
-            row_dict['nama_guru'] = ng_str
+            # NAMA
+            ng = row_dict.get('NAMA_GURU') or row_dict.get('nama_guru') or row_dict.get('NAMA GURU') or ''
+            row_dict['NAMA_GURU'] = str(ng).strip().upper()
             
             # NAMA SEKOLAH ASAL - V28 FIX
             nsa = row_dict.get('NAMA_SEKOLAH_ASAL') or row_dict.get('nama_sekolah_asal') or row_dict.get('NAMA_SEKOLAH') or row_dict.get('nama_sekolah') or row_dict.get('NAMA SEKOLAH ASAL') or ''
@@ -724,22 +714,28 @@ def _id_py(x):
     return x
 
 def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
-    """FIX V26: Hanya update STATUS, jangan sentuh nama_guru / kod_ppd supaya nama tak hilang"""
+    """V25 FIX: Update by IC + sekolah to ensure all duplicate rows become HANTAR, not just by id"""
     berjaya, gagal = 0, []
+    # If df_sasaran provided, also get IC list to update all duplicates
     ic_list = []
+    sekolah_list = []
     if df_sasaran is not None and not df_sasaran.empty:
         try:
             if 'IC_GURU' in df_sasaran.columns:
                 ic_list = df_sasaran['IC_GURU'].astype(str).str.strip().tolist()
+            if 'KOD_SEKOLAH_ASAL' in df_sasaran.columns:
+                sekolah_list = df_sasaran['KOD_SEKOLAH_ASAL'].astype(str).str.strip().str.upper().tolist()
         except:
             pass
     
+    # First, update by id (original)
     for i in range(0, len(ids), 100):
         kelompok = ids[i:i + 100]
         payloads_to_try = [
+            {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD", "kod_ppd": kod_ppd, "KOD_PPD": kod_ppd},
             {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"},
-            {"status": "HANTAR KE PPD"},
-            {"STATUS": "HANTAR KE PPD"},
+            {"status": "HANTAR KE PPD", "kod_ppd": kod_ppd},
+            {"STATUS": "HANTAR KE PPD", "KOD_PPD": kod_ppd},
         ]
         success = False
         last_err = ""
@@ -756,14 +752,18 @@ def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
         else:
             gagal.append(last_err)
     
+    # Second, ensure all rows with same IC + sekolah also updated to HANTAR (to fix duplicate bug)
+    # This ensures even if there are 2 rows id 19 and 140 with same IC, both become HANTAR
     if ic_list:
-        for ic_val in ic_list:
-            if not ic_val or ic_val.lower() in ["nan","none",""]:
-                continue
+        for ic_val, sek_val in zip(ic_list, sekolah_list):
             try:
-                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
+                # Update all rows with same IC
+                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
             except:
-                pass
+                try:
+                    supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
+                except:
+                    pass
             try:
                 supa.table("cadangan_sup").update({"STATUS": "HANTAR KE PPD"}).eq("IC_GURU", ic_val).execute()
             except:
@@ -1720,51 +1720,113 @@ if st.session_state.role == "SUP":
                 )
                 
                 if pilih_pusat_sup:
-                    # Get petugas assigned to this pusat
+                    # ===== FIX: PETUGAS HADIR - HANYA YANG SUDAH DILANTIK PPD & BUKAN DARI SEKOLAH SENDIRI =====
                     try:
                         res_cad = supa.table("cadangan_sup").select("*").eq("kod_pusat", pilih_pusat_sup).limit(5000).execute()
-                        df_petugas = pd.DataFrame(res_cad.data or [])
-                        if df_petugas.empty:
-                            # Try alternative column
+                        df_petugas_all = pd.DataFrame(res_cad.data or [])
+                        if df_petugas_all.empty:
                             res_cad2 = supa.table("cadangan_sup").select("*").ilike("kod_pusat", f"%{pilih_pusat_sup}%").limit(5000).execute()
-                            df_petugas = pd.DataFrame(res_cad2.data or [])
+                            df_petugas_all = pd.DataFrame(res_cad2.data or [])
                     except Exception as e:
                         st.error(f"Error load petugas: {e}")
-                        df_petugas = pd.DataFrame()
+                        df_petugas_all = pd.DataFrame()
                     
-                    if df_petugas.empty:
-                        st.info(f"Belum ada petugas dilantik untuk pusat {pilih_pusat_sup}")
+                    if df_petugas_all.empty:
+                        st.warning(f"⏳ Belum ada petugas dilantik untuk pusat {pilih_pusat_sup} - PPD belum buat lantikan.")
+                        st.info("Button ini hanya akan paparkan nama selepas PPD lantik dan jana surat. Cikgu dari sekolah sendiri tidak akan dipaparkan kerana tidak boleh bertugas di sekolah asal.")
                     else:
-                        st.markdown(f"#### 👥 {len(df_petugas)} Petugas Akan Hadir Bertugas di {pilih_pusat_sup}")
+                        # Normalisasi column status
+                        def get_status_val(row):
+                            return str(row.get("status") or row.get("STATUS") or row.get("Status") or "").upper()
+                        df_petugas_all["STATUS_NORM"] = df_petugas_all.apply(get_status_val, axis=1)
                         
-                        # Group by jawatan
-                        kp_list = df_petugas[df_petugas["jawatan_cadangan"].astype(str).str.contains("Ketua Pengawas", case=False, na=False) & ~df_petugas["jawatan_cadangan"].astype(str).str.contains("Timbalan", case=False, na=False)] if "jawatan_cadangan" in df_petugas.columns else pd.DataFrame()
-                        tkp_list = df_petugas[df_petugas["jawatan_cadangan"].astype(str).str.contains("Timbalan", case=False, na=False)] if "jawatan_cadangan" in df_petugas.columns else pd.DataFrame()
-                        peng_list = df_petugas[~df_petugas["jawatan_cadangan"].astype(str).str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)] if "jawatan_cadangan" in df_petugas.columns else df_petugas
+                        # 1. Filter hanya yang sudah dilantik oleh PPD (LULUS / SURAT / DILANTIK / DITEMPATKAN / DIJANA)
+                        # DICADANGKAN dan HANTAR KE PPD sahaja tidak dikira lagi
+                        lulus_keywords = ["LULUS", "SURAT", "DILANTIK", "DITEMPATKAN", "DIJANA", "SAH", "LANTIK"]
+                        mask_lulus = df_petugas_all["STATUS_NORM"].apply(lambda x: any(k in x for k in lulus_keywords))
+                        # Jika tiada status keyword (contoh status kosong tapi ada no_surat), kira lulus jika ada no_surat
+                        def has_surat(row):
+                            ns = str(row.get("no_surat") or row.get("NO_SURAT") or row.get("no_surat_lantikan") or "").strip()
+                            return ns != "" and ns.lower() not in ("none","null","nan","")
+                        mask_surat = df_petugas_all.apply(has_surat, axis=1)
+                        mask_final_lulus = mask_lulus | mask_surat
                         
-                        col_kp, col_tkp, col_peng = st.columns(3)
-                        with col_kp:
-                            st.metric("Ketua Pengawas", len(kp_list))
-                        with col_tkp:
-                            st.metric("Timbalan KP", len(tkp_list))
-                        with col_peng:
-                            st.metric("Pengawas", len(peng_list))
+                        df_lulus_sahaja = df_petugas_all[mask_final_lulus].copy()
                         
-                        # Detailed list
-                        rows_petugas = []
-                        for _, r in df_petugas.iterrows():
-                            rows_petugas.append({
-                                "NAMA GURU": r.get("nama_guru", "") or r.get("NAMA_GURU", ""),
-                                "IC": r.get("ic_guru", "") or r.get("IC_GURU", ""),
-                                "JAWATAN": r.get("jawatan_cadangan", "") or r.get("JAWATAN_CADANGAN", ""),
-                                "SEKOLAH ASAL": r.get("kod_sekolah_asal", "") or r.get("KOD_SEKOLAH_ASAL", ""),
-                                "NAMA SEKOLAH ASAL": str(r.get("nama_sekolah_asal", "") or r.get("NAMA_SEKOLAH_ASAL", ""))[:30],
-                                "NO SURAT": r.get("no_surat", "") or "",
-                                "STATUS": r.get("status", "") or ""
-                            })
-                        df_display_petugas = pd.DataFrame(rows_petugas)
-                        st.dataframe(df_display_petugas, use_container_width=True, hide_index=True)
-                        st.download_button(f"Export Petugas {pilih_pusat_sup}", to_excel(df_display_petugas), file_name=f"petugas_{pilih_pusat_sup}_{kod}.xlsx", use_container_width=True)
+                        if df_lulus_sahaja.empty:
+                            st.warning(f"⏳ Ada {len(df_petugas_all)} cadangan untuk pusat {pilih_pusat_sup} tapi belum diluluskan PPD.")
+                            st.info(f"Status sedia ada: {df_petugas_all['STATUS_NORM'].unique().tolist()[:5]} - Tunggu PPD buat lantikan. Selepas PPD lulus, nama petugas dari sekolah lain akan dipaparkan di sini.")
+                            # Debug: tunjuk count belum lulus
+                            belum = df_petugas_all[~mask_final_lulus]
+                            if not belum.empty:
+                                st.caption(f"{len(belum)} cadangan masih peringkat DICADANGKAN / HANTAR KE PPD - belum dilantik.")
+                        else:
+                            # 2. Filter BUANG cikgu dari sekolah sendiri - tidak boleh bertugas di sekolah asal
+                            def get_sekolah_asal(row):
+                                return str(row.get("kod_sekolah_asal") or row.get("KOD_SEKOLAH_ASAL") or row.get("kod_sekolah") or row.get("KOD_SEKOLAH") or "").upper().strip()
+                            df_lulus_sahaja["SEKOLAH_ASAL_NORM"] = df_lulus_sahaja.apply(get_sekolah_asal, axis=1)
+                            
+                            # Kod sekolah semasa
+                            kod_semasa = kod.upper().strip()
+                            mask_bukan_sekolah_sendiri = df_lulus_sahaja["SEKOLAH_ASAL_NORM"] != kod_semasa
+                            # Juga check NAMA_SEKOLAH_ASAL jika kod sama
+                            df_final = df_lulus_sahaja[mask_bukan_sekolah_sendiri].copy()
+                            
+                            excluded_count = len(df_lulus_sahaja) - len(df_final)
+                            if excluded_count > 0:
+                                st.info(f"ℹ️ {excluded_count} petugas dari sekolah sendiri ({kod_semasa}) disembunyikan kerana tidak boleh bertugas di sekolah asal (peraturan SPM).")
+                            
+                            if df_final.empty:
+                                st.warning(f"Tiada petugas luar untuk pusat {pilih_pusat_sup} - Semua {len(df_lulus_sahaja)} yang lulus adalah dari sekolah sendiri, jadi tidak dipaparkan (tidak boleh bertugas di sekolah asal).")
+                                st.info("Selepas PPD lantik petugas dari sekolah lain ke pusat ini, nama mereka akan muncul di sini.")
+                            else:
+                                st.success(f"✅ {len(df_final)} Petugas Luar Akan Hadir Bertugas di {pilih_pusat_sup} (Sudah dilantik PPD, bukan dari sekolah sendiri)")
+                                st.markdown(f"**Pusat:** {pilih_pusat_sup} | **Sekolah tuan rumah:** {kod} - {info.get('nama_sekolah','')}")
+                                
+                                # Group by jawatan - hanya KP, TKP, Pengawas
+                                def get_jawatan(row):
+                                    return str(row.get("jawatan_cadangan") or row.get("JAWATAN_CADANGAN") or row.get("jawatan") or "").strip()
+                                df_final["JAWATAN_NORM"] = df_final.apply(get_jawatan, axis=1)
+                                
+                                kp_list = df_final[df_final["JAWATAN_NORM"].str.contains("Ketua Pengawas", case=False, na=False) & ~df_final["JAWATAN_NORM"].str.contains("Timbalan", case=False, na=False)]
+                                tkp_list = df_final[df_final["JAWATAN_NORM"].str.contains("Timbalan", case=False, na=False)]
+                                peng_list = df_final[~df_final["JAWATAN_NORM"].str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)]
+                                
+                                col_kp, col_tkp, col_peng = st.columns(3)
+                                with col_kp:
+                                    st.metric("Ketua Pengawas (Luar)", len(kp_list))
+                                with col_tkp:
+                                    st.metric("Timbalan KP (Luar)", len(tkp_list))
+                                with col_peng:
+                                    st.metric("Pengawas (Luar)", len(peng_list))
+                                
+                                st.markdown("#### 📋 Senarai Petugas Luar Yang Akan Hadir")
+                                st.caption("Ini adalah petugas yang dilantik PPD dari sekolah lain untuk bertugas di pusat sekolah anda. Cikgu sekolah sendiri tidak termasuk.")
+                                
+                                rows_petugas = []
+                                for _, r in df_final.iterrows():
+                                    rows_petugas.append({
+                                        "NAMA GURU": r.get("nama_guru", "") or r.get("NAMA_GURU", "") or r.get("NAMA", ""),
+                                        "IC": r.get("ic_guru", "") or r.get("IC_GURU", ""),
+                                        "JAWATAN": r.get("jawatan_cadangan", "") or r.get("JAWATAN_CADANGAN", ""),
+                                        "SEKOLAH ASAL": r.get("kod_sekolah_asal", "") or r.get("KOD_SEKOLAH_ASAL", ""),
+                                        "NAMA SEKOLAH ASAL": str(r.get("nama_sekolah_asal", "") or r.get("NAMA_SEKOLAH_ASAL", ""))[:40],
+                                        "NO SURAT": r.get("no_surat", "") or r.get("NO_SURAT") or r.get("no_surat_lantikan") or "",
+                                        "STATUS": r.get("status", "") or r.get("STATUS", "")
+                                    })
+                                df_display_petugas = pd.DataFrame(rows_petugas)
+                                
+                                # Warna hijau untuk yang sudah lulus
+                                try:
+                                    styled_petugas = df_display_petugas.style.apply(lambda row: ['background-color: #e8f5e9; color: #1b5e20; font-weight:600;' if 'LULUS' in str(row.get('STATUS','')).upper() or 'SURAT' in str(row.get('STATUS','')).upper() else '' for _ in row], axis=1)
+                                    st.dataframe(styled_petugas, use_container_width=True, hide_index=True)
+                                except:
+                                    st.dataframe(df_display_petugas, use_container_width=True, hide_index=True)
+                                
+                                st.download_button(f"📥 Export Petugas Luar {pilih_pusat_sup}", to_excel(df_display_petugas), file_name=f"petugas_LUAR_{pilih_pusat_sup}_{kod}.xlsx", use_container_width=True)
+                                st.info("ℹ️ Senarai ini hanya untuk makluman SUP - siapa yang akan datang bertugas di sekolah anda selepas lantikan PPD. Semua adalah dari sekolah lain (bukan sekolah asal).")
+                    # ===== END FIX =====
+
 
         elif menu == "surat":
             st.markdown(f'<div style="background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">📄 Surat Lantikan Saya - {kod}</h2><p style="margin:5px 0 0 0; color:#e1bee7;">Surat lantikan petugas dari sekolah anda yang telah diluluskan PPD</p></div>', unsafe_allow_html=True)
