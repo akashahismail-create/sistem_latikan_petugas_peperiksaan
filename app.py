@@ -2043,7 +2043,7 @@ elif st.session_state.role == "PPD":
         add_refresh_button()
         
         MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), 
-                    ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('selenggara', '🔐 Selenggara Bilik Kebal'), ('kelulusan', '✅ Kelulusan'), 
+                    ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('selenggara', '🔐 Selenggara Bilik Kebal'), ('semakan', '🔍 Semakan Lantikan'), ('kelulusan', '✅ Kelulusan'), 
                     ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get, label_visibility="collapsed", key="ppd_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -3934,6 +3934,279 @@ elif st.session_state.role == "PPD":
                         st.download_button(f"📥 Export Sudah Lantik", to_excel(df_sudah_guru), file_name=f"cadangan_{pilih_sek_cad.split(' - ')[0]}_sudah.xlsx", use_container_width=True, key="exp_sudah")
                     else:
                         st.info("Belum ada guru dilantik dari sekolah ini")
+
+
+        elif menu == "semakan":
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #4a148c 0%, #6a1b9a 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+                <h2 style="margin:0; color:white;">🔍 Semakan Lantikan Ikut Pusat - PPD {kod_ppd}</h2>
+                <p style="margin:5px 0 0 0; color:#e1bee7;">Pilih pusat, akan keluar 4 table ikut jawatan: Penyelia Kawasan, Ketua Pengawas, Timbalan, Pengawas. PPD boleh batalkan lantikan & guru masuk semula ke cadangan untuk pilih pusat lain. Boleh isi kekosongan dengan guru lain.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            df_pusat_raw = get_pusat_df()
+            df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
+            
+            if df_pusat_raw.empty:
+                st.warning("Tiada pusat_master")
+                st.stop()
+            if df_cad_all.empty:
+                st.warning("Belum ada cadangan")
+                st.stop()
+            
+            # Parse pusat list
+            pusat_list = []
+            for _, r in df_pusat_raw.iterrows():
+                d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                if isinstance(d, str):
+                    try: d = json.loads(d)
+                    except: d = {}
+                no_pusat = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                if not no_pusat.startswith(kod_ppd.upper()): continue
+                nama = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                pusat_list.append({"NO_PUSAT": no_pusat, "NAMA_PUSAT": nama})
+            df_pusat_list = __import__("pandas").DataFrame(pusat_list)
+            
+            if df_pusat_list.empty:
+                st.warning(f"Tiada pusat untuk PPD {kod_ppd}")
+                st.stop()
+            
+            # Pilih pusat
+            pilihan_pusat_semak = st.selectbox(
+                "📍 Pilih Pusat Untuk Semakan Lantikan",
+                df_pusat_list["NO_PUSAT"].tolist(),
+                format_func=lambda x: f"{x} - {df_pusat_list[df_pusat_list['NO_PUSAT']==x]['NAMA_PUSAT'].values[0][:35] if not df_pusat_list[df_pusat_list['NO_PUSAT']==x].empty else x}",
+                key="pilih_pusat_semakan"
+            )
+            
+            st.markdown(f"### 🔍 Semakan Lantikan - Pusat {pilihan_pusat_semak}")
+            
+            # Get lantikan for this pusat
+            try:
+                res_lantik = supa.table("cadangan_sup").select("*").eq("kod_pusat", pilihan_pusat_semak).limit(5000).execute()
+                df_lantik_pusat = __import__("pandas").DataFrame(res_lantik.data or [])
+            except Exception as e:
+                st.error(f"Error baca lantikan: {e}")
+                df_lantik_pusat = __import__("pandas").DataFrame()
+            
+            if df_lantik_pusat.empty:
+                st.warning(f"Belum ada lantikan di pusat {pilihan_pusat_semak}")
+                # Still allow to add guru
+                df_lantik_pusat = __import__("pandas").DataFrame()
+            else:
+                st.success(f"Ada {len(df_lantik_pusat)} lantikan di {pilihan_pusat_semak}")
+            
+            # Helper to get jawatan groups
+            def get_jawatan_group(df, keyword, exclude_keywords=[]):
+                if df.empty:
+                    return __import__("pandas").DataFrame()
+                def match(row):
+                    jaw = str(row.get("jawatan_cadangan") or row.get("JAWATAN_CADANGAN") or "").upper()
+                    if keyword.upper() not in jaw:
+                        return False
+                    for ex in exclude_keywords:
+                        if ex.upper() in jaw:
+                            # Special handling for Ketua vs Timbalan
+                            if keyword.upper()=="KETUA PENGAWAS" and "TIMBALAN" in jaw:
+                                return False
+                            if keyword.upper()=="PENYELIA" and ex.upper() not in jaw:
+                                continue
+                    # For Ketua Pengawas, exclude Timbalan
+                    if keyword.upper()=="KETUA PENGAWAS" and "TIMBALAN" in jaw:
+                        return False
+                    # For Pengawas Peperiksaan, exclude Ketua, Timbalan, Penyelia
+                    if keyword.upper()=="PENGAWAS" and any(k in jaw for k in ["KETUA","TIMBALAN","PENYELIA","SELENGGARA"]):
+                        return False
+                    return True
+                return df[df.apply(match, axis=1)].copy()
+            
+            # Split into 4 groups
+            # Penyelia Kawasan
+            df_penyelia = df_lantik_pusat[df_lantik_pusat.apply(lambda r: "PENYELIA" in str(r.get("jawatan_cadangan") or "").upper(), axis=1)].copy() if not df_lantik_pusat.empty else __import__("pandas").DataFrame()
+            # Ketua Pengawas
+            df_kp = df_lantik_pusat[df_lantik_pusat.apply(lambda r: "KETUA PENGAWAS" in str(r.get("jawatan_cadangan") or "").upper() and "TIMBALAN" not in str(r.get("jawatan_cadangan") or "").upper(), axis=1)].copy() if not df_lantik_pusat.empty else __import__("pandas").DataFrame()
+            # Timbalan
+            df_tkp = df_lantik_pusat[df_lantik_pusat.apply(lambda r: "TIMBALAN" in str(r.get("jawatan_cadangan") or "").upper(), axis=1)].copy() if not df_lantik_pusat.empty else __import__("pandas").DataFrame()
+            # Pengawas
+            df_peng = df_lantik_pusat[df_lantik_pusat.apply(lambda r: "PENGAWAS" in str(r.get("jawatan_cadangan") or "").upper() and "KETUA" not in str(r.get("jawatan_cadangan") or "").upper() and "TIMBALAN" not in str(r.get("jawatan_cadangan") or "").upper() and "PENYELIA" not in str(r.get("jawatan_cadangan") or "").upper(), axis=1)].copy() if not df_lantik_pusat.empty else __import__("pandas").DataFrame()
+            
+            # Function to display table with batal action
+            def display_jawatan_table(df_jawatan, tajuk, icon, color, jawatan_name):
+                st.markdown(f"""
+                <div style="background: {color}; padding:12px; border-radius:8px; color:white; margin:15px 0 10px 0;">
+                    <h3 style="margin:0; color:white;">{icon} {tajuk} - {len(df_jawatan)} orang di {pilihan_pusat_semak}</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if df_jawatan.empty:
+                    st.info(f"Belum ada {tajuk} di pusat ini")
+                    return
+                
+                # Build display rows
+                rows = []
+                for _, r in df_jawatan.iterrows():
+                    rows.append({
+                        "id": r.get("id",""),
+                        "NAMA GURU": r.get("nama_guru","") or r.get("NAMA_GURU",""),
+                        "IC": r.get("ic_guru","") or r.get("IC_GURU",""),
+                        "JAWATAN": r.get("jawatan_cadangan","") or r.get("JAWATAN_CADANGAN",""),
+                        "SEKOLAH ASAL": r.get("kod_sekolah_asal","") or r.get("KOD_SEKOLAH_ASAL",""),
+                        "NAMA SEKOLAH ASAL": str(r.get("nama_sekolah_asal","") or r.get("NAMA_SEKOLAH_ASAL",""))[:25],
+                        "POSKOD RUMAH": r.get("poskod_rumah","") or r.get("POSKOD_RUMAH",""),
+                        "TELEFON": r.get("telefon_guru","") or r.get("TELEFON_GURU",""),
+                        "STATUS": r.get("status","") or r.get("STATUS","")
+                    })
+                df_disp = __import__("pandas").DataFrame(rows)
+                st.dataframe(df_disp, use_container_width=True, hide_index=True)
+                
+                # Batalkan lantikan section
+                with st.expander(f"❌ Batalkan Lantikan {tajuk} di {pilihan_pusat_semak}", expanded=False):
+                    st.warning(f"Jika PPD rasa guru ini tidak sesuai di {pilihan_pusat_semak}, boleh batalkan. Guru akan masuk semula ke bahagian cadangan SUP untuk dipilih di pusat lain.")
+                    batal_ids = st.multiselect(
+                        f"Pilih {tajuk} untuk batalkan lantikan di {pilihan_pusat_semak}",
+                        df_disp["id"].tolist(),
+                        format_func=lambda x: f"{df_disp[df_disp['id']==x]['NAMA GURU'].values[0]} - {df_disp[df_disp['id']==x]['SEKOLAH ASAL'].values[0]} - {df_disp[df_disp['id']==x]['IC'].values[0]}" if not df_disp[df_disp['id']==x].empty else str(x),
+                        key=f"batal_{jawatan_name}_{pilihan_pusat_semak}"
+                    )
+                    if batal_ids:
+                        st.error(f"Anda akan batalkan {len(batal_ids)} {tajuk} dari {pilihan_pusat_semak}. Guru akan kembali ke cadangan SUP (kod_pusat = NULL, status = HANTAR KE PPD).")
+                        if st.button(f"❌ Confirm Batalkan {len(batal_ids)} {tajuk} dari {pilihan_pusat_semak}", type="primary", use_container_width=True, key=f"btn_batal_{jawatan_name}_{pilihan_pusat_semak}"):
+                            try:
+                                berjaya = 0
+                                for gid in batal_ids:
+                                    # Batalkan: set kod_pusat None, status HANTAR KE PPD supaya masuk semula ke cadangan
+                                    supa.table("cadangan_sup").update({"kod_pusat": None, "status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"}).eq("id", gid).execute()
+                                    berjaya+=1
+                                st.success(f"✅ Berjaya batalkan {berjaya} {tajuk} dari {pilihan_pusat_semak}. Guru masuk semula ke cadangan SUP untuk dipilih di pusat lain.")
+                                st.balloons()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gagal batal: {e}")
+            
+            # Display 4 tables
+            display_jawatan_table(df_penyelia, "Penyelia Kawasan", "🔐", "linear-gradient(135deg, #e65100 0%, #ef6c00 100%)", "penyelia")
+            display_jawatan_table(df_kp, "Ketua Pengawas", "👑", "linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%)", "kp")
+            display_jawatan_table(df_tkp, "Timbalan Ketua Pengawas", "🎖️", "linear-gradient(135deg, #e65100 0%, #f57c00 100%)", "tkp")
+            display_jawatan_table(df_peng, "Pengawas Peperiksaan", "👨‍🏫", "linear-gradient(135deg, #2e7d32 0%, #43a047 100%)", "pengawas")
+            
+            st.markdown("---")
+            st.markdown(f"### ➕ Isi Kekosongan di {pilihan_pusat_semak} - Pilih Guru Lain")
+            st.info(f"Selepas batalkan lantikan di atas, PPD boleh pilih guru lain dari cadangan SUP untuk isi kekosongan di {pilihan_pusat_semak}. Guru yang dibatalkan tadi sudah masuk semula ke pool cadangan.")
+            
+            # Get guru yang belum dilantik (pool untuk isi kekosongan)
+            try:
+                df_belum_pool = df_cad_all[df_cad_all.apply(lambda r: str(r.get("kod_pusat") or r.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat"), axis=1)].copy()
+            except:
+                df_belum_pool = __import__("pandas").DataFrame()
+            
+            if df_belum_pool.empty:
+                st.warning("Tiada guru dalam pool cadangan yang belum dilantik - semua sudah dilantik. Batalkan dulu lantikan di atas untuk kembalikan guru ke pool.")
+            else:
+                st.markdown(f"**{len(df_belum_pool)} guru dalam pool belum dilantik - boleh pilih untuk isi kekosongan di {pilihan_pusat_semak}:**")
+                
+                # Filter by jawatan for easier selection
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    filter_jawatan_semak = st.selectbox(
+                        "Filter Ikut Jawatan Untuk Isi Kekosongan",
+                        ["Semua Jawatan", "Ketua Pengawas", "Timbalan Ketua Pengawas", "Pengawas Peperiksaan", "Penyelia Kawasan"],
+                        key=f"filter_jawatan_semak_{pilihan_pusat_semak}"
+                    )
+                with col_f2:
+                    # Info pusat tuan rumah for max3 check
+                    info_pusat_semak = df_pusat_list[df_pusat_list["NO_PUSAT"]==pilihan_pusat_semak]
+                    # Get current count per sekolah in this pusat
+                    sekolah_count_semak = {}
+                    if not df_lantik_pusat.empty:
+                        for _, r in df_lantik_pusat.iterrows():
+                            ks = str(r.get("kod_sekolah_asal") or "").upper().strip()
+                            sekolah_count_semak[ks] = sekolah_count_semak.get(ks, 0) + 1
+                    st.caption(f"Pusat {pilihan_pusat_semak} sudah ada {len(df_lantik_pusat)} petugas. Max 3 per sekolah. Count: {sekolah_count_semak}")
+                
+                df_pool_filtered = df_belum_pool.copy()
+                if filter_jawatan_semak != "Semua Jawatan":
+                    def match_filter(r, target):
+                        jaw = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or "").upper()
+                        tgt = target.upper()
+                        if "KETUA PENGAWAS" in tgt and "TIMBALAN" not in tgt:
+                            return "KETUA PENGAWAS" in jaw and "TIMBALAN" not in jaw
+                        elif "TIMBALAN" in tgt:
+                            return "TIMBALAN" in jaw
+                        elif "PENGAWAS PEPERIKSAAN" in tgt:
+                            return "PENGAWAS PEPERIKSAAN" in jaw or jaw.strip()=="PENGAWAS"
+                        elif "PENYELIA" in tgt:
+                            return "PENYELIA" in jaw
+                        else:
+                            return tgt in jaw
+                    df_pool_filtered = df_pool_filtered[df_pool_filtered.apply(lambda r: match_filter(r, filter_jawatan_semak), axis=1)].copy()
+                
+                # Filter out sekolah tuan rumah and max3
+                # Get kod tuan rumah
+                kod_tuan_semak = ""
+                try:
+                    df_pusat_raw_all = get_pusat_df()
+                    for _, pr in df_pusat_raw_all.iterrows():
+                        d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
+                        if isinstance(d, str):
+                            try: d = json.loads(d)
+                            except: d = {}
+                        no_p = str(pr.get("no_pusat") or pr.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                        if no_p == pilihan_pusat_semak:
+                            kod_tuan_semak = str(pr.get("kod_sekolah_tuan_rumah") or pr.get("kod_sekolah") or d.get("KOD_SEKOLAH") or "").upper().strip()
+                            break
+                except:
+                    kod_tuan_semak = ""
+                
+                df_pool_layak = df_pool_filtered.copy()
+                if kod_tuan_semak:
+                    df_pool_layak = df_pool_layak[~df_pool_layak.apply(lambda r: str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or "").upper().strip() == kod_tuan_semak, axis=1)]
+                
+                # Check max3
+                def check_max3_semak(row):
+                    kod = str(row.get("KOD_SEKOLAH_ASAL") or row.get("kod_sekolah_asal") or "").upper().strip()
+                    return sekolah_count_semak.get(kod, 0) < 3 if kod else True
+                df_pool_layak = df_pool_layak[df_pool_layak.apply(check_max3_semak, axis=1)].copy()
+                
+                st.markdown(f"**{len(df_pool_layak)} calon layak untuk isi kekosongan di {pilihan_pusat_semak} (selepas filter {filter_jawatan_semak}, elak sekolah sendiri & max3):**")
+                
+                if df_pool_layak.empty:
+                    st.warning("Tiada calon layak untuk pusat ini")
+                else:
+                    display_pool = []
+                    for _, r in df_pool_layak.iterrows():
+                        display_pool.append({
+                            "id": r.get("id",""),
+                            "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                            "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                            "JAWATAN": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                            "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                            "POSKOD": r.get("POSKOD_RUMAH","") or r.get("poskod_rumah",""),
+                            "STATUS": r.get("STATUS","") or r.get("status","")
+                        })
+                    df_pool_disp = __import__("pandas").DataFrame(display_pool)
+                    st.dataframe(df_pool_disp, use_container_width=True, hide_index=True)
+                    
+                    pilih_guru_isi = st.multiselect(
+                        f"Pilih guru untuk isi kekosongan di {pilihan_pusat_semak}",
+                        df_pool_disp["id"].tolist(),
+                        format_func=lambda x: f"{df_pool_disp[df_pool_disp['id']==x]['NAMA GURU'].values[0]} - {df_pool_disp[df_pool_disp['id']==x]['SEKOLAH ASAL'].values[0]} - {df_pool_disp[df_pool_disp['id']==x]['JAWATAN'].values[0]}" if not df_pool_disp[df_pool_disp['id']==x].empty else str(x),
+                        key=f"pilih_guru_isi_{pilihan_pusat_semak}"
+                    )
+                    
+                    if pilih_guru_isi:
+                        if st.button(f"✅ Lantik {len(pilih_guru_isi)} Guru Terpilih ke {pilihan_pusat_semak} Untuk Isi Kekosongan", type="primary", use_container_width=True, key=f"btn_lantik_isi_{pilihan_pusat_semak}"):
+                            try:
+                                berjaya = 0
+                                for gid in pilih_guru_isi:
+                                    supa.table("cadangan_sup").update({"kod_pusat": pilihan_pusat_semak, "status": "DILANTIK PPD", "STATUS": "DILANTIK PPD"}).eq("id", gid).execute()
+                                    berjaya+=1
+                                st.success(f"✅ Berjaya lantik {berjaya} guru untuk isi kekosongan di {pilihan_pusat_semak}")
+                                st.balloons()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gagal lantik: {e}")
+
+
 
         elif menu == "kelulusan":
             st.markdown(f'<div style="background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">✅ Kelulusan PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, "")} - Ikut Sekolah</h2><p style="margin:5px 0 0 0; color:#c8e6c9;">Pilih sekolah, lihat senarai guru yang telah dilantik dari sekolah tersebut, lulus & jana surat</p></div>', unsafe_allow_html=True)
