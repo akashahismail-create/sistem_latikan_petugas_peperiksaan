@@ -3520,15 +3520,117 @@ elif st.session_state.role == "PPD":
                                 st.error(str(e))
             
             st.markdown("---")
-            st.markdown("### 📊 Ringkasan Penempatan Manual")
-            if tugas_pusat_ini:
-                all_rows = []
-                for c in tugas_pusat_ini.values():
-                    all_rows.append({"NAMA": c.get("NAMA_GURU", ""), "IC": c.get("IC_GURU", ""), "JAWATAN": c.get("JAWATAN_CADANGAN", ""), "SEKOLAH ASAL": c.get("KOD_SEKOLAH_ASAL", ""), "PUSAT": pilih_pusat_manual})
-                df_summary = pd.DataFrame(all_rows)
-                st.dataframe(df_summary, use_container_width=True, hide_index=True)
+            st.markdown("### 📊 Ringkasan Penempatan Manual - Kumulatif (Tidak Hilang Bila Pilih Sekolah Kedua)")
+            st.info("💡 Ringkasan ini kumulatif - bila PPD lantik Sekolah Kedua, lantikan Pertama masih kekal di bawah. Column ikut jawatan: KP, TKP, Pengawas.")
+            
+            # ===== RINGKASAN KUMULATIF - SEMUA PUSAT YANG TELAH DILANTIK MANUAL =====
+            try:
+                # Ambil semua yang sudah ada kod_pusat dan status DILANTIK PPD untuk PPD ini
+                res_all_lantik = supa.table("cadangan_sup").select("*").eq("kod_ppd", kod_ppd).not_.is_("kod_pusat", "null").limit(5000).execute()
+                df_all_lantik = __import__("pandas").DataFrame(res_all_lantik.data or [])
+                # Filter hanya yang status DILANTIK / LULUS
+                if not df_all_lantik.empty:
+                    df_all_lantik = df_all_lantik[df_all_lantik.apply(lambda r: str(r.get("status") or "").upper() not in ("", "DICADANGKAN", "HANTAR KE PPD"), axis=1)]
+            except:
+                df_all_lantik = __import__("pandas").DataFrame()
+            
+            # Tambah juga yang baru di session ini (kalau belum save DB pun, tunjuk)
+            # Gabungkan
+            if not df_all_lantik.empty:
+                # Build rows dengan column ikut jawatan
+                all_rows_kum = []
+                for _, c in df_all_lantik.iterrows():
+                    jaw = str(c.get("jawatan_cadangan") or c.get("JAWATAN_CADANGAN") or "")
+                    # Tentukan column jawatan
+                    if "Ketua Pengawas" in jaw and "Timbalan" not in jaw:
+                        jaw_col = "KETUA PENGAWAS"
+                    elif "Timbalan" in jaw:
+                        jaw_col = "TIMBALAN KP"
+                    elif "Pengawas" in jaw:
+                        jaw_col = "PENGAWAS PEPERIKSAAN"
+                    elif "Penyelia" in jaw:
+                        jaw_col = "PENYELIA KAWASAN"
+                    else:
+                        jaw_col = jaw.upper()
+                    
+                    all_rows_kum.append({
+                        "BIL": len(all_rows_kum)+1,
+                        "NAMA GURU": c.get("nama_guru","") or c.get("NAMA_GURU",""),
+                        "IC": c.get("ic_guru","") or c.get("IC_GURU",""),
+                        "JAWATAN": jaw,
+                        "KOLUM JAWATAN": jaw_col,
+                        "SEKOLAH ASAL": c.get("kod_sekolah_asal","") or c.get("KOD_SEKOLAH_ASAL",""),
+                        "NAMA SEKOLAH ASAL": str(c.get("nama_sekolah_asal","") or c.get("NAMA_SEKOLAH_ASAL",""))[:25],
+                        "PUSAT TUGAS": c.get("kod_pusat","") or c.get("KOD_PUSAT",""),
+                        "STATUS": c.get("status","")
+                    })
+                
+                df_summary_kum = __import__("pandas").DataFrame(all_rows_kum)
+                
+                if df_summary_kum.empty:
+                    st.info("Belum ada penempatan manual - Sila lantik di atas")
+                else:
+                    # Papar ikut tab jawatan
+                    tab_kp, tab_tkp, tab_peng, tab_semua = st.tabs(["👑 Ketua Pengawas", "🎖️ Timbalan KP", "👨‍🏫 Pengawas", "📋 Semua (Kumulatif)"])
+                    
+                    with tab_kp:
+                        df_kp = df_summary_kum[df_summary_kum["KOLUM JAWATAN"]=="KETUA PENGAWAS"].copy()
+                        st.markdown(f"**{len(df_kp)} Ketua Pengawas telah dilantik (kumulatif, tidak hilang bila pilih sekolah kedua):**")
+                        if df_kp.empty:
+                            st.info("Belum ada Ketua Pengawas dilantik")
+                        else:
+                            st.dataframe(df_kp[["BIL","NAMA GURU","IC","SEKOLAH ASAL","NAMA SEKOLAH ASAL","PUSAT TUGAS"]], use_container_width=True, hide_index=True)
+                    
+                    with tab_tkp:
+                        df_tkp = df_summary_kum[df_summary_kum["KOLUM JAWATAN"]=="TIMBALAN KP"].copy()
+                        st.markdown(f"**{len(df_tkp)} Timbalan KP telah dilantik (kumulatif):**")
+                        if df_tkp.empty:
+                            st.info("Belum ada Timbalan KP")
+                        else:
+                            st.dataframe(df_tkp[["BIL","NAMA GURU","IC","SEKOLAH ASAL","NAMA SEKOLAH ASAL","PUSAT TUGAS"]], use_container_width=True, hide_index=True)
+                    
+                    with tab_peng:
+                        df_peng = df_summary_kum[df_summary_kum["KOLUM JAWATAN"]=="PENGAWAS PEPERIKSAAN"].copy()
+                        st.markdown(f"**{len(df_peng)} Pengawas telah dilantik (kumulatif):**")
+                        if df_peng.empty:
+                            st.info("Belum ada Pengawas")
+                        else:
+                            st.dataframe(df_peng[["BIL","NAMA GURU","IC","SEKOLAH ASAL","NAMA SEKOLAH ASAL","PUSAT TUGAS"]], use_container_width=True, hide_index=True)
+                    
+                    with tab_semua:
+                        st.markdown(f"**📋 Ringkasan Kumulatif Keseluruhan: {len(df_summary_kum)} guru telah dilantik manual - Lantikan pertama kekal bila tambah lantikan kedua:**")
+                        st.dataframe(df_summary_kum, use_container_width=True, hide_index=True)
+                        st.download_button("📥 Export Ringkasan Kumulatif Manual (Ikut Jawatan)", __import__("io").BytesIO(__import__("pandas").ExcelWriter).__class__, file_name=f"ringkasan_manual_kumulatif_{kod_ppd}.xlsx", use_container_width=True, key="export_kum_manual")
+                        # Correct export
+                        try:
+                            import io
+                            output = io.BytesIO()
+                            with __import__("pandas").ExcelWriter(output, engine='openpyxl') as writer:
+                                df_summary_kum.to_excel(writer, index=False, sheet_name='Kumulatif Semua')
+                                if not df_kp.empty:
+                                    df_kp.to_excel(writer, index=False, sheet_name='Ketua Pengawas')
+                                if not df_tkp.empty:
+                                    df_tkp.to_excel(writer, index=False, sheet_name='Timbalan KP')
+                                if not df_peng.empty:
+                                    df_peng.to_excel(writer, index=False, sheet_name='Pengawas')
+                            st.download_button("📥 Export Excel Kumulatif (4 Sheet Ikut Jawatan)", data=output.getvalue(), file_name=f"ringkasan_manual_kumulatif_{kod_ppd}_{__import__('datetime').date.today()}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key="export_kum_manual_excel")
+                        except Exception as e:
+                            st.caption(f"Export error: {e}")
+                            st.download_button("📥 Export CSV Kumulatif", df_summary_kum.to_csv(index=False).encode('utf-8'), file_name=f"ringkasan_manual_kumulatif_{kod_ppd}.csv", mime="text/csv", use_container_width=True, key="export_kum_csv")
+                    
+                    # Info tambahan: papar lantikan untuk pusat semasa juga (supaya nampak konteks)
+                    st.markdown("---")
+                    st.markdown(f"#### 📍 Lantikan Untuk Pusat Semasa: {pilih_pusat_manual}")
+                    if tugas_pusat_ini:
+                        all_rows_curr = []
+                        for c in tugas_pusat_ini.values():
+                            all_rows_curr.append({"NAMA": c.get("NAMA_GURU", ""), "IC": c.get("IC_GURU", ""), "JAWATAN": c.get("JAWATAN_CADANGAN", ""), "SEKOLAH ASAL": c.get("KOD_SEKOLAH_ASAL", ""), "PUSAT": pilih_pusat_manual})
+                        df_curr_sum = __import__("pandas").DataFrame(all_rows_curr)
+                        st.dataframe(df_curr_sum, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"Belum ada penempatan di {pilih_pusat_manual} - ini paparan pusat semasa sahaja, ringkasan kumulatif di atas kekal")
             else:
-                st.info(f"Belum ada penempatan manual di {pilih_pusat_manual} - Sila pilih KP, TKP, Pengawas di atas")
+                st.info(f"Belum ada penempatan manual di PPD {kod_ppd} - Sila lantik KP, TKP, Pengawas di atas. Ringkasan kumulatif akan muncul di sini dan tidak hilang bila pilih sekolah kedua.")
 
         elif menu == "cadangan":
             st.markdown(f'''
