@@ -1720,135 +1720,181 @@ if st.session_state.role == "SUP":
                 )
                 
                 if pilih_pusat_sup:
-                    # ===== FIX: PETUGAS HADIR - HANYA YANG SUDAH DILANTIK PPD & BUKAN DARI SEKOLAH SENDIRI =====
+                    # Get petugas assigned to this pusat
                     try:
                         res_cad = supa.table("cadangan_sup").select("*").eq("kod_pusat", pilih_pusat_sup).limit(5000).execute()
-                        df_petugas_all = pd.DataFrame(res_cad.data or [])
-                        if df_petugas_all.empty:
+                        df_petugas = pd.DataFrame(res_cad.data or [])
+                        if df_petugas.empty:
+                            # Try alternative column
                             res_cad2 = supa.table("cadangan_sup").select("*").ilike("kod_pusat", f"%{pilih_pusat_sup}%").limit(5000).execute()
-                            df_petugas_all = pd.DataFrame(res_cad2.data or [])
+                            df_petugas = pd.DataFrame(res_cad2.data or [])
                     except Exception as e:
                         st.error(f"Error load petugas: {e}")
-                        df_petugas_all = pd.DataFrame()
+                        df_petugas = pd.DataFrame()
                     
-                    if df_petugas_all.empty:
-                        st.warning(f"⏳ Belum ada petugas dilantik untuk pusat {pilih_pusat_sup} - PPD belum buat lantikan.")
-                        st.info("Button ini hanya akan paparkan nama selepas PPD lantik dan jana surat. Cikgu dari sekolah sendiri tidak akan dipaparkan kerana tidak boleh bertugas di sekolah asal.")
+                    if df_petugas.empty:
+                        st.info(f"Belum ada petugas dilantik untuk pusat {pilih_pusat_sup}")
                     else:
-                        # Normalisasi column status
-                        def get_status_val(row):
-                            return str(row.get("status") or row.get("STATUS") or row.get("Status") or "").upper()
-                        df_petugas_all["STATUS_NORM"] = df_petugas_all.apply(get_status_val, axis=1)
+                        st.markdown(f"#### 👥 {len(df_petugas)} Petugas Akan Hadir Bertugas di {pilih_pusat_sup}")
                         
-                        # 1. Filter hanya yang sudah dilantik oleh PPD (LULUS / SURAT / DILANTIK / DITEMPATKAN / DIJANA)
-                        # DICADANGKAN dan HANTAR KE PPD sahaja tidak dikira lagi
-                        lulus_keywords = ["LULUS", "SURAT", "DILANTIK", "DITEMPATKAN", "DIJANA", "SAH", "LANTIK"]
-                        mask_lulus = df_petugas_all["STATUS_NORM"].apply(lambda x: any(k in x for k in lulus_keywords))
-                        # Jika tiada status keyword (contoh status kosong tapi ada no_surat), kira lulus jika ada no_surat
-                        def has_surat(row):
-                            ns = str(row.get("no_surat") or row.get("NO_SURAT") or row.get("no_surat_lantikan") or "").strip()
-                            return ns != "" and ns.lower() not in ("none","null","nan","")
-                        mask_surat = df_petugas_all.apply(has_surat, axis=1)
-                        mask_final_lulus = mask_lulus | mask_surat
+                        # Group by jawatan
+                        kp_list = df_petugas[df_petugas["jawatan_cadangan"].astype(str).str.contains("Ketua Pengawas", case=False, na=False) & ~df_petugas["jawatan_cadangan"].astype(str).str.contains("Timbalan", case=False, na=False)] if "jawatan_cadangan" in df_petugas.columns else pd.DataFrame()
+                        tkp_list = df_petugas[df_petugas["jawatan_cadangan"].astype(str).str.contains("Timbalan", case=False, na=False)] if "jawatan_cadangan" in df_petugas.columns else pd.DataFrame()
+                        peng_list = df_petugas[~df_petugas["jawatan_cadangan"].astype(str).str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)] if "jawatan_cadangan" in df_petugas.columns else df_petugas
                         
-                        df_lulus_sahaja = df_petugas_all[mask_final_lulus].copy()
+                        col_kp, col_tkp, col_peng = st.columns(3)
+                        with col_kp:
+                            st.metric("Ketua Pengawas", len(kp_list))
+                        with col_tkp:
+                            st.metric("Timbalan KP", len(tkp_list))
+                        with col_peng:
+                            st.metric("Pengawas", len(peng_list))
                         
-                        if df_lulus_sahaja.empty:
-                            st.warning(f"⏳ Ada {len(df_petugas_all)} cadangan untuk pusat {pilih_pusat_sup} tapi belum diluluskan PPD.")
-                            st.info(f"Status sedia ada: {df_petugas_all['STATUS_NORM'].unique().tolist()[:5]} - Tunggu PPD buat lantikan. Selepas PPD lulus, nama petugas dari sekolah lain akan dipaparkan di sini.")
-                            # Debug: tunjuk count belum lulus
-                            belum = df_petugas_all[~mask_final_lulus]
-                            if not belum.empty:
-                                st.caption(f"{len(belum)} cadangan masih peringkat DICADANGKAN / HANTAR KE PPD - belum dilantik.")
-                        else:
-                            # 2. Filter BUANG cikgu dari sekolah sendiri - tidak boleh bertugas di sekolah asal
-                            def get_sekolah_asal(row):
-                                return str(row.get("kod_sekolah_asal") or row.get("KOD_SEKOLAH_ASAL") or row.get("kod_sekolah") or row.get("KOD_SEKOLAH") or "").upper().strip()
-                            df_lulus_sahaja["SEKOLAH_ASAL_NORM"] = df_lulus_sahaja.apply(get_sekolah_asal, axis=1)
-                            
-                            # Kod sekolah semasa
-                            kod_semasa = kod.upper().strip()
-                            mask_bukan_sekolah_sendiri = df_lulus_sahaja["SEKOLAH_ASAL_NORM"] != kod_semasa
-                            # Juga check NAMA_SEKOLAH_ASAL jika kod sama
-                            df_final = df_lulus_sahaja[mask_bukan_sekolah_sendiri].copy()
-                            
-                            excluded_count = len(df_lulus_sahaja) - len(df_final)
-                            if excluded_count > 0:
-                                st.info(f"ℹ️ {excluded_count} petugas dari sekolah sendiri ({kod_semasa}) disembunyikan kerana tidak boleh bertugas di sekolah asal (peraturan SPM).")
-                            
-                            if df_final.empty:
-                                st.warning(f"Tiada petugas luar untuk pusat {pilih_pusat_sup} - Semua {len(df_lulus_sahaja)} yang lulus adalah dari sekolah sendiri, jadi tidak dipaparkan (tidak boleh bertugas di sekolah asal).")
-                                st.info("Selepas PPD lantik petugas dari sekolah lain ke pusat ini, nama mereka akan muncul di sini.")
-                            else:
-                                st.success(f"✅ {len(df_final)} Petugas Luar Akan Hadir Bertugas di {pilih_pusat_sup} (Sudah dilantik PPD, bukan dari sekolah sendiri)")
-                                st.markdown(f"**Pusat:** {pilih_pusat_sup} | **Sekolah tuan rumah:** {kod} - {info.get('nama_sekolah','')}")
-                                
-                                # Group by jawatan - hanya KP, TKP, Pengawas
-                                def get_jawatan(row):
-                                    return str(row.get("jawatan_cadangan") or row.get("JAWATAN_CADANGAN") or row.get("jawatan") or "").strip()
-                                df_final["JAWATAN_NORM"] = df_final.apply(get_jawatan, axis=1)
-                                
-                                kp_list = df_final[df_final["JAWATAN_NORM"].str.contains("Ketua Pengawas", case=False, na=False) & ~df_final["JAWATAN_NORM"].str.contains("Timbalan", case=False, na=False)]
-                                tkp_list = df_final[df_final["JAWATAN_NORM"].str.contains("Timbalan", case=False, na=False)]
-                                peng_list = df_final[~df_final["JAWATAN_NORM"].str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)]
-                                
-                                col_kp, col_tkp, col_peng = st.columns(3)
-                                with col_kp:
-                                    st.metric("Ketua Pengawas (Luar)", len(kp_list))
-                                with col_tkp:
-                                    st.metric("Timbalan KP (Luar)", len(tkp_list))
-                                with col_peng:
-                                    st.metric("Pengawas (Luar)", len(peng_list))
-                                
-                                st.markdown("#### 📋 Senarai Petugas Luar Yang Akan Hadir")
-                                st.caption("Ini adalah petugas yang dilantik PPD dari sekolah lain untuk bertugas di pusat sekolah anda. Cikgu sekolah sendiri tidak termasuk.")
-                                
-                                rows_petugas = []
-                                for _, r in df_final.iterrows():
-                                    rows_petugas.append({
-                                        "NAMA GURU": r.get("nama_guru", "") or r.get("NAMA_GURU", "") or r.get("NAMA", ""),
-                                        "IC": r.get("ic_guru", "") or r.get("IC_GURU", ""),
-                                        "JAWATAN": r.get("jawatan_cadangan", "") or r.get("JAWATAN_CADANGAN", ""),
-                                        "SEKOLAH ASAL": r.get("kod_sekolah_asal", "") or r.get("KOD_SEKOLAH_ASAL", ""),
-                                        "NAMA SEKOLAH ASAL": str(r.get("nama_sekolah_asal", "") or r.get("NAMA_SEKOLAH_ASAL", ""))[:40],
-                                        "NO SURAT": r.get("no_surat", "") or r.get("NO_SURAT") or r.get("no_surat_lantikan") or "",
-                                        "STATUS": r.get("status", "") or r.get("STATUS", "")
-                                    })
-                                df_display_petugas = pd.DataFrame(rows_petugas)
-                                
-                                # Warna hijau untuk yang sudah lulus
-                                try:
-                                    styled_petugas = df_display_petugas.style.apply(lambda row: ['background-color: #e8f5e9; color: #1b5e20; font-weight:600;' if 'LULUS' in str(row.get('STATUS','')).upper() or 'SURAT' in str(row.get('STATUS','')).upper() else '' for _ in row], axis=1)
-                                    st.dataframe(styled_petugas, use_container_width=True, hide_index=True)
-                                except:
-                                    st.dataframe(df_display_petugas, use_container_width=True, hide_index=True)
-                                
-                                st.download_button(f"📥 Export Petugas Luar {pilih_pusat_sup}", to_excel(df_display_petugas), file_name=f"petugas_LUAR_{pilih_pusat_sup}_{kod}.xlsx", use_container_width=True)
-                                st.info("ℹ️ Senarai ini hanya untuk makluman SUP - siapa yang akan datang bertugas di sekolah anda selepas lantikan PPD. Semua adalah dari sekolah lain (bukan sekolah asal).")
-                    # ===== END FIX =====
-
+                        # Detailed list
+                        rows_petugas = []
+                        for _, r in df_petugas.iterrows():
+                            rows_petugas.append({
+                                "NAMA GURU": r.get("nama_guru", "") or r.get("NAMA_GURU", ""),
+                                "IC": r.get("ic_guru", "") or r.get("IC_GURU", ""),
+                                "JAWATAN": r.get("jawatan_cadangan", "") or r.get("JAWATAN_CADANGAN", ""),
+                                "SEKOLAH ASAL": r.get("kod_sekolah_asal", "") or r.get("KOD_SEKOLAH_ASAL", ""),
+                                "NAMA SEKOLAH ASAL": str(r.get("nama_sekolah_asal", "") or r.get("NAMA_SEKOLAH_ASAL", ""))[:30],
+                                "NO SURAT": r.get("no_surat", "") or "",
+                                "STATUS": r.get("status", "") or ""
+                            })
+                        df_display_petugas = pd.DataFrame(rows_petugas)
+                        st.dataframe(df_display_petugas, use_container_width=True, hide_index=True)
+                        st.download_button(f"Export Petugas {pilih_pusat_sup}", to_excel(df_display_petugas), file_name=f"petugas_{pilih_pusat_sup}_{kod}.xlsx", use_container_width=True)
 
         elif menu == "surat":
-            st.markdown(f'<div style="background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">📄 Surat Lantikan Saya - {kod}</h2><p style="margin:5px 0 0 0; color:#e1bee7;">Surat lantikan petugas dari sekolah anda yang telah diluluskan PPD</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">📄 Surat Lantikan Saya - {kod} - {info.get("nama_sekolah","")}</h2><p style="margin:5px 0 0 0; color:#e1bee7;">Surat lantikan petugas dari sekolah anda yang telah dicadangkan & diluluskan PPD - Asing ikut jawatan untuk rujukan SUP</p></div>', unsafe_allow_html=True)
             
             df_cad_sup = get_cadangan_df(kod_sekolah=kod)
             if df_cad_sup.empty:
-                st.warning("Belum ada cadangan")
+                st.warning("Belum ada cadangan. Sila buat cadangan di menu Cadangan Lantikan dahulu.")
             else:
-                # Hanya yang sudah lulus dan ada no surat
-                def has_no_surat(row):
-                    ns = str(row.get("no_surat") or row.get("NO_SURAT") or "").strip()
-                    return ns != "" and ns.lower() not in ("none", "null", "nan")
+                # Normalisasi status dan jawatan
+                def get_status(row):
+                    return str(row.get("STATUS") or row.get("status") or "").upper().strip()
+                def get_jawatan(row):
+                    return str(row.get("JAWATAN_CADANGAN") or row.get("jawatan_cadangan") or row.get("JAWATAN") or "").strip()
+                def has_surat(row):
+                    ns = str(row.get("no_surat") or row.get("NO_SURAT") or row.get("no_surat_lantikan") or "").strip()
+                    return ns != "" and ns.lower() not in ("none", "null", "nan", "")
                 
-                df_lulus = df_cad_sup[df_cad_sup.apply(has_no_surat, axis=1)].copy()
-                if df_lulus.empty:
-                    st.info("Belum ada surat lantikan. PPD belum luluskan atau belum jana no surat. Sila tunggu PPD luluskan di menu Kelulusan.")
-                    # Show all cadangan status
-                    st.markdown("### Status Cadangan Sekolah Anda")
-                    st.dataframe(df_cad_sup, use_container_width=True)
-                else:
-                    st.success(f"Ada {len(df_lulus)} surat lantikan untuk sekolah {kod}")
+                df_cad_sup["STATUS_NORM"] = df_cad_sup.apply(lambda r: get_status(r), axis=1)
+                df_cad_sup["JAWATAN_NORM"] = df_cad_sup.apply(lambda r: get_jawatan(r), axis=1)
+                df_cad_sup["ADA_SURAT"] = df_cad_sup.apply(lambda r: has_surat(r), axis=1)
+                
+                # Kira summary
+                total_cad = len(df_cad_sup)
+                ada_surat_cnt = int(df_cad_sup["ADA_SURAT"].sum())
+                tunggu_cnt = total_cad - ada_surat_cnt
+                
+                c1,c2,c3 = st.columns(3)
+                c1.metric("Total Cadangan Sekolah", total_cad)
+                c2.metric("✅ Sudah Ada Surat", ada_surat_cnt)
+                c3.metric("⏳ Tunggu Surat (PPD belum jana)", tunggu_cnt)
+                
+                # Fungsi untuk papar table ikut jawatan
+                def papar_table_jawatan(df_input, tajuk, icon, keyword_list, warna_header):
+                    # Filter ikut jawatan keyword
+                    if keyword_list:
+                        mask = df_input["JAWATAN_NORM"].str.upper().apply(lambda x: any(k.upper() in x.upper() for k in keyword_list))
+                        df_j = df_input[mask].copy()
+                    else:
+                        df_j = df_input.copy()
                     
+                    if df_j.empty:
+                        return
+                    
+                    st.markdown(f'''
+                    <div style="background:{warna_header}; padding:12px 16px; border-radius:8px; margin:20px 0 10px 0; border-left:6px solid #4a148c;">
+                        <h3 style="margin:0; color:white;">{icon} {tajuk} - {len(df_j)} orang</h3>
+                        <p style="margin:4px 0 0 0; color:#f3e5f5; font-size:13px;">Rujukan SUP: siapa sudah ada surat & siapa masih tunggu surat PPD</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                    
+                    # Asingkan ada surat vs tunggu surat
+                    df_ada = df_j[df_j["ADA_SURAT"] == True].copy()
+                    df_tunggu = df_j[df_j["ADA_SURAT"] == False].copy()
+                    
+                    col_ada, col_tunggu = st.columns([1.2, 1])
+                    
+                    with col_ada:
+                        st.markdown(f"#### ✅ Ada Surat ({len(df_ada)})")
+                        if df_ada.empty:
+                            st.info(f"Belum ada surat untuk {tajuk}")
+                        else:
+                            # Table ringkas untuk ada surat
+                            display_rows = []
+                            for _, r in df_ada.iterrows():
+                                display_rows.append({
+                                    "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "JAWATAN": r.get("JAWATAN_NORM",""),
+                                    "PUSAT": r.get("KOD_PUSAT") or r.get("kod_pusat") or r.get("NO_PUSAT_ASAL") or "",
+                                    "NO SURAT": r.get("no_surat") or r.get("NO_SURAT") or "",
+                                    "STATUS": r.get("STATUS_NORM",""),
+                                    "TELEFON": r.get("TELEFON_GURU") or r.get("telefon_guru") or ""
+                                })
+                            df_show = pd.DataFrame(display_rows)
+                            # Warna hijau untuk ada surat
+                            try:
+                                styled = df_show.style.apply(lambda row: ['background-color: #c8e6c9; color: #1b5e20; font-weight:600;' for _ in row], axis=1)
+                                st.dataframe(styled, use_container_width=True, hide_index=True)
+                            except:
+                                st.dataframe(df_show, use_container_width=True, hide_index=True)
+                            st.download_button(f"📥 Export {tajuk} - Ada Surat", to_excel(df_show), file_name=f"surat_{tajuk.replace(' ','_')}_ada_surat_{kod}.xlsx", key=f"exp_ada_{tajuk}_{kod}", use_container_width=True)
+                    
+                    with col_tunggu:
+                        st.markdown(f"#### ⏳ Tunggu Surat ({len(df_tunggu)})")
+                        if df_tunggu.empty:
+                            st.success(f"Semua {tajuk} sudah ada surat!")
+                        else:
+                            display_tunggu = []
+                            for _, r in df_tunggu.iterrows():
+                                display_tunggu.append({
+                                    "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "JAWATAN": r.get("JAWATAN_NORM",""),
+                                    "STATUS": r.get("STATUS_NORM",""),
+                                    "CATATAN": "Menunggu PPD jana surat" if "LULUS" in r.get("STATUS_NORM","") or "HANTAR" in r.get("STATUS_NORM","") else "Belum hantar ke PPD" if "DICADANGKAN" in r.get("STATUS_NORM","") else r.get("STATUS_NORM","")
+                                })
+                            df_tunggu_show = pd.DataFrame(display_tunggu)
+                            try:
+                                styled_t = df_tunggu_show.style.apply(lambda row: ['background-color: #fff9c4; color: #e65100; font-weight:600;' if 'Menunggu' in str(row.get('CATATAN','')) else 'background-color: #ffccbc;' for _ in row], axis=1)
+                                st.dataframe(styled_t, use_container_width=True, hide_index=True)
+                            except:
+                                st.dataframe(df_tunggu_show, use_container_width=True, hide_index=True)
+                            st.download_button(f"📥 Export {tajuk} - Tunggu Surat", to_excel(df_tunggu_show), file_name=f"surat_{tajuk.replace(' ','_')}_tunggu_{kod}.xlsx", key=f"exp_tunggu_{tajuk}_{kod}", use_container_width=True)
+                    
+                    st.markdown("---")
+                
+                # TABLE 1: Penyelia Kawasan kalau ada
+                papar_table_jawatan(df_cad_sup, "TABLE 1: Penyelia Kawasan", "🔐", ["Penyelia Kawasan", "Penyelia"], "linear-gradient(135deg, #e65100 0%, #ef6c00 100%)")
+                
+                # TABLE 2: Ketua Pengawas (termasuk Timbalan)
+                papar_table_jawatan(df_cad_sup, "TABLE 2: Ketua Pengawas & Timbalan Ketua Pengawas", "👑", ["Ketua Pengawas", "Timbalan Ketua"], "linear-gradient(135deg, #0d47a1 0%, #1976d2 100%)")
+                
+                # TABLE 3: Pengawas Peperiksaan
+                papar_table_jawatan(df_cad_sup, "TABLE 3: Pengawas Peperiksaan", "👨‍🏫", ["Pengawas Peperiksaan", "Pengawas"], "linear-gradient(135deg, #2e7d32 0%, #43a047 100%)")
+                
+                # Jika ada jawatan lain yang tidak terklasifikasi, paparkan juga
+                semua_keyword = ["Penyelia Kawasan", "Penyelia", "Ketua Pengawas", "Timbalan Ketua", "Pengawas Peperiksaan", "Pengawas"]
+                mask_terklasifikasi = df_cad_sup["JAWATAN_NORM"].str.upper().apply(lambda x: any(k.upper() in x.upper() for k in semua_keyword))
+                df_tidak_terklasifikasi = df_cad_sup[~mask_terklasifikasi]
+                if not df_tidak_terklasifikasi.empty:
+                    papar_table_jawatan(df_tidak_terklasifikasi, "TABLE LAIN: Jawatan Tidak Terklasifikasi", "❓", [], "linear-gradient(135deg, #616161 0%, #9e9e9e 100%)")
+                
+                # Bahagian surat HTML (kekal untuk yang ada surat)
+                st.markdown("## 📄 Paparan Surat Lantikan (Yang Ada Surat Sahaja)")
+                df_lulus = df_cad_sup[df_cad_sup["ADA_SURAT"] == True].copy()
+                if df_lulus.empty:
+                    st.info("Belum ada surat lantikan. PPD belum luluskan atau belum jana no surat. Sila tunggu PPD luluskan.")
+                else:
+                    st.success(f"Ada {len(df_lulus)} surat lantikan untuk sekolah {kod} - boleh preview & download di bawah")
+
                     for _, r in df_lulus.iterrows():
                         nama = r.get("NAMA_GURU", "") or r.get("nama_guru", "")
                         ic = r.get("IC_GURU", "") or r.get("ic_guru", "")
@@ -1948,6 +1994,8 @@ if st.session_state.role == "SUP":
                                 
                             except Exception as e:
                                 st.error(f"Error generate surat: {e}")
+
+
 
 # ================= ROLE: PPD =================
 elif st.session_state.role == "PPD":
