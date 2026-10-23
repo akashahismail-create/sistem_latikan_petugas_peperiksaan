@@ -2402,8 +2402,8 @@ elif st.session_state.role == "PPD":
                 st.error(f"Error baca sekolah: {e}")
 
         elif menu == "pusat":
-            st.header(f"Pusat di PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')} - Total Calon")
-            st.caption("Filter BETUL ikut NO_PUSAT prefix BA=Klang sahaja - bug lama cari substring SABAK contains BA dah fix")
+            st.header(f"Pusat di PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')} - Total Calon & Poskod Pusat")
+            st.caption("Filter BETUL ikut NO_PUSAT prefix BA=Klang sahaja | PPD boleh tambah/edit POSKOD PUSAT untuk jana ikut poskod terdekat")
             df_pusat_raw = get_pusat_df()
             if df_pusat_raw.empty:
                 st.info("pusat_master kosong")
@@ -2437,6 +2437,80 @@ elif st.session_state.role == "PPD":
                     c3.metric("Total Kelas", int(df_f["JUMLAH_KELAS"].sum()))
                     c4.metric("Total Perlu", int(df_f["SEKOLAH_PERLU"].sum()))
                     st.download_button(f"Export Pusat {kod_ppd}", to_excel(df_f), file_name=f"pusat_{kod_ppd}.xlsx", use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("### 📮 Tambah/Edit Poskod Pusat (Untuk Jana Poskod Terdekat)")
+                    st.info("💡 Poskod Pusat diperlukan untuk sistem kira jarak poskod rumah guru vs pusat. Kalau kosong, sistem akan guna poskod sekolah tuan rumah sebagai fallback.")
+                    with st.expander("✏️ Edit Poskod Pusat - Klik untuk buka", expanded=False):
+                        # Build editable table for poskod
+                        poskod_rows = []
+                        for _, r in df_f.iterrows():
+                            no_p = r["NO_PUSAT"]
+                            # Try get existing poskod
+                            existing_poskod = ""
+                            try:
+                                df_raw = df_pusat_raw
+                                for _, pr in df_raw.iterrows():
+                                    d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
+                                    if isinstance(d, str):
+                                        try: d = json.loads(d)
+                                        except: d = {}
+                                    no_check = str(pr.get("no_pusat") or pr.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                    if no_check == no_p:
+                                        existing_poskod = str(pr.get("poskod") or d.get("POSKOD") or d.get("POSKOD_PUSAT") or "").strip()
+                                        break
+                            except:
+                                pass
+                            poskod_rows.append({"NO_PUSAT": no_p, "NAMA_PUSAT": r["NAMA_PUSAT"][:30], "POSKOD_SEKARANG": existing_poskod, "POSKOD_BARU": existing_poskod})
+                        df_poskod_edit = pd.DataFrame(poskod_rows)
+                        edited_poskod = st.data_editor(
+                            df_poskod_edit,
+                            column_config={
+                                "NO_PUSAT": st.column_config.TextColumn("NO_PUSAT", disabled=True),
+                                "NAMA_PUSAT": st.column_config.TextColumn("NAMA PUSAT", disabled=True),
+                                "POSKOD_SEKARANG": st.column_config.TextColumn("Sekarang", disabled=True),
+                                "POSKOD_BARU": st.column_config.TextColumn("Poskod Baru (5 digit)", help="Contoh: 41000 untuk Klang"),
+                            },
+                            use_container_width=True,
+                            hide_index=True,
+                            key="edit_poskod_pusat"
+                        )
+                        if st.button("💾 Simpan Poskod Pusat", type="primary", use_container_width=True, key="simpan_poskod_pusat"):
+                            try:
+                                berjaya_poskod = 0
+                                for _, row_edit in edited_poskod.iterrows():
+                                    no_p = row_edit["NO_PUSAT"]
+                                    pk_baru = str(row_edit["POSKOD_BARU"]).strip()
+                                    if not pk_baru or pk_baru == row_edit["POSKOD_SEKARANG"]:
+                                        continue
+                                    # Update pusat_master
+                                    try:
+                                        # Get existing record
+                                        res = supa.table("pusat_master").select("*").eq("no_pusat", no_p).limit(1).execute()
+                                        if not res.data:
+                                            res = supa.table("pusat_master").select("*").eq("kod_pusat", no_p).limit(1).execute()
+                                        if res.data:
+                                            rec = res.data[0]
+                                            rec_id = rec.get("id")
+                                            d = rec.get("data") or {}
+                                            if isinstance(d, str):
+                                                try: d = json.loads(d)
+                                                except: d = {}
+                                            d["POSKOD"] = pk_baru
+                                            d["POSKOD_PUSAT"] = pk_baru
+                                            # Try update with poskod column if exists, else only data
+                                            try:
+                                                supa.table("pusat_master").update({"poskod": pk_baru, "data": d}).eq("id", rec_id).execute()
+                                            except:
+                                                supa.table("pusat_master").update({"data": d}).eq("id", rec_id).execute()
+                                            berjaya_poskod += 1
+                                    except Exception as e:
+                                        st.warning(f"{no_p}: {e}")
+                                st.success(f"✅ Berjaya kemaskini {berjaya_poskod} poskod pusat!")
+                                st.balloons()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error simpan poskod: {e}")
 
 
         elif menu == "jana":
@@ -2490,15 +2564,26 @@ elif st.session_state.role == "PPD":
                 st.warning(f"Tiada pusat dengan prefix {kod_ppd} dalam pusat_master")
                 st.stop()
             
-            # ===== SUB MENU SIDEBAR UNTUK JANA =====
-            st.sidebar.markdown("---")
-            st.sidebar.markdown("### 🚀 Sub-Menu Jana")
-            sub_jana = st.sidebar.radio(
+            # ===== SUB MENU UTAMA UNTUK JANA - VISIBLE DI MAIN AREA =====
+            st.markdown("### 🚀 Pilih Kaedah Jana")
+            sub_jana = st.radio(
                 "Pilih Kaedah Jana",
                 ["🌍 Jana Keseluruhan (Auto Poskod Terdekat)", "👑 Jana Mengikut Jawatan"],
-                key="sub_jana_radio",
-                label_visibility="collapsed"
+                key="sub_jana_radio_main",
+                horizontal=True
             )
+            # Also keep in sidebar for quick switch
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("### 🚀 Sub-Menu Jana")
+            sub_jana_sidebar = st.sidebar.radio(
+                "Pilih Kaedah Jana (Sidebar)",
+                ["🌍 Jana Keseluruhan (Auto Poskod Terdekat)", "👑 Jana Mengikut Jawatan"],
+                key="sub_jana_radio_sidebar",
+                index=0 if "Keseluruhan" in sub_jana else 1
+            )
+            # Sync: if sidebar differs, use sidebar value
+            if sub_jana_sidebar != sub_jana:
+                sub_jana = sub_jana_sidebar
             st.sidebar.markdown("---")
             
             # Common: get poskod guru & pusat for distance
