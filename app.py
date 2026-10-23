@@ -3082,61 +3082,6 @@ elif st.session_state.role == "PPD":
                 except Exception as e2:
                     st.error(f"Fallback error: {e2}")
 
-        elif menu == "jpn_template_surat":
-            st.header("📄 Template Surat JPN - 11 Jawatan (LAJU - 1 menu sahaja)")
-            st.success("✅ Version LAJU - PPD/SUP kekal laju, JPN tambah 1 menu surat sahaja")
-            st.warning("Surat lama PPD akan diganti dengan template JPN ini - PPD auto guna")
-            
-            JAWATAN_11 = ["KETUA PENGAWAS","TIMBALAN KETUA PENGAWAS","PENGAWAS PEPERIKSAAN","JURU TULIS","JURU BACA","KETUA PENGAWAS HOSPITAL","PENGAWAS HOSPITAL","PENGAWAS PENGIRING","PENGEMAS BILIK","PENYELIA KAWASAN","SELENGGARA BILIK KEBAL"]
-            
-            DEFAULT_11 = {
-                "KETUA PENGAWAS": "<div style='border:3px double #000; padding:20px; text-align:center;'><h3>KETUA PENGAWAS - {{NAMA}} - {{PUSAT}}</h3><p>No: {{NO_SURAT}} | PPD: {{PPD}}</p></div>",
-                "TIMBALAN KETUA PENGAWAS": "<div style='border:2px solid #e65100; padding:20px;'><h3>TKP - {{NAMA}} - {{PUSAT}}</h3><p>No: {{NO_SURAT}}</p></div>",
-                "PENGAWAS PEPERIKSAAN": "<div style='border:2px solid #1b5e20; padding:20px;'><h3>PENGAWAS - {{NAMA}} - {{PUSAT}}</h3></div>",
-                "JURU TULIS": "<div style='border:3px solid #4527a0; padding:20px;'><h3 style='color:#4527a0;'>JURU TULIS (Khas) - {{NAMA}} - {{PUSAT}} - {{PPD}}</h3><p>No: {{NO_SURAT}}</p></div>",
-                "JURU BACA": "<div style='border:2px solid #006064; padding:20px;'><h3>JURU BACA - {{NAMA}}</h3></div>",
-                "KETUA PENGAWAS HOSPITAL": "<div style='border:2px solid #b71c1c; padding:20px;'><h3>KP HOSPITAL - {{NAMA}}</h3></div>",
-                "PENGAWAS HOSPITAL": "<div style='border:2px solid #c62828; padding:20px;'><h3>PENGAWAS HOSPITAL - {{NAMA}}</h3></div>",
-                "PENGAWAS PENGIRING": "<div style='border:2px solid #2e7d32; padding:20px;'><h3>PENGAWAS PENGIRING - {{NAMA}}</h3></div>",
-                "PENGEMAS BILIK": "<div style='border:2px solid #e65100; padding:20px;'><h3>PENGEMAS BILIK - {{NAMA}}</h3></div>",
-                "PENYELIA KAWASAN": "<div style='border:2px solid #4a148c; padding:20px;'><h3>PENYELIA KAWASAN - {{NAMA}} - {{PPD}}</h3></div>",
-                "SELENGGARA BILIK KEBAL": "<div style='border:2px solid #000; padding:20px;'><h3>SELENGGARA BILIK KEBAL - {{NAMA}}</h3></div>"
-            }
-            
-            templates = get_jpn_templates_one()
-            pilih = st.selectbox("Pilih Jawatan (11 Jawatan)", JAWATAN_11, key="pilih_11_laju")
-            curr = templates.get(pilih.upper()) or DEFAULT_11.get(pilih, "")
-            st.markdown(f"### Template: {pilih}")
-            edited = st.text_area("HTML", value=curr, height=300, key=f"edit_{pilih}")
-            st.caption("Guna: {{NAMA}}, {{IC}}, {{PUSAT}}, {{NO_SURAT}}, {{PPD}}, {{SEKOLAH_ASAL}}")
-            
-            c1,c2,c3 = st.columns(3)
-            with c1:
-                if st.button(f"💾 Simpan {pilih}", type="primary", use_container_width=True, key=f"save_{pilih}"):
-                    try:
-                        ex = supa.table("surat_templates_jpn").select("id").eq("jawatan", pilih).execute()
-                        if ex.data:
-                            supa.table("surat_templates_jpn").update({"template_html": edited}).eq("jawatan", pilih).execute()
-                        else:
-                            supa.table("surat_templates_jpn").insert({"jawatan": pilih, "template_html": edited}).execute()
-                        st.cache_data.clear()
-                        st.success(f"✅ {pilih} disimpan - PPD akan guna template JPN ini")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-            with c2:
-                if st.button(f"👁️ Preview {pilih}", use_container_width=True, key=f"prev_{pilih}"):
-                    dummy = edited.replace("{{NAMA}}","ALI BIN ABU").replace("{{PUSAT}}","BA001").replace("{{NO_SURAT}}","JPN/0001").replace("{{PPD}}","KLANG")
-                    st.markdown(dummy, unsafe_allow_html=True)
-            with c3:
-                if st.button("🔄 Clear Cache", use_container_width=True):
-                    st.cache_data.clear()
-                    st.rerun()
-            
-            st.markdown("---")
-            st.markdown("### Status 11 Template (PPD akan guna JPN)")
-            data = [{"JAWATAN": j, "STATUS": "✅ Ada" if (templates.get(j.upper()) or DEFAULT_11.get(j,"")) else "❌"} for j in JAWATAN_11]
-            st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
-
         elif menu == "sekolah":
             st.header(f"Senarai Sekolah PPD {kod_ppd}")
             try:
@@ -6828,6 +6773,47 @@ elif st.session_state.role == "JPN":
                 except:
                     rows.append({"PPD": ppd, "Sekolah": 0, "Guru": 0, "Cadangan": 0})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        elif menu == "jpn_template_surat":
+            st.header("📄 Template Surat JPN - 11 Jawatan (LAJU)")
+            st.caption("JPN selaraskan - PPD auto guna template ini")
+            
+            try:
+                JAWATAN_11 = ["KETUA PENGAWAS","TIMBALAN KETUA PENGAWAS","PENGAWAS PEPERIKSAAN","JURU TULIS","JURU BACA","KETUA PENGAWAS HOSPITAL","PENGAWAS HOSPITAL","PENGAWAS PENGIRING","PENGEMAS BILIK","PENYELIA KAWASAN","SELENGGARA BILIK KEBAL"]
+                DEFAULT_11 = {
+                    "KETUA PENGAWAS": "<div style='border:3px double #000; padding:20px; text-align:center;'><h3>SURAT LANTIKAN KETUA PENGAWAS SPM 2026<br>JPN SELANGOR</h3><p>No: {{NO_SURAT}} | {{NAMA}} - {{PUSAT}} - PPD {{PPD}}</p></div>",
+                    "JURU TULIS": "<div style='border:3px solid #4527a0; padding:20px;'><h3 style='color:#4527a0;'>SURAT LANTIKAN JURU TULIS SPM 2026 (Khas)</h3><p>{{NAMA}} - {{PUSAT}} - No: {{NO_SURAT}} - PPD {{PPD}}</p></div>",
+                    "PENGAWAS PEPERIKSAAN": "<div style='border:2px solid #1b5e20; padding:20px;'><h3>PENGAWAS - {{NAMA}}</h3></div>"
+                }
+                templates = get_jpn_templates_one()
+                pilih = st.selectbox("Pilih Jawatan", JAWATAN_11, key="pilih_11_fix")
+                curr = templates.get(pilih.upper()) or DEFAULT_11.get(pilih, "<div>Template {{NAMA}} - {{PUSAT}} - {{NO_SURAT}}</div>")
+                edited = st.text_area(f"Template {pilih}", value=curr, height=280, key=f"edit_{pilih}_fix")
+                c1,c2 = st.columns(2)
+                with c1:
+                    if st.button(f"💾 Simpan {pilih}", type="primary", use_container_width=True, key=f"save_{pilih}_fix"):
+                        try:
+                            ex = supa.table("surat_templates_jpn").select("id").eq("jawatan", pilih).execute()
+                            if ex.data:
+                                supa.table("surat_templates_jpn").update({"template_html": edited}).eq("jawatan", pilih).execute()
+                            else:
+                                supa.table("surat_templates_jpn").insert({"jawatan": pilih, "template_html": edited}).execute()
+                            st.cache_data.clear()
+                            st.success(f"✅ {pilih} disimpan - PPD akan guna JPN")
+                        except Exception as e:
+                            st.error(str(e))
+                            st.code("CREATE TABLE IF NOT EXISTS surat_templates_jpn (id SERIAL PRIMARY KEY, jawatan TEXT UNIQUE, template_html TEXT);")
+                with c2:
+                    if st.button("🔄 Clear Cache", use_container_width=True, key="clear_fix"):
+                        st.cache_data.clear()
+                        st.rerun()
+                # Preview
+                if st.checkbox("Preview", key=f"prev_check_{pilih}"):
+                    prev = edited.replace("{{NAMA}}","ALI BIN ABU").replace("{{PUSAT}}","BA001").replace("{{NO_SURAT}}","JPN/0001").replace("{{PPD}}","KLANG").replace("{{IC}}","800101-01-1234")
+                    st.markdown(prev, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error template: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
         elif menu == "sekolah":
             st.header("Semua Sekolah Master (369 Sekolah)")
