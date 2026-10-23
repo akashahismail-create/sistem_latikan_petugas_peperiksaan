@@ -1568,7 +1568,7 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         kod_ppd = clean_nan(kod_ppd) or "BA"
         ppd_name = clean_nan(ppd_name) or kod_ppd
         tarikh = clean_nan(tarikh) or "23 Jun 2026"
-        bilik_kebal = clean_nan(bilik_kebal) or clean_nan(kod_bilik_kebal) or "CB12 - SMK TELOK PANGLIMA GARANG"
+        bilik_kebal = clean_nan(bilik_kebal) or clean_nan(kod_bilik_kebal) 
         
         if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper() and sek_asal not in nama_sek_asal:
             display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
