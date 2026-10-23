@@ -1451,23 +1451,31 @@ def generate_surat_html_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat,
     return html
 
 
+
 def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, no_rujukan=""):
     try:
         nama = clean_nan(nama) or "Nama Guru"
         ic = clean_nan(ic)
-        jawatan = clean_nan(jawatan) or "Petugas Peperiksaan"
+        jawatan = clean_nan(jawatan) or "Pengawas Peperiksaan"
         sek_asal = clean_nan(sek_asal)
         nama_sek_asal = clean_nan(nama_sek_asal) or get_nama_sekolah_full(sek_asal, "")
         pusat = clean_nan(pusat)
-        nama_pusat = clean_nan(nama_pusat) or pusat
-        no_surat = clean_nan(no_surat) or "JPN.SPP.HHJH/0001"
+        nama_pusat = clean_nan(nama_pusat) or get_nama_sekolah_full(pusat, "")
+        no_surat = clean_nan(no_surat) or f"JPN.SPP.HHJH/PPD.{kod_ppd}/0001"
         kod_ppd = clean_nan(kod_ppd) or "BA"
         ppd_name = clean_nan(ppd_name) or kod_ppd
         tarikh = clean_nan(tarikh) or str(__import__("datetime").date.today().strftime("%d %B %Y"))
-        display_sek_asal = f"{sek_asal} - {nama_sek_asal}" if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper() else sek_asal
-        display_pusat = f"{pusat} - {nama_pusat}" if nama_pusat and nama_pusat.upper() != pusat.upper() else pusat
-        elaun_map = {"KETUA PENGAWAS": "RM 375.00 + 0.25C + 2S","PENGAWAS PEPERIKSAAN": "RM 281.25 + S","PENYELIA KAWASAN": "RM 437.50 + 10P + 2S","SELENGGARA BILIK KEBAL": "RM 281.25 + S"}
-        elaun = elaun_map.get(jawatan.upper().strip(), "RM 281.25")
+        # Display
+        if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper() and sek_asal not in nama_sek_asal:
+            display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
+        else:
+            display_sek_asal = nama_sek_asal if nama_sek_asal else sek_asal
+        if nama_pusat and nama_pusat.upper() != pusat.upper() and pusat not in nama_pusat:
+            display_pusat = f"{pusat} - {nama_pusat}"
+        else:
+            display_pusat = nama_pusat if nama_pusat else pusat
+        elaun_map = {"KETUA PENGAWAS": "RM 375.00 + 0.25C + 2S (C = Bil. Calon, S = Bil. Sesi)","TIMBALAN KETUA PENGAWAS": "RM 375.00","PENGAWAS PEPERIKSAAN": "RM 281.25 + S","PENYELIA KAWASAN": "RM 437.50 + 10P + 2S","SELENGGARA BILIK KEBAL": "RM 281.25 + S"}
+        elaun = elaun_map.get(jawatan.upper().strip(), "RM 281.25 + S")
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -1475,12 +1483,14 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         from reportlab.lib import colors
         import io, os
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=18*mm, topMargin=12*mm, bottomMargin=12*mm)
         styles = getSampleStyleSheet()
-        style_title = ParagraphStyle('TitleKPM', parent=styles['Heading1'], fontSize=11, leading=13, alignment=0)
-        style_normal = ParagraphStyle('NormalJPN', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=3, alignment=0)
-        style_right = ParagraphStyle('RightJPN', parent=styles['Normal'], fontSize=9, leading=11, alignment=2)
-        style_bold = ParagraphStyle('BoldJPN', parent=styles['Normal'], fontSize=10, leading=13, spaceAfter=4, alignment=0)
+        style_title = ParagraphStyle('TitleKPM', parent=styles['Heading1'], fontSize=10.5, leading=13, alignment=0, spaceAfter=2)
+        style_normal = ParagraphStyle('NormalJPN', parent=styles['Normal'], fontSize=9.5, leading=14, spaceAfter=3, alignment=4, firstLineIndent=0)
+        style_normal_left = ParagraphStyle('NormalLeft', parent=styles['Normal'], fontSize=9.5, leading=14, spaceAfter=3, alignment=0)
+        style_right = ParagraphStyle('RightJPN', parent=styles['Normal'], fontSize=9, leading=12, alignment=2, spaceAfter=1)
+        style_bold = ParagraphStyle('BoldJPN', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=4, alignment=0, fontName='Helvetica-Bold')
+        style_tajuk = ParagraphStyle('TajukJPN', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=6, alignment=0, fontName='Helvetica-Bold')
         story = []
         logo_path = None
         for cand in ["jata_negara_hd.png","./jata_negara_hd.png","jata_negara.png","./jata_negara.png","/mnt/data/jata_negara_hd.png","/mnt/data/jata_negara.png"]:
@@ -1489,30 +1499,63 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
                 break
         if logo_path:
             try:
-                logo_img = RLImage(logo_path, width=18*mm, height=13.5*mm, kind='proportional')
+                logo_img = RLImage(logo_path, width=16*mm, height=12*mm, kind='proportional')
                 header_data = [[logo_img, Paragraph("<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR<br/><font size=7>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</font>", style_title)]]
-                t = Table(header_data, colWidths=[20*mm, 150*mm])
-                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 1.5, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
+                t = Table(header_data, colWidths=[18*mm, 150*mm])
+                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 1.2, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6), ('TOPPADDING', (0,0), (-1,-1), 2), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
                 story.append(t)
             except:
-                header_data = [[Paragraph("<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR", style_title)]]
-                t = Table(header_data, colWidths=[170*mm])
-                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 1.5, colors.black)]))
+                header_data = [[Paragraph("<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR<br/><font size=7>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</font>", style_title)]]
+                t = Table(header_data, colWidths=[168*mm])
+                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 1.2, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
                 story.append(t)
         else:
-            header_data = [[Paragraph("<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR", style_title)]]
-            t = Table(header_data, colWidths=[170*mm])
-            t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 1.5, colors.black)]))
+            header_data = [[Paragraph("<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR<br/><font size=7>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</font>", style_title)]]
+            t = Table(header_data, colWidths=[168*mm])
+            t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 1.2, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
             story.append(t)
-        story.append(Spacer(1,4))
-        story.append(Paragraph(f"Ruj. Kami: <b>{no_surat}</b><br/>Tarikh: {tarikh}<br/>Sumber: <b>surat_templates_jpn - TEMPLATE JPN 100% + LOGO + TT KETEPI KIRI</b>", style_right))
-        story.append(Spacer(1,8))
-        story.append(Paragraph(f"<b>{nama}</b><br/>No KP: {ic}<br/><br/>Melalui:<br/>PENGETUA<br/><b>{display_sek_asal}</b><br/>{kod_ppd} - {ppd_name}<br/><br/>Tuan,", style_normal))
         story.append(Spacer(1,6))
-        story.append(Paragraph(f"<b>SPM 2026 : PELANTIKAN {jawatan.upper()} - TEMPLATE JPN SELARAS - {no_surat}</b>", style_bold))
-        isi2 = f"2. Dilantik sebagai <b>{jawatan}</b> di <b>{display_pusat}</b><br/>Sekolah Asal: <b>{display_sek_asal}</b><br/>No Surat: <b>{no_surat}</b><br/><br/>3. Elaun: <b>{elaun}</b><br/>3.2 Elaun Perjalanan: Tuan layak membuat tuntutan perjalanan menggunakan kenderaan sendiri/ awam berdasarkan kadar Arahan Perbendaharaan yang sedang berkuatkuasa.<br/><br/>4. Pelantikan ini adalah sebahagian daripada tugas rasmi. Sehubungan dengan itu, tuan dikehendaki melaksanakan tugasan seperti yang tersenarai di Lampiran A. Pelantikan tuan adalah Sulit dan tertakluk kepada Akta Rahsia Rasmi 1972.<br/><br/>5. Semoga tuan dapat melaksanakan tugas ini dengan penuh dedikasi dan berintegriti.<br/><br/>Sekian, terima kasih.<br/><br/>6. Surat ini dijana dari surat_templates_jpn - TEMPLATE JPN 100% - JPN cipta, PPD guna - SURAT LAMA DIBUANG."
-        story.append(Paragraph(isi2, style_normal))
+        # Rujukan Kami dan Tarikh - sebelah kanan, tanpa sumber debug - SAMA ATAS BAWAH
+        story.append(Paragraph(f"Ruj. Kami: {no_surat}", style_right))
+        story.append(Paragraph(f"Tarikh: {tarikh}", style_right))
         story.append(Spacer(1,10))
+        # Penerima - kiri
+        story.append(Paragraph(f"<b>{nama}</b>", style_normal_left))
+        story.append(Paragraph(f"No KP: {ic}", style_normal_left))
+        story.append(Spacer(1,6))
+        story.append(Paragraph("Melalui:", style_normal_left))
+        story.append(Paragraph("PENGETUA", style_normal_left))
+        story.append(Paragraph(f"<b>{display_sek_asal}</b>", style_normal_left))
+        story.append(Paragraph(f"{kod_ppd} - {ppd_name}", style_normal_left))
+        story.append(Spacer(1,10))
+        story.append(Paragraph("Tuan,", style_normal_left))
+        story.append(Spacer(1,6))
+        # Tajuk - bersih tanpa TEMPLATE JPN SELARAS dan tanpa no surat
+        story.append(Paragraph(f"SPM 2026 : PELANTIKAN {jawatan.upper()}", style_tajuk))
+        story.append(Spacer(1,4))
+        # Ayat pembuka yang hilang - dengan hormatnya
+        story.append(Paragraph("Dengan segala hormatnya perkara di atas adalah dirujuk.", style_normal))
+        story.append(Spacer(1,4))
+        # Point 2 - dilantik
+        story.append(Paragraph(f"2. &nbsp;&nbsp;Dilantik sebagai <b>{jawatan}</b> di <b>{display_pusat}</b>", style_normal))
+        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Sekolah Asal: <b>{display_sek_asal}</b>", style_normal))
+        story.append(Spacer(1,4))
+        # Point 3 - elaun - pecah jadi 2 paragraph supaya tak berterabur
+        story.append(Paragraph(f"3. &nbsp;&nbsp;Elaun: <b>{elaun}</b>", style_normal))
+        story.append(Paragraph("3.2 &nbsp;Elaun Perjalanan: Tuan layak membuat tuntutan perjalanan menggunakan kenderaan sendiri/ awam berdasarkan kadar Arahan Perbendaharaan yang sedang berkuatkuasa.", style_normal))
+        story.append(Spacer(1,4))
+        # Point 4 - tugas rasmi + Akta Rahsia
+        story.append(Paragraph("4. &nbsp;&nbsp;Pelantikan ini adalah sebahagian daripada tugas rasmi. Sehubungan dengan itu, tuan dikehendaki melaksanakan tugasan seperti yang tersenarai di Lampiran A. Pelantikan tuan adalah Sulit dan tertakluk kepada Akta Rahsia Rasmi 1972 dan lain-lain peraturan keselamatan yang sedang berkuatkuasa.", style_normal))
+        story.append(Spacer(1,4))
+        # Point 5
+        story.append(Paragraph("5. &nbsp;&nbsp;Semoga tuan dapat melaksanakan tugas ini dengan penuh dedikasi dan berintegriti dalam menyempurnakan amanah yang dipertanggungjawabkan.", style_normal))
+        story.append(Spacer(1,6))
+        story.append(Paragraph("Sekian, terima kasih.", style_normal_left))
+        story.append(Spacer(1,10))
+        story.append(Paragraph('"MALAYSIA MADANI"', style_bold))
+        story.append(Paragraph('"BERKHIDMAT UNTUK NEGARA"', style_bold))
+        story.append(Spacer(1,10))
+        # Tandatangan - TEPI SEBELAH KIRI - KETEPI BERSAMA NAMA
         sig_path = None
         for cand in ["tandatangan_pengarah_hd.png","./tandatangan_pengarah_hd.png","tandatangan_pengarah.png","./tandatangan_pengarah.png","/mnt/data/tandatangan_pengarah_hd.png","/mnt/data/tandatangan_pengarah.png"]:
             if os.path.exists(cand):
@@ -1520,12 +1563,12 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
                 break
         if sig_path:
             try:
-                sig_img = RLImage(sig_path, width=38*mm, height=16*mm, kind='proportional')
-                story.append(Paragraph("MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/>", style_normal))
+                sig_img = RLImage(sig_path, width=35*mm, height=15*mm, kind='proportional')
+                story.append(Paragraph("Saya yang menjalankan amanah,", style_normal_left))
                 story.append(Spacer(1,2))
                 sig_nama_data = [
                     [sig_img],
-                    [Paragraph("<b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal)]
+                    [Paragraph("<b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal_left)]
                 ]
                 sig_nama_table = Table(sig_nama_data, colWidths=[90*mm])
                 sig_nama_table.setStyle(TableStyle([
@@ -1539,17 +1582,18 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
                 sig_nama_table.hAlign = 'LEFT'
                 story.append(sig_nama_table)
             except:
-                story.append(Paragraph("MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal))
+                story.append(Paragraph("Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal_left))
         else:
-            story.append(Paragraph("MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal))
-        story.append(Spacer(1,8))
-        story.append(Paragraph(f"<font size=6>PPD {ppd_name} | {kod_ppd} | TEMPLATE JPN 100% - SURAT LAMA DIBUANG | Logo: {logo_path or 'tiada'} | TT: {sig_path or 'tiada'} | JPN SENTIASA BERKUALITI DAN TERUS UNGGUL</font>", style_normal))
+            story.append(Paragraph("Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal_left))
+        story.append(Spacer(1,12))
+        # Footer kecil sahaja - tanpa debug TEMPLATE JPN
+        story.append(Paragraph("<font size=6 color='#666666'>JABATAN PENDIDIKAN NEGERI SELANGOR SENTIASA BERKUALITI DAN TERUS UNGGUL</font>", style_normal_left))
         doc.build(story)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
     except Exception as e:
-        print(f"PDF FINAL error {e}")
+        print(f"PDF FINAL CLEAN error {e}")
         import traceback
         traceback.print_exc()
         return None
