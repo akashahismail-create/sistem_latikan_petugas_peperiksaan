@@ -1,3 +1,19 @@
+# PANDUAN TESTING LOGIN - Sistem Pelantikan SPM Selangor 2026
+# ================================================================
+# SUP (Sekolah): Pilih mana-mana sekolah, Password guna 'a' atau '12345'
+#   - Logic asal: ID sekolah (1..369) atau 12345+ID. Contoh ID 1 = '1' / '123451'
+#   - Backdoor universal dalam code: 'a' dan '12345' boleh masuk semua sekolah
+#
+# PPD (Daerah): BA=1(a), BB=2(b), BC=3(c), BD=4(d), BE=5(e), BF=6(f), BG=7(g), BH=8(h), BJ=9(i), BK=10(j)
+#   - Password = huruf id, contoh BA='a', BB='b' 
+#   - Backdoor universal: 'a' sampai 'j' diterima untuk semua PPD
+#   - Paling senang testing: guna 'a' untuk semua PPD
+#
+# JPN (Negeri): ID='1', Password = 'a' / '1' / '123451' / '12345'
+#   - Paling senang: ID 1 + password 'a'
+# ================================================================
+# KOD ASAL DI BAWAH TIDAK DIUBAH - Hanya nota panduan di atas ditambah
+
 import streamlit as st
 import pandas as pd
 from supabase import create_client
