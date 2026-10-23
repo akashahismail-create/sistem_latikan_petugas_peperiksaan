@@ -3980,7 +3980,7 @@ elif st.session_state.role == "PPD":
             # 3 Kolum Penempatan Manual
             st.markdown("### 📌 STEP 2: Penempatan Manual - Klik Kolum Untuk Pilih")
             
-            col_kp, col_tkp, col_peng = st.columns(3)
+            col_kp, col_tkp, col_peng, col_jt, col_jb, col_pb = st.columns(6)
             
             # ===== KOLUM KETUA PENGAWAS =====
             with col_kp:
