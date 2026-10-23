@@ -5978,16 +5978,44 @@ elif st.session_state.role == "PPD":
                             
                             pilih_surat = st.multiselect("Pilih Penyelia Kawasan untuk Jana Surat", id_list_s, format_func=fmt_surat, key="pilih_surat_penyelia")
                             
-                            # No surat settings
+                            # No surat settings - FIX: Ikut no berturutan daerah (sama seperti petugas lain)
+                            st.markdown("#### 🔢 No Surat Berturutan Ikut Daerah (Sama seperti petugas lain)")
+                            try:
+                                # Get max no surat sedia ada di daerah ini dari semua petugas (termasuk KP, TKP, Pengawas)
+                                max_no_global = 0
+                                try:
+                                    df_all_cad_for_no = get_cadangan_df(kod_ppd=kod_ppd)
+                                    if not df_all_cad_for_no.empty:
+                                        for _, rc in df_all_cad_for_no.iterrows():
+                                            ns = str(rc.get("no_surat") or "").strip()
+                                            if ns:
+                                                # Extract last number from format like JPN.SEL/PPD.BA/SPM/2026/0028 or PPD.BA/SPM/PK/2026/0001
+                                                try:
+                                                    parts = ns.split("/")
+                                                    last_part = parts[-1].strip()
+                                                    num = int(''.join(filter(str.isdigit, last_part)))
+                                                    if num > max_no_global:
+                                                        max_no_global = num
+                                                except:
+                                                    pass
+                                except:
+                                    max_no_global = 0
+                                st.info(f"📌 No Surat terakhir di PPD {kod_ppd} (semua petugas): {max_no_global} - Surat Penyelia baru akan mula dari {max_no_global+1} berturutan")
+                            except:
+                                max_no_global = 0
+                            
                             col_no1, col_no2, col_no3 = st.columns(3)
                             with col_no1:
-                                prefix_surat = st.text_input("Prefix No Surat", value=f"PPD{kod_ppd}/SPM/PK/2026/", key="prefix_surat_pk")
+                                # Default prefix ikut format standard daerah - sama seperti petugas lain
+                                default_prefix = f"JPN.SEL/PPD.{kod_ppd}/SPM/2026/"
+                                prefix_surat = st.text_input("Prefix No Surat (ikut format daerah)", value=default_prefix, key="prefix_surat_pk", help="No surat Penyelia akan ikut format yang sama seperti petugas lain di daerah ini, cuma berturutan")
                             with col_no2:
-                                no_mula = st.number_input("No Mula", min_value=1, value=1, key="no_mula_pk")
+                                no_mula_auto = max_no_global + 1
+                                no_mula = st.number_input("No Mula (auto ikut daerah)", min_value=1, value=no_mula_auto, key="no_mula_pk", help=f"Auto dikira dari max sedia ada di daerah {kod_ppd} - jika petugas lain sudah ada no 1-100, Penyelia akan mula 101")
                             with col_no3:
                                 tarikh_surat = st.date_input("Tarikh Surat", value=datetime.date.today(), key="tarikh_surat_pk")
                             
-                            if pilih_surat and st.button(f"📄 Jana {len(pilih_surat)} Surat Penyelia Kawasan", type="primary", use_container_width=True, key="btn_jana_surat_pk"):
+                            if pilih_surat and st.button(f"📄 Jana {len(pilih_surat)} Surat Penyelia Kawasan (No Berturutan Daerah {kod_ppd})", type="primary", use_container_width=True, key="btn_jana_surat_pk"):
                                 try:
                                     tarikh_str = tarikh_surat.strftime("%d %B %Y")
                                     surat_html_all = ""
@@ -6090,16 +6118,53 @@ elif st.session_state.role == "PPD":
                                             "ic": ic,
                                             "sekolah_asal": sek,
                                             "bilik_kebal": kod_bk,
+                                            "nama_bilik_kebal": nama_bk,
+                                            "pusat_jagaan": pusat_jagaan,
                                             "no_surat": no_surat,
                                             "html": html_surat
                                         })
+                                    
+                                    # Generate PDF bytes untuk setiap surat juga (untuk download PDF & hantar ke sekolah asal)
+                                    for s_data in surat_list_data:
+                                        try:
+                                            # Generate PDF untuk surat ini
+                                            pdf_bytes_ind = None
+                                            try:
+                                                pdf_bytes_ind = generate_surat_pdf_bytes(
+                                                    s_data["nama"], s_data["ic"], "Penyelia Kawasan",
+                                                    s_data["sekolah_asal"], "", s_data["bilik_kebal"], s_data.get("nama_bilik_kebal",""),
+                                                    s_data["no_surat"], kod_ppd, PPD_MAP.get(kod_ppd,""),
+                                                    tarikh_str, s_data["no_surat"]
+                                                )
+                                            except:
+                                                # Fallback to HTML as PDF bytes
+                                                pdf_bytes_ind = s_data.get("html","").encode('utf-8')
+                                            s_data["pdf_bytes"] = pdf_bytes_ind
+                                        except:
+                                            s_data["pdf_bytes"] = None
                                     
                                     # Save to session for download and hantar
                                     st.session_state[f"surat_pk_html_{kod_ppd}"] = surat_html_all
                                     st.session_state[f"surat_pk_list_{kod_ppd}"] = surat_list_data
                                     
-                                    st.success(f"✅ Berjaya jana {len(surat_list_data)} surat Penyelia Kawasan")
+                                    st.success(f"✅ Berjaya jana {len(surat_list_data)} surat Penyelia Kawasan - No Surat {no_mula} hingga {current_no-1} (bertuturan daerah {kod_ppd} ikut petugas lain)")
+                                    st.balloons()
                                     st.components.v1.html(surat_html_all[:10000], height=600, scrolling=True)
+                                    
+                                    # Auto generate ZIP PDF individu untuk Penyelia
+                                    try:
+                                        import io, zipfile
+                                        zip_buffer = io.BytesIO()
+                                        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                                            for s_data in surat_list_data:
+                                                if s_data.get("pdf_bytes"):
+                                                    safe_nama = "".join(c if c.isalnum() else "_" for c in s_data["nama"])[:20]
+                                                    fname = f"{s_data['no_surat'].replace('/','_')}_{safe_nama}_Penyelia_{s_data['bilik_kebal']}.pdf"
+                                                    zf.writestr(fname, s_data["pdf_bytes"])
+                                        zip_bytes = zip_buffer.getvalue()
+                                        st.session_state[f"surat_pk_zip_{kod_ppd}"] = zip_bytes
+                                    except Exception as e:
+                                        st.caption(f"ZIP error: {e}")
                                     
                                 except Exception as e:
                                     st.error(f"Error jana surat: {e}")
@@ -6113,7 +6178,7 @@ elif st.session_state.role == "PPD":
                                 
                                 st.components.v1.html(html_all[:12000], height=700, scrolling=True)
                                 
-                                col_dl1, col_dl2, col_dl3 = st.columns(3)
+                                col_dl1, col_dl2, col_dl3, col_dl4 = st.columns(4)
                                 with col_dl1:
                                     st.download_button("📥 Download Semua Surat (HTML)", data=html_all.encode('utf-8'), file_name=f"Surat_Penyelia_Kawasan_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key="dl_all_surat_pk")
                                 with col_dl2:
@@ -6121,15 +6186,45 @@ elif st.session_state.role == "PPD":
                                     df_dl = pd.DataFrame([{"NAMA": s["nama"], "IC": s["ic"], "SEKOLAH ASAL": s["sekolah_asal"], "BILIK KEBAL": s["bilik_kebal"], "NO SURAT": s["no_surat"]} for s in list_data])
                                     st.download_button("📥 Download Senarai (Excel)", to_excel(df_dl), file_name=f"Senarai_Surat_PK_{kod_ppd}.xlsx", use_container_width=True, key="dl_excel_pk")
                                 with col_dl3:
-                                    if st.button(f"📤 Hantar Surat ke Sekolah Asal (SUP akan nampak di Petugas di Sekolah Saya)", type="primary", use_container_width=True, key="btn_hantar_surat_pk"):
+                                    # PDF individu ZIP
+                                    if f"surat_pk_zip_{kod_ppd}" in st.session_state:
+                                        st.download_button("📥 Download ZIP PDF Individu (Penyelia)", data=st.session_state[f"surat_pk_zip_{kod_ppd}"], file_name=f"Surat_Penyelia_Kawasan_{kod_ppd}_Individu_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key="dl_zip_pk")
+                                    else:
+                                        st.caption("Jana semula untuk dapat ZIP PDF")
+                                with col_dl4:
+                                    if st.button(f"📤 Hantar Surat ke Sekolah Asal + PDF (SUP boleh download)", type="primary", use_container_width=True, key="btn_hantar_surat_pk"):
                                         try:
                                             berjaya = 0
                                             for s in list_data:
-                                                supa.table("cadangan_sup").update({"status": "SURAT PK DIHANTAR", "no_surat": s["no_surat"]}).eq("id", s["id"]).execute()
+                                                try:
+                                                    # Simpan surat_html + pdf info ke data json untuk sekolah asal
+                                                    existing = supa.table("cadangan_sup").select("data").eq("id", s["id"]).limit(1).execute()
+                                                    old_data = {}
+                                                    if existing.data:
+                                                        old_data = existing.data[0].get("data") or {}
+                                                        if isinstance(old_data, str):
+                                                            try:
+                                                                import json
+                                                                old_data = json.loads(old_data)
+                                                            except:
+                                                                old_data = {}
+                                                    old_data.update({
+                                                        "surat_html": s.get("html",""),
+                                                        "surat_tarikh": str(datetime.date.today()),
+                                                        "surat_no": s["no_surat"],
+                                                        "SURAT_DIHANTAR_KE_SEKOLAH_ASAL": True,
+                                                        "jenis": "Penyelia Kawasan",
+                                                        "bilik_kebal": s.get("bilik_kebal",""),
+                                                        "pusat_jagaan": s.get("pusat_jagaan", [])
+                                                    })
+                                                    supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT PK DIHANTAR KE SEKOLAH ASAL", "no_surat": s["no_surat"], "data": old_data}).eq("id", s["id"]).execute()
+                                                except:
+                                                    # Fallback simple
+                                                    supa.table("cadangan_sup").update({"status": "SURAT PK DIHANTAR", "no_surat": s["no_surat"]}).eq("id", s["id"]).execute()
                                                 berjaya += 1
-                                            st.success(f"✅ {berjaya} surat dihantar ke sekolah asal! SUP boleh lihat di menu Petugas di Sekolah Saya")
+                                            st.success(f"✅ {berjaya} surat Penyelia Kawasan (No {list_data[0]['no_surat']} hingga {list_data[-1]['no_surat']}) telah DIHANTAR ke sekolah asal! SUP boleh lihat & download PDF di menu Surat Lantikan Saya")
                                             st.balloons()
-                                            st.info("Surat telah dihantar - guru di sekolah asal boleh download surat di SUP > Surat Lantikan Saya / Petugas di Sekolah Saya")
+                                            st.info(f"📄 Surat telah dihantar ke sekolah asal guru - No surat ikut berturutan daerah {kod_ppd} (sama seperti petugas lain). SUP boleh cetak PDF di Surat Lantikan Saya")
                                         except Exception as e:
                                             st.error(f"Error hantar: {e}")
 
