@@ -6780,9 +6780,9 @@ elif st.session_state.role == "JPN":
             try:
                 JAWATAN_11 = ["KETUA PENGAWAS","TIMBALAN KETUA PENGAWAS","PENGAWAS PEPERIKSAAN","JURU TULIS","JURU BACA","KETUA PENGAWAS HOSPITAL","PENGAWAS HOSPITAL","PENGAWAS PENGIRING","PENGEMAS BILIK","PENYELIA KAWASAN","SELENGGARA BILIK KEBAL"]
                 DEFAULT_11 = {
-                    "KETUA PENGAWAS": "<div style='border:3px double #000; padding:20px; text-align:center;'><h3>SURAT LANTIKAN KETUA PENGAWAS SPM 2026<br>JPN SELANGOR</h3><p>No: {{NO_SURAT}} | {{NAMA}} - {{PUSAT}} - PPD {{PPD}}</p></div>",
-                    "JURU TULIS": "<div style='border:3px solid #4527a0; padding:20px;'><h3 style='color:#4527a0;'>SURAT LANTIKAN JURU TULIS SPM 2026 (Khas)</h3><p>{{NAMA}} - {{PUSAT}} - No: {{NO_SURAT}} - PPD {{PPD}}</p></div>",
-                    "PENGAWAS PEPERIKSAAN": "<div style='border:2px solid #1b5e20; padding:20px;'><h3>PENGAWAS - {{NAMA}}</h3></div>"
+                    "KETUA PENGAWAS": "<div style='border:3px double #000; padding:20px; text-align:center;'><div style='text-align:center;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'><h4 style='margin:5px;'>KEMENTERIAN PENDIDIKAN MALAYSIA</h4><h4 style='margin:5px;'>JPN SELANGOR</h4><hr></div><h3>SURAT LANTIKAN KETUA PENGAWAS SPM 2026</h3><p>No: {{NO_SURAT}} | {{NAMA}} - {{PUSAT}} - PPD {{PPD}}</p></div>",
+                    "JURU TULIS": "<div style='border:3px solid #4527a0; padding:20px; text-align:center;'><div style='text-align:center;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'><h4 style='margin:5px;'>KEMENTERIAN PENDIDIKAN MALAYSIA</h4><h4 style='margin:5px;'>JPN SELANGOR</h4><hr></div><h3 style='color:#4527a0;'>SURAT LANTIKAN JURU TULIS SPM 2026 (Khas)</h3><p>{{NAMA}} - {{PUSAT}} - No: {{NO_SURAT}} - PPD {{PPD}}</p></div>",
+                    "PENGAWAS PEPERIKSAAN": "<div style='border:2px solid #1b5e20; padding:20px; text-align:center;'><div style='text-align:center;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'><h4 style='margin:5px;'>KEMENTERIAN PENDIDIKAN MALAYSIA</h4><h4 style='margin:5px;'>JPN SELANGOR</h4><hr></div><h3>PENGAWAS PEPERIKSAAN SPM 2026</h3><p>{{NAMA}} - {{PUSAT}}</p></div>"
                 }
                 templates = get_jpn_templates_one()
                 pilih = st.selectbox("Pilih Jawatan", JAWATAN_11, key="pilih_11_fix")
