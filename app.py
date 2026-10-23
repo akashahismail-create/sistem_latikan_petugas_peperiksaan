@@ -1658,10 +1658,40 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
             story.append(t)
         
         story.append(Spacer(1,6))
-        # Rujukan Kami dan Tarikh - sebelah kanan - IKUT GAMBAR
-        story.append(Paragraph(f"Ruj. Kami: {no_surat}", style_right))
-        story.append(Paragraph(f"Tarikh: {tarikh}", style_right))
-        story.append(Spacer(1,10))
+        # ===== RUJ KAMI & TARIKH - IKUT GAMBAR TERBARU - BELAH KANAN TAPI TABLE KEMAS =====
+        style_ruj_label = ParagraphStyle('RujLabel', parent=styles['Normal'], fontSize=9.5, leading=14, alignment=0, fontName='Helvetica')
+        style_ruj_value = ParagraphStyle('RujValue', parent=styles['Normal'], fontSize=9.5, leading=14, alignment=0, fontName='Helvetica')
+        style_ruj_colon = ParagraphStyle('RujColon', parent=styles['Normal'], fontSize=9.5, leading=14, alignment=0, fontName='Helvetica')
+        
+        # Dalam gambar terbaru: Ruj Kami di sebelah kanan page, tapi : sejajar kemas
+        # Buat table dalam table: kiri kosong 50%, kanan ada ruj table
+        ruj_inner_data = [
+            [Paragraph("Ruj. Kami", style_ruj_label), Paragraph(":", style_ruj_colon), Paragraph(no_surat, style_ruj_value)],
+            [Paragraph("Tarikh", style_ruj_label), Paragraph(":", style_ruj_colon), Paragraph(tarikh, style_ruj_value)]
+        ]
+        t_ruj_inner = Table(ruj_inner_data, colWidths=[22*mm, 4*mm, 58*mm])
+        t_ruj_inner.setStyle(TableStyle([
+            ('ALIGN', (0,0), (0,-1), 'LEFT'),
+            ('ALIGN', (1,0), (1,-1), 'CENTER'),
+            ('ALIGN', (2,0), (2,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING', (0,0), (-1,-1), 1),
+            ('RIGHTPADDING', (0,0), (-1,-1), 1),
+            ('TOPPADDING', (0,0), (-1,-1), 1),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ]))
+        
+        # Wrapper: kosong kiri, ruj kanan - untuk tolak ke kanan seperti gambar
+        wrapper_data = [[Paragraph("", style_ruj_label), t_ruj_inner]]
+        t_wrapper = Table(wrapper_data, colWidths=[84*mm, 84*mm])
+        t_wrapper.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+        ]))
+        story.append(t_wrapper)
+        story.append(Spacer(1,12))
         # Penerima
         story.append(Paragraph(f"<b>{nama}</b>", style_normal_left))
         story.append(Spacer(1,4))
