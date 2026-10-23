@@ -30,10 +30,10 @@ import logging
 _log = logging.getLogger("spm2026")
 
 # ================= CONFIGURATION =================
-st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Pelantikan Petugas SPM Selangor ", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 
 
-# ===== HIDE FORK & GITHUB CAT BUTTON (PPD MINTA BUANG) =====
+# ===== HIDE FORK & GITHUB CAT BUTTON  =====
 def hide_fork_github():
     try:
         import streamlit as st
