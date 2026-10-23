@@ -5905,10 +5905,10 @@ elif st.session_state.role == "PPD":
                         st.error(f"Error guru {idx}: {e}")
                 st.markdown("---")
                 
-                # Generate PDF Keseluruhan
-                col_gen1, col_gen2 = st.columns(2)
+                # Generate PDF Keseluruhan - INDIVIDU DALAM ZIP
+                col_gen1, col_gen2, col_gen3 = st.columns(3)
                 with col_gen1:
-                    if st.button(f"📄 Jana & Preview Surat Keseluruhan {len(df_display_all)} PDF", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
+                    if st.button(f"📄 Jana ZIP Individu {len(df_display_all)} Surat", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
                         try:
                             surat_list = []
                             for _, r in df_display_all.iterrows():
@@ -5917,33 +5917,34 @@ elif st.session_state.role == "PPD":
                                     "ic": r["IC"],
                                     "jawatan": r["JAWATAN"],
                                     "sekolah_asal": r["SEKOLAH ASAL"],
+                                    "nama_sekolah_asal": r["NAMA SEKOLAH ASAL"],
                                     "pusat": r["PUSAT TUGAS"],
                                     "nama_pusat": r["NAMA PUSAT"],
                                     "no_surat": r["NO SURAT"]
                                 })
+                            # Jana ZIP individu
+                            zip_bytes = create_zip_of_individual_pdfs(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""))
+                            if zip_bytes:
+                                st.session_state[f"zip_keseluruhan_{kod_ppd}"] = zip_bytes
+                                st.success(f"✅ ZIP Individu {len(surat_list)} surat berjaya dijana! Setiap surat 1 PDF dalam ZIP")
+                            else:
+                                st.error("Gagal jana ZIP")
+                            # Juga jana kolektif untuk preview (lama)
                             pdf_bytes = generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU")
                             if pdf_bytes:
                                 st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_bytes
-                                st.success(f"✅ PDF Keseluruhan {len(surat_list)} surat berjaya dijana!")
-                            else:
-                                st.error("Gagal jana PDF - cuba HTML")
-                                # Fallback HTML
-                                full_html = f"<html><head><meta charset='UTF-8'></head><body><h1>Surat Keseluruhan PPD {kod_ppd}</h1>"
-                                for s in surat_list:
-                                    try:
-                                        h = generate_surat_html(s["nama"], s["ic"], s["jawatan"], s["sekolah_asal"], s["sekolah_asal"], s["pusat"], s["nama_pusat"], s["no_surat"], kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
-                                        full_html += h
-                                    except:
-                                        pass
-                                full_html += "</body></html>"
-                                st.session_state[f"html_keseluruhan_{kod_ppd}"] = full_html
                         except Exception as e:
                             st.error(f"Error jana PDF: {e}")
                 
                 with col_gen2:
+                    if f"zip_keseluruhan_{kod_ppd}" in st.session_state:
+                        zip_data = st.session_state[f"zip_keseluruhan_{kod_ppd}"]
+                        st.download_button(f"📥 Download ZIP Individu {len(df_display_all)} Surat (Setiap Guru 1 PDF)", data=zip_data, file_name=f"Surat_Individu_Keseluruhan_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key="dl_zip_keseluruhan_main")
                     if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
                         pdf_data = st.session_state[f"pdf_keseluruhan_{kod_ppd}"]
-                        st.download_button(f"📥 Download PDF Keseluruhan {len(df_display_all)} Surat (PPD)", data=pdf_data, file_name=f"Surat_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
+                        st.download_button(f"📥 Download PDF Keseluruhan (1 PDF Gabung)", data=pdf_data, file_name=f"Surat_Keseluruhan_Gabung_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
+                with col_gen3:
+                    st.info("✅ Download ZIP = Setiap guru 1 PDF individu dalam ZIP. Bila extract, dapat 5 file PDF berasingan. SUP pun sama - download ikut sekolah, dapat ZIP individu.")
                     if f"html_keseluruhan_{kod_ppd}" in st.session_state:
                         html_data = st.session_state[f"html_keseluruhan_{kod_ppd}"]
                         st.download_button("📥 Download HTML Keseluruhan", data=html_data.encode('utf-8'), file_name=f"Surat_Keseluruhan_{kod_ppd}.html", mime="text/html", use_container_width=True, key="dl_html_keseluruhan_main")
@@ -6015,7 +6016,7 @@ elif st.session_state.role == "PPD":
                         except Exception as e:
                             st.error(f"Error: {e}")
                     
-                    if st.button(f"📄 Jana PDF Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
+                    if st.button(f"📄 Jana ZIP Individu Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
                         try:
                             surat_list_p = []
                             for r in guru_pusat:
@@ -6024,21 +6025,34 @@ elif st.session_state.role == "PPD":
                                     "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
                                     "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
                                     "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""),
                                     "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
                                     "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
                                     "no_surat": r.get("no_surat","")
                                 })
+                            # ZIP individu
+                            zip_pusat = create_zip_of_individual_pdfs(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""))
+                            if zip_pusat:
+                                st.session_state[f"zip_pusat_{pilih_pusat_jana}"] = zip_pusat
                             pdf_pusat = generate_surat_kolektif_pdf_bytes(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')}")
                             if pdf_pusat:
                                 st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
-                                st.success(f"✅ PDF {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana!")
+                            if zip_pusat:
+                                st.success(f"✅ ZIP Individu {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana! Setiap guru 1 PDF dalam ZIP")
                         except Exception as e:
                             st.error(f"Error: {e}")
                     
-                    if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
-                        pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
-                        st.download_button(f"📥 Download PDF Surat {pilih_pusat_jana} ({len(guru_pusat)} Surat)", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
-                        st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas")
+                    col_zip_pusat, col_pdf_pusat = st.columns(2)
+                    with col_zip_pusat:
+                        if f"zip_pusat_{pilih_pusat_jana}" in st.session_state:
+                            zip_d = st.session_state[f"zip_pusat_{pilih_pusat_jana}"]
+                            st.download_button(f"📥 Download ZIP Individu {pilih_pusat_jana} ({len(guru_pusat)} Surat - Setiap Guru 1 PDF)", data=zip_d, file_name=f"Surat_Individu_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_pusat_{pilih_pusat_jana}")
+                            st.success(f"ZIP = {len(guru_pusat)} file PDF individu dalam 1 ZIP")
+                    with col_pdf_pusat:
+                        if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
+                            pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
+                            st.download_button(f"📥 Download PDF Gabung {pilih_pusat_jana} ({len(guru_pusat)} Surat dalam 1 PDF)", data=pdf_d, file_name=f"Surat_Gabung_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
+                    st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas - SUP boleh download ZIP individu juga")
             
             with tab_sekolah_asal:
                 st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak")
@@ -6074,7 +6088,7 @@ elif st.session_state.role == "PPD":
                     st.dataframe(df_sek_surat, use_container_width=True, hide_index=True)
                     st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak dan bagi pada guru berkenaan di mana dia kena bertugas")
                     
-                    if st.button(f"📄 Jana PDF Surat Untuk Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
+                    if st.button(f"📄 Jana ZIP Individu Surat Untuk Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
                         try:
                             surat_list_s = []
                             for r in guru_sekolah:
@@ -6083,21 +6097,64 @@ elif st.session_state.role == "PPD":
                                     "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
                                     "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
                                     "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""),
                                     "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
                                     "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
                                     "no_surat": r.get("no_surat","")
                                 })
+                            zip_sek = create_zip_of_individual_pdfs(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""))
+                            if zip_sek:
+                                st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"] = zip_sek
                             pdf_sek = generate_surat_kolektif_pdf_bytes(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK")
                             if pdf_sek:
                                 st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
-                                st.success(f"✅ PDF Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana!")
+                            if zip_sek:
+                                st.success(f"✅ ZIP Individu Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana! Setiap guru 1 PDF")
                         except Exception as e:
                             st.error(f"Error: {e}")
                     
-                    if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                        pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
-                        st.download_button(f"📥 Download PDF Surat Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat) - Untuk SUP Cetak & Bagi Pada Guru", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
-                        st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan di mana dia kena bertugas (pusat masing-masing)")
+                    col_zip_sek, col_pdf_sek = st.columns(2)
+                    with col_zip_sek:
+                        if f"zip_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                            zip_s = st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"]
+                            st.download_button(f"📥 Download ZIP Individu Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat - Setiap Guru 1 PDF) - Untuk SUP", data=zip_s, file_name=f"Surat_Individu_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_sekolah_{pilih_sekolah_surat}")
+                            st.success(f"ZIP = {len(guru_sekolah)} PDF individu - SUP boleh cetak seorang-seorang")
+                    with col_pdf_sek:
+                        if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                            pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
+                            st.download_button(f"📥 Download PDF Gabung Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat)", data=pdf_s, file_name=f"Surat_Gabung_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
+                    st.info(f"📄 SUP {pilih_sekolah_surat} boleh download ZIP individu - extract dapat {len(guru_sekolah)} PDF berasingan, cetak & bagi pada guru berkenaan di mana dia kena bertugas")
+                    
+                    # Juga paparkan individu seorang di sekolah asal tab
+                    st.markdown(f"#### 📄 Surat Individu - Sekolah Asal {pilih_sekolah_surat}")
+                    for idx_s, r in enumerate(guru_sekolah):
+                        try:
+                            nama_ss = r.get("NAMA_GURU","") or r.get("nama_guru","")
+                            ic_ss = r.get("IC_GURU","") or r.get("ic_guru","")
+                            jaw_ss = r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan","")
+                            sek_ss = r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal","")
+                            ns_ss = r.get("no_surat","") or f"JPN_{idx_s+1:04d}"
+                            pusat_ss = r.get("kod_pusat","") or r.get("KOD_PUSAT","")
+                            nama_pusat_ss = pusat_map_surat.get(str(pusat_ss).upper().strip(), "")
+                            def clean_ss(v):
+                                v = str(v).strip()
+                                return "" if v.lower() in ("nan","none","null","") else v
+                            nama_ss = clean_ss(nama_ss) or "GURU"
+                            ns_ss = clean_ss(ns_ss) or f"JPN_{idx_s+1:04d}"
+                            try:
+                                pdf_ss = generate_surat_pdf_bytes(nama_ss, ic_ss, jaw_ss, sek_ss, "", pusat_ss, nama_pusat_ss, ns_ss, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), ns_ss)
+                            except:
+                                pdf_ss = None
+                            c1,c2,c3 = st.columns([2,2,1])
+                            with c1:
+                                st.write(f"**{idx_s+1}. {nama_ss}** - {jaw_ss}")
+                            with c2:
+                                st.caption(f"{sek_ss} -> {pusat_ss} | {ns_ss}")
+                            with c3:
+                                if pdf_ss:
+                                    st.download_button(f"📥 PDF", data=pdf_ss, file_name=f"Surat_{pilih_sekolah_surat}_{nama_ss.replace(' ','_')}.pdf", mime="application/pdf", key=f"dl_sek_ind_{pilih_sekolah_surat}_{idx_s}_{r.get('id','')}", use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Error: {e}")
 
 
 
@@ -6685,10 +6742,10 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         st.error(f"Error guru {idx}: {e}")
                 st.markdown("---")
                 
-                # Generate PDF Keseluruhan
-                col_gen1, col_gen2 = st.columns(2)
+                # Generate PDF Keseluruhan - INDIVIDU DALAM ZIP
+                col_gen1, col_gen2, col_gen3 = st.columns(3)
                 with col_gen1:
-                    if st.button(f"📄 Jana & Preview Surat Keseluruhan {len(df_display_all)} PDF", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
+                    if st.button(f"📄 Jana ZIP Individu {len(df_display_all)} Surat", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
                         try:
                             surat_list = []
                             for _, r in df_display_all.iterrows():
@@ -6697,33 +6754,34 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                     "ic": r["IC"],
                                     "jawatan": r["JAWATAN"],
                                     "sekolah_asal": r["SEKOLAH ASAL"],
+                                    "nama_sekolah_asal": r["NAMA SEKOLAH ASAL"],
                                     "pusat": r["PUSAT TUGAS"],
                                     "nama_pusat": r["NAMA PUSAT"],
                                     "no_surat": r["NO SURAT"]
                                 })
+                            # Jana ZIP individu
+                            zip_bytes = create_zip_of_individual_pdfs(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""))
+                            if zip_bytes:
+                                st.session_state[f"zip_keseluruhan_{kod_ppd}"] = zip_bytes
+                                st.success(f"✅ ZIP Individu {len(surat_list)} surat berjaya dijana! Setiap surat 1 PDF dalam ZIP")
+                            else:
+                                st.error("Gagal jana ZIP")
+                            # Juga jana kolektif untuk preview (lama)
                             pdf_bytes = generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU")
                             if pdf_bytes:
                                 st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_bytes
-                                st.success(f"✅ PDF Keseluruhan {len(surat_list)} surat berjaya dijana!")
-                            else:
-                                st.error("Gagal jana PDF - cuba HTML")
-                                # Fallback HTML
-                                full_html = f"<html><head><meta charset='UTF-8'></head><body><h1>Surat Keseluruhan PPD {kod_ppd}</h1>"
-                                for s in surat_list:
-                                    try:
-                                        h = generate_surat_html(s["nama"], s["ic"], s["jawatan"], s["sekolah_asal"], s["sekolah_asal"], s["pusat"], s["nama_pusat"], s["no_surat"], kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
-                                        full_html += h
-                                    except:
-                                        pass
-                                full_html += "</body></html>"
-                                st.session_state[f"html_keseluruhan_{kod_ppd}"] = full_html
                         except Exception as e:
                             st.error(f"Error jana PDF: {e}")
                 
                 with col_gen2:
+                    if f"zip_keseluruhan_{kod_ppd}" in st.session_state:
+                        zip_data = st.session_state[f"zip_keseluruhan_{kod_ppd}"]
+                        st.download_button(f"📥 Download ZIP Individu {len(df_display_all)} Surat (Setiap Guru 1 PDF)", data=zip_data, file_name=f"Surat_Individu_Keseluruhan_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key="dl_zip_keseluruhan_main")
                     if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
                         pdf_data = st.session_state[f"pdf_keseluruhan_{kod_ppd}"]
-                        st.download_button(f"📥 Download PDF Keseluruhan {len(df_display_all)} Surat (PPD)", data=pdf_data, file_name=f"Surat_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
+                        st.download_button(f"📥 Download PDF Keseluruhan (1 PDF Gabung)", data=pdf_data, file_name=f"Surat_Keseluruhan_Gabung_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
+                with col_gen3:
+                    st.info("✅ Download ZIP = Setiap guru 1 PDF individu dalam ZIP. Bila extract, dapat 5 file PDF berasingan. SUP pun sama - download ikut sekolah, dapat ZIP individu.")
                     if f"html_keseluruhan_{kod_ppd}" in st.session_state:
                         html_data = st.session_state[f"html_keseluruhan_{kod_ppd}"]
                         st.download_button("📥 Download HTML Keseluruhan", data=html_data.encode('utf-8'), file_name=f"Surat_Keseluruhan_{kod_ppd}.html", mime="text/html", use_container_width=True, key="dl_html_keseluruhan_main")
@@ -6795,7 +6853,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         except Exception as e:
                             st.error(f"Error: {e}")
                     
-                    if st.button(f"📄 Jana PDF Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
+                    if st.button(f"📄 Jana ZIP Individu Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
                         try:
                             surat_list_p = []
                             for r in guru_pusat:
@@ -6804,21 +6862,34 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                     "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
                                     "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
                                     "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""),
                                     "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
                                     "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
                                     "no_surat": r.get("no_surat","")
                                 })
+                            # ZIP individu
+                            zip_pusat = create_zip_of_individual_pdfs(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""))
+                            if zip_pusat:
+                                st.session_state[f"zip_pusat_{pilih_pusat_jana}"] = zip_pusat
                             pdf_pusat = generate_surat_kolektif_pdf_bytes(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')}")
                             if pdf_pusat:
                                 st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
-                                st.success(f"✅ PDF {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana!")
+                            if zip_pusat:
+                                st.success(f"✅ ZIP Individu {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana! Setiap guru 1 PDF dalam ZIP")
                         except Exception as e:
                             st.error(f"Error: {e}")
                     
-                    if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
-                        pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
-                        st.download_button(f"📥 Download PDF Surat {pilih_pusat_jana} ({len(guru_pusat)} Surat)", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
-                        st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas")
+                    col_zip_pusat, col_pdf_pusat = st.columns(2)
+                    with col_zip_pusat:
+                        if f"zip_pusat_{pilih_pusat_jana}" in st.session_state:
+                            zip_d = st.session_state[f"zip_pusat_{pilih_pusat_jana}"]
+                            st.download_button(f"📥 Download ZIP Individu {pilih_pusat_jana} ({len(guru_pusat)} Surat - Setiap Guru 1 PDF)", data=zip_d, file_name=f"Surat_Individu_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_pusat_{pilih_pusat_jana}")
+                            st.success(f"ZIP = {len(guru_pusat)} file PDF individu dalam 1 ZIP")
+                    with col_pdf_pusat:
+                        if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
+                            pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
+                            st.download_button(f"📥 Download PDF Gabung {pilih_pusat_jana} ({len(guru_pusat)} Surat dalam 1 PDF)", data=pdf_d, file_name=f"Surat_Gabung_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
+                    st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas - SUP boleh download ZIP individu juga")
             
             with tab_sekolah_asal:
                 st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak")
@@ -6854,7 +6925,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                     st.dataframe(df_sek_surat, use_container_width=True, hide_index=True)
                     st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak dan bagi pada guru berkenaan di mana dia kena bertugas")
                     
-                    if st.button(f"📄 Jana PDF Surat Untuk Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
+                    if st.button(f"📄 Jana ZIP Individu Surat Untuk Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
                         try:
                             surat_list_s = []
                             for r in guru_sekolah:
@@ -6863,21 +6934,64 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                     "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
                                     "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
                                     "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""),
                                     "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
                                     "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
                                     "no_surat": r.get("no_surat","")
                                 })
+                            zip_sek = create_zip_of_individual_pdfs(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""))
+                            if zip_sek:
+                                st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"] = zip_sek
                             pdf_sek = generate_surat_kolektif_pdf_bytes(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK")
                             if pdf_sek:
                                 st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
-                                st.success(f"✅ PDF Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana!")
+                            if zip_sek:
+                                st.success(f"✅ ZIP Individu Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana! Setiap guru 1 PDF")
                         except Exception as e:
                             st.error(f"Error: {e}")
                     
-                    if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                        pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
-                        st.download_button(f"📥 Download PDF Surat Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat) - Untuk SUP Cetak & Bagi Pada Guru", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
-                        st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan di mana dia kena bertugas (pusat masing-masing)")
+                    col_zip_sek, col_pdf_sek = st.columns(2)
+                    with col_zip_sek:
+                        if f"zip_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                            zip_s = st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"]
+                            st.download_button(f"📥 Download ZIP Individu Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat - Setiap Guru 1 PDF) - Untuk SUP", data=zip_s, file_name=f"Surat_Individu_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_sekolah_{pilih_sekolah_surat}")
+                            st.success(f"ZIP = {len(guru_sekolah)} PDF individu - SUP boleh cetak seorang-seorang")
+                    with col_pdf_sek:
+                        if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                            pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
+                            st.download_button(f"📥 Download PDF Gabung Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat)", data=pdf_s, file_name=f"Surat_Gabung_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
+                    st.info(f"📄 SUP {pilih_sekolah_surat} boleh download ZIP individu - extract dapat {len(guru_sekolah)} PDF berasingan, cetak & bagi pada guru berkenaan di mana dia kena bertugas")
+                    
+                    # Juga paparkan individu seorang di sekolah asal tab
+                    st.markdown(f"#### 📄 Surat Individu - Sekolah Asal {pilih_sekolah_surat}")
+                    for idx_s, r in enumerate(guru_sekolah):
+                        try:
+                            nama_ss = r.get("NAMA_GURU","") or r.get("nama_guru","")
+                            ic_ss = r.get("IC_GURU","") or r.get("ic_guru","")
+                            jaw_ss = r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan","")
+                            sek_ss = r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal","")
+                            ns_ss = r.get("no_surat","") or f"JPN_{idx_s+1:04d}"
+                            pusat_ss = r.get("kod_pusat","") or r.get("KOD_PUSAT","")
+                            nama_pusat_ss = pusat_map_surat.get(str(pusat_ss).upper().strip(), "")
+                            def clean_ss(v):
+                                v = str(v).strip()
+                                return "" if v.lower() in ("nan","none","null","") else v
+                            nama_ss = clean_ss(nama_ss) or "GURU"
+                            ns_ss = clean_ss(ns_ss) or f"JPN_{idx_s+1:04d}"
+                            try:
+                                pdf_ss = generate_surat_pdf_bytes(nama_ss, ic_ss, jaw_ss, sek_ss, "", pusat_ss, nama_pusat_ss, ns_ss, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), ns_ss)
+                            except:
+                                pdf_ss = None
+                            c1,c2,c3 = st.columns([2,2,1])
+                            with c1:
+                                st.write(f"**{idx_s+1}. {nama_ss}** - {jaw_ss}")
+                            with c2:
+                                st.caption(f"{sek_ss} -> {pusat_ss} | {ns_ss}")
+                            with c3:
+                                if pdf_ss:
+                                    st.download_button(f"📥 PDF", data=pdf_ss, file_name=f"Surat_{pilih_sekolah_surat}_{nama_ss.replace(' ','_')}.pdf", mime="application/pdf", key=f"dl_sek_ind_{pilih_sekolah_surat}_{idx_s}_{r.get('id','')}", use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Error: {e}")
 
 
 
