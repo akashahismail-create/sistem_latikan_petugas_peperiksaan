@@ -714,28 +714,21 @@ def _id_py(x):
     return x
 
 def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
-    """V25 FIX: Update by IC + sekolah to ensure all duplicate rows become HANTAR, not just by id"""
+    """FIX V26: Hanya update STATUS, jangan sentuh nama_guru supaya nama tak hilang"""
     berjaya, gagal = 0, []
-    # If df_sasaran provided, also get IC list to update all duplicates
     ic_list = []
-    sekolah_list = []
     if df_sasaran is not None and not df_sasaran.empty:
         try:
             if 'IC_GURU' in df_sasaran.columns:
                 ic_list = df_sasaran['IC_GURU'].astype(str).str.strip().tolist()
-            if 'KOD_SEKOLAH_ASAL' in df_sasaran.columns:
-                sekolah_list = df_sasaran['KOD_SEKOLAH_ASAL'].astype(str).str.strip().str.upper().tolist()
         except:
             pass
-    
-    # First, update by id (original)
     for i in range(0, len(ids), 100):
         kelompok = ids[i:i + 100]
         payloads_to_try = [
-            {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD", "kod_ppd": kod_ppd, "KOD_PPD": kod_ppd},
             {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"},
-            {"status": "HANTAR KE PPD", "kod_ppd": kod_ppd},
-            {"STATUS": "HANTAR KE PPD", "KOD_PPD": kod_ppd},
+            {"status": "HANTAR KE PPD"},
+            {"STATUS": "HANTAR KE PPD"},
         ]
         success = False
         last_err = ""
@@ -751,24 +744,14 @@ def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
             berjaya += len(kelompok)
         else:
             gagal.append(last_err)
-    
-    # Second, ensure all rows with same IC + sekolah also updated to HANTAR (to fix duplicate bug)
-    # This ensures even if there are 2 rows id 19 and 140 with same IC, both become HANTAR
     if ic_list:
-        for ic_val, sek_val in zip(ic_list, sekolah_list):
+        for ic_val in ic_list:
+            if not ic_val or ic_val.lower() in ["nan","none",""]:
+                continue
             try:
-                # Update all rows with same IC
-                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
-            except:
-                try:
-                    supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
-                except:
-                    pass
-            try:
-                supa.table("cadangan_sup").update({"STATUS": "HANTAR KE PPD"}).eq("IC_GURU", ic_val).execute()
+                supa.table("cadangan_sup").update({"status": "HANTAR KE PPD"}).eq("ic_guru", ic_val).execute()
             except:
                 pass
-    
     return berjaya, gagal
 
 def simpan_penempatan_ppd(items):
@@ -815,8 +798,7 @@ def to_excel(df):
 
 
 def get_template_guru(kod_sekolah_contoh="BFT0003", nama_sekolah_contoh="SAM NURUL IMAN", kod_ppd_contoh="BH"):
-    """Template baru yang 100% match dengan guru_master + flexible import"""
-    # Template LENGKAP yang match DB guru_master
+    """Template 100% match schema sebenar guru_master (18 columns) - no no_pusat_asal"""
     template_lengkap = {
         "kod_ppd": [kod_ppd_contoh.lower()],
         "kod_sekolah": [kod_sekolah_contoh.upper()],
@@ -833,22 +815,20 @@ def get_template_guru(kod_sekolah_contoh="BFT0003", nama_sekolah_contoh="SAM NUR
         "kod_sekolah_asal": [kod_sekolah_contoh.upper()],
         "nama_sekolah_asal": [nama_sekolah_contoh],
         "kod_ppd_asal": [kod_ppd_contoh],
-        "kod_pusat_asal": ["BA142"],
     }
     return pd.DataFrame(template_lengkap)
 
 def get_template_guru_friendly():
-    """Template MESRA SUP - header mudah, tetap akan di-map ke DB"""
     template_mudah = {
         "NAMA GURU": ["CONTOH: ALI BIN ABU"],
         "IC": ["900101-01-1234"],
-        "JANTINA": ["L/PEREMPUAN/LELAKI"],
+        "JANTINA": ["L"],
         "POSKOD_RUMAH": ["40000"],
         "ALAMAT_RUMAH": ["NO 1, JALAN CONTOH"],
         "TELEFON_GURU": ["012-3456789"],
         "EMAIL_GURU": ["ali@gmail.com"],
-        "JAWATAN_CADANGAN": ["Pengawas Peperiksaan / Ketua Pengawas / Timbalan / Penyelia Kawasan"],
-        "PENGALAMAN_SPM": ["3 tahun"],
+        "JAWATAN_CADANGAN": ["Pengawas Peperiksaan"],
+        "PENGALAMAN_SPM": ["3"],
         "KOD_SEKOLAH": ["BFT0003"],
         "NAMA_SEKOLAH_ASAL": ["SAM NURUL IMAN"],
         "NO_PUSAT_ASAL": ["BA142"],
@@ -857,48 +837,26 @@ def get_template_guru_friendly():
     return pd.DataFrame(template_mudah)
 
 def normalize_guru_import(df_upload):
-    """
-    Mapping flexible: terima header lama (NAMA GURU, IC) atau baru (nama_guru, ic_guru)
-    Return list dict siap untuk insert ke guru_master
-    """
-    # Mapping header pelbagai variasi -> column DB
     HEADER_MAP = {
-        # nama
-        "NAMA GURU": "nama_guru", "NAMA_GURU": "nama_guru", "nama_guru": "nama_guru", "NAMA": "nama_guru", "nama": "nama_guru",
-        # ic
-        "IC": "ic_guru", "IC_GURU": "ic_guru", "ic_guru": "ic_guru", "NO IC": "ic_guru", "NO_IC": "ic_guru", "IC GURU": "ic_guru",
-        # kod_ppd
-        "KOD_PPD": "kod_ppd", "kod_ppd": "kod_ppd", "KOD PPD": "kod_ppd", "KOD_PPD_ASAL": "kod_ppd_asal", "kod_ppd_asal": "kod_ppd_asal",
-        # kod_sekolah
-        "KOD_SEKOLAH": "kod_sekolah", "kod_sekolah": "kod_sekolah", "KOD SEKOLAH": "kod_sekolah",
+        "NAMA GURU": "nama_guru", "NAMA_GURU": "nama_guru", "nama_guru": "nama_guru", "NAMA": "nama_guru",
+        "IC": "ic_guru", "IC_GURU": "ic_guru", "ic_guru": "ic_guru", "NO IC": "ic_guru",
+        "KOD_PPD": "kod_ppd", "kod_ppd": "kod_ppd", "KOD PPD": "kod_ppd",
+        "KOD_SEKOLAH": "kod_sekolah", "kod_sekolah": "kod_sekolah",
         "KOD_SEKOLAH_ASAL": "kod_sekolah_asal", "kod_sekolah_asal": "kod_sekolah_asal",
-        # jantina
-        "JANTINA": "jantina", "jantina": "jantina", "JANTINA_GURU": "jantina",
-        # poskod
-        "POSKOD_RUMAH": "poskod_rumah", "poskod_rumah": "poskod_rumah", "POSKOD": "poskod_rumah", "POSKOD RUMAH": "poskod_rumah",
-        # alamat
-        "ALAMAT_RUMAH": "alamat_rumah", "alamat_rumah": "alamat_rumah", "ALAMAT": "alamat_rumah", "ALAMAT RUMAH": "alamat_rumah",
-        # telefon
-        "TELEFON_GURU": "telefon_guru", "telefon_guru": "telefon_guru", "NO TELEFON GURU": "telefon_guru", "TELEFON": "telefon_guru", "NO TELEFON": "telefon_guru",
-        # email
-        "EMAIL_GURU": "email_guru", "email_guru": "email_guru", "EMAIL": "email_guru", "EMAIL GURU": "email_guru",
-        # jawatan
-        "JAWATAN_CADANGAN": "jawatan_cadangan", "jawatan_cadangan": "jawatan_cadangan", "JAWATAN": "jawatan_cadangan",
-        # pengalaman
-        "PENGALAMAN_SPM": "pengalaman_spm", "pengalaman_spm": "pengalaman_spm", "PENGALAMAN": "pengalaman_spm", "PENGALAMAN_SPM_TAHUN": "pengalaman_spm",
-        # no pusat
-        "NO_PUSAT_ASAL": "no_pusat_asal", "no_pusat_asal": "no_pusat_asal", "NO PUSAT ASAL": "no_pusat_asal", "NO_PUSAT": "no_pusat_asal",
-        # nama sekolah asal
-        "NAMA_SEKOLAH_ASAL": "nama_sekolah_asal", "nama_sekolah_asal": "nama_sekolah_asal", "NAMA SEKOLAH ASAL": "nama_sekolah_asal",
-        # kod pusat asal
-        "KOD_PUSAT_ASAL": "kod_pusat_asal", "kod_pusat_asal": "kod_pusat_asal",
+        "JANTINA": "jantina", "jantina": "jantina",
+        "POSKOD_RUMAH": "poskod_rumah", "poskod_rumah": "poskod_rumah", "POSKOD": "poskod_rumah",
+        "ALAMAT_RUMAH": "alamat_rumah", "alamat_rumah": "alamat_rumah", "ALAMAT": "alamat_rumah",
+        "TELEFON_GURU": "telefon_guru", "telefon_guru": "telefon_guru", "TELEFON": "telefon_guru",
+        "EMAIL_GURU": "email_guru", "email_guru": "email_guru", "EMAIL": "email_guru",
+        "JAWATAN_CADANGAN": "jawatan_cadangan", "jawatan_cadangan": "jawatan_cadangan",
+        "PENGALAMAN_SPM": "pengalaman_spm", "pengalaman_spm": "pengalaman_spm", "PENGALAMAN": "pengalaman_spm",
+        "NO_PUSAT_ASAL": "no_pusat_asal", "no_pusat_asal": "no_pusat_asal", "NO PUSAT ASAL": "no_pusat_asal",
+        "NAMA_SEKOLAH_ASAL": "nama_sekolah_asal", "nama_sekolah_asal": "nama_sekolah_asal",
+        "KOD_PPD_ASAL": "kod_ppd_asal", "kod_ppd_asal": "kod_ppd_asal",
     }
-    
-    # Normalize columns: strip, upper for mapping
     normalized_cols = {}
     for col in df_upload.columns:
         col_str = str(col).strip()
-        # Cari mapping
         if col_str in HEADER_MAP:
             normalized_cols[col] = HEADER_MAP[col_str]
         elif col_str.upper() in HEADER_MAP:
@@ -906,27 +864,14 @@ def normalize_guru_import(df_upload):
         elif col_str.lower() in HEADER_MAP:
             normalized_cols[col] = HEADER_MAP[col_str.lower()]
         else:
-            # Cuba lower match
-            col_lower = col_str.lower()
+            # check case-insensitive
             for k,v in HEADER_MAP.items():
-                if k.lower() == col_lower:
+                if k.lower() == col_str.lower():
                     normalized_cols[col] = v
                     break
             else:
-                # Jika tidak ada mapping, biarkan sebagai data tambahan dalam jsonb
-                normalized_cols[col] = None  # akan masuk data jsonb
-    
+                normalized_cols[col] = None
     return normalized_cols
-
-def to_excel_multi_sheet(dfs_dict):
-    """Export multi sheet Excel untuk template"""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        for sheet_name, df in dfs_dict.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-    output.seek(0)
-    return output.getvalue()
-
 
 # ================= REFRESH COMPONENT =================
 def add_refresh_button():
@@ -1387,144 +1332,63 @@ if st.session_state.role == "SUP":
                                 st.error(f"Gagal: {e2}")
 
         elif menu == "import":
-            st.header(f"Import Excel Guru - {kod} - FIX Header Match DB")
-            st.info(f"✅ Template baru 100% match dengan guru_master: kod_ppd, kod_sekolah, nama_guru, ic_guru, jantina, poskod_rumah, alamat_rumah, telefon_guru, email_guru, jawatan_cadangan, pengalaman_spm, no_pusat_asal, kod_sekolah_asal, nama_sekolah_asal, kod_ppd_asal. Juga support template lama (NAMA GURU, IC, etc) - auto mapping!")
-            
-            col_t1, col_t2 = st.columns(2)
-            with col_t1:
-                st.download_button("📥 Download Template LENGKAP (DB Match) - Disyorkan", to_excel(get_template_guru(kod, info.get('nama_sekolah',''), info.get('kod_ppd','BH'))), file_name=f"template_guru_LENGKAP_{kod}.xlsx", use_container_width=True, type="primary")
-            with col_t2:
-                st.download_button("📥 Download Template MUDAH (Header Lama)", to_excel(get_template_guru_friendly()), file_name=f"template_guru_MUDAH_{kod}.xlsx", use_container_width=True)
-            
-            # Multi-sheet info
-            with st.expander("📖 Panduan Header - Klik untuk lihat mapping"):
-                st.markdown("""
-                **Template LENGKAP (baru) - 100% sama dengan DB guru_master:**
-                - `kod_ppd`, `kod_sekolah`, `nama_guru`, `ic_guru`, `jantina`, `poskod_rumah`, `alamat_rumah`, `telefon_guru`, `email_guru`, `jawatan_cadangan`, `pengalaman_spm`, `no_pusat_asal`, `kod_sekolah_asal`, `nama_sekolah_asal`
-                
-                **Template MUDAH (lama) - masih boleh guna, auto mapping:**
-                - `NAMA GURU` → `nama_guru`
-                - `IC` → `ic_guru`
-                - `JANTINA` → `jantina`
-                - `POSKOD_RUMAH` → `poskod_rumah`
-                - `ALAMAT_RUMAH` → `alamat_rumah`
-                - `TELEFON_GURU` → `telefon_guru`
-                - `EMAIL_GURU` → `email_guru`
-                - `PENGALAMAN_SPM` → `pengalaman_spm`
-                - `KOD_SEKOLAH` → `kod_sekolah`
-                - `NAMA_SEKOLAH_ASAL` → `nama_sekolah_asal`
-                - `NO_PUSAT_ASAL` → `no_pusat_asal`
-                
-                **Sistem akan auto-detect kedua-dua format, jadi download dan upload semula akan sentiasa boleh masuk!**
-                """)
-            
-            uploaded = st.file_uploader("Upload Excel Guru (Support LENGKAP & MUDAH)", type=["xlsx", "xls"], key=f"upload_guru_{kod}")
+            st.header(f"Import Excel Guru - {kod}")
+            st.info("Format Excel: NAMA GURU, IC, JANTINA, NO TELEFON GURU, EMAIL GURU, ALAMAT RUMAH, KOD SEKOLAH, KOD PPD")
+            st.download_button("📥 Download Template Guru (Excel Sah)", to_excel(get_template_guru()), file_name="template_guru.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            uploaded = st.file_uploader("Upload Excel Guru", type=["xlsx", "xls"])
             if uploaded:
                 try:
-                    df_up = pd.read_excel(uploaded, sheet_name=0)
-                    st.write(f"Preview {len(df_up)} baris - Columns asal: {list(df_up.columns)}")
-                    # Normalize mapping
-                    col_map = normalize_guru_import(df_up)
-                    st.info(f"Mapping dikesan: {col_map}")
-                    # Buat dataframe baru dengan column DB
-                    df_normalized = pd.DataFrame()
-                    for orig_col, db_col in col_map.items():
-                        if db_col:
-                            df_normalized[db_col] = df_up[orig_col].astype(str)
-                    # Pastikan wajib ada
-                    for wajib in ["nama_guru", "ic_guru"]:
-                        if wajib not in df_normalized.columns:
-                            st.error(f"Column wajib {wajib} tidak ditemui! Pastikan ada NAMA GURU / nama_guru dan IC / ic_guru")
-                            st.stop()
-                    # Fill default dari info sekolah jika tiada
-                    if "kod_sekolah" not in df_normalized.columns:
-                        df_normalized["kod_sekolah"] = kod
-                    if "kod_sekolah_asal" not in df_normalized.columns:
-                        df_normalized["kod_sekolah_asal"] = df_normalized.get("kod_sekolah", kod)
-                    if "kod_ppd" not in df_normalized.columns:
-                        df_normalized["kod_ppd"] = info.get("kod_ppd", "BH").lower()
-                    if "nama_sekolah_asal" not in df_normalized.columns:
-                        df_normalized["nama_sekolah_asal"] = info.get("nama_sekolah", "")
-                    if "kod_ppd_asal" not in df_normalized.columns:
-                        df_normalized["kod_ppd_asal"] = info.get("kod_ppd", "BH")
-                    
-                    st.write("Preview selepas mapping ke DB:")
-                    st.dataframe(df_normalized.head(20), use_container_width=True)
-                    
-                    batch_size = 500 if len(df_normalized) > 1000 else 1
-                    if st.button(f"Import {len(df_normalized)} guru (Batch {batch_size}) - FIX Header Match", type="primary", key=f"btn_import_fix_{kod}"):
+                    df_up = pd.read_excel(uploaded)
+                    st.write(f"Preview {len(df_up)} baris:")
+                    st.dataframe(df_up.head(20), use_container_width=True)
+                    batch_size = 500 if len(df_up) > 1000 else 1
+                    if st.button(f"Import {len(df_up)} guru (Batch {batch_size})", type="primary"):
                         bar = st.progress(0)
                         status = st.empty()
                         ok = 0
-                        fail = []
-                        # Prepare batch insert dengan semua column guru_master
-                        for start in range(0, len(df_normalized), batch_size if batch_size>1 else 1):
-                            end = min(start + (batch_size if batch_size>1 else 1), len(df_normalized))
-                            batch_df = df_normalized.iloc[start:end]
-                            batch = []
-                            for _, row in batch_df.iterrows():
+                        if batch_size > 1:
+                            for start in range(0, len(df_up), batch_size):
+                                end = min(start + batch_size, len(df_up))
+                                batch_df = df_up.iloc[start:end]
+                                batch = []
+                                for _, row in batch_df.iterrows():
+                                    try:
+                                        d = {}
+                                        for k, v in row.to_dict().items():
+                                            d[k] = "" if pd.isna(v) else str(v)
+                                        nama = d.get("NAMA GURU", "").upper().strip()
+                                        if not nama or nama == "NAN": continue
+                                        kod_sek = d.get("KOD SEKOLAH", kod).upper().strip() or kod
+                                        kod_ppd_val = d.get("KOD PPD", info.get("kod_ppd", "BH")).lower().strip() or info.get("kod_ppd", "BH").lower()
+                                        batch.append({"kod_ppd": kod_ppd_val, "kod_sekolah": kod_sek, "nama_guru": nama, "ic_guru": d.get("IC", ""), "data": d})
+                                    except: continue
+                                if batch:
+                                    try:
+                                        supa.table("guru_master").insert(batch).execute()
+                                        ok += len(batch)
+                                    except Exception as e:
+                                        st.warning(f"Batch {start}-{end} error: {e}")
+                                bar.progress(end / len(df_up))
+                                status.write(f"Progress: {end}/{len(df_up)} | OK: {ok}")
+                        else:
+                            for i, row in df_up.iterrows():
                                 try:
-                                    d = {}
-                                    for k, v in row.to_dict().items():
-                                        d[k] = "" if pd.isna(v) or str(v).lower()=="nan" else str(v).strip()
-                                    nama = d.get("nama_guru", "").upper().strip()
+                                    nama = str(row.get("NAMA GURU", "")).upper()
+                                    ic = str(row.get("IC", ""))
                                     if not nama or nama == "NAN": continue
-                                    ic = d.get("ic_guru","").strip()
-                                    if not ic: continue
-                                    # Build insert dict lengkap match guru_master
-                                    insert_dict = {
-                                        "kod_ppd": d.get("kod_ppd", info.get("kod_ppd","BH").lower()).lower(),
-                                        "kod_sekolah": d.get("kod_sekolah", kod).upper(),
-                                        "nama_guru": nama,
-                                        "ic_guru": ic,
-                                        "jantina": d.get("jantina",""),
-                                        "poskod_rumah": d.get("poskod_rumah",""),
-                                        "alamat_rumah": d.get("alamat_rumah",""),
-                                        "telefon_guru": d.get("telefon_guru",""),
-                                        "email_guru": d.get("email_guru",""),
-                                        "jawatan_cadangan": d.get("jawatan_cadangan",""),
-                                        "pengalaman_spm": d.get("pengalaman_spm","") or d.get("pengalaman",""),
-                                        "no_pusat_asal": d.get("no_pusat_asal",""),
-                                        "kod_sekolah_asal": d.get("kod_sekolah_asal", d.get("kod_sekolah", kod)).upper(),
-                                        "nama_sekolah_asal": d.get("nama_sekolah_asal", info.get("nama_sekolah","")),
-                                        "kod_ppd_asal": d.get("kod_ppd_asal", d.get("kod_ppd", info.get("kod_ppd","BH"))),
-                                        "kod_pusat_asal": d.get("kod_pusat_asal", d.get("no_pusat_asal","")),
-                                        "data": d  # Simpan semua dalam jsonb untuk backup
-                                    }
-                                    batch.append(insert_dict)
-                                except Exception as ex:
-                                    fail.append(str(ex))
-                                    continue
-                            if batch:
-                                try:
-                                    supa.table("guru_master").insert(batch).execute()
-                                    ok += len(batch)
+                                    d = {k: ("" if pd.isna(v) else str(v)) for k, v in row.to_dict().items()}
+                                    d["KOD SEKOLAH"] = kod
+                                    supa.table("guru_master").insert({"kod_ppd": info.get("kod_ppd", "BH").lower(), "kod_sekolah": kod, "nama_guru": nama, "ic_guru": ic, "data": d}).execute()
+                                    ok += 1
                                 except Exception as e:
-                                    # Fallback: cuba satu-satu
-                                    for b in batch:
-                                        try:
-                                            supa.table("guru_master").insert(b).execute()
-                                            ok += 1
-                                        except Exception as e2:
-                                            fail.append(f"{b.get('nama_guru')} - {e2}")
-                            bar.progress(end / len(df_normalized))
-                            status.write(f"Progress: {end}/{len(df_normalized)} | OK: {ok} | Fail: {len(fail)}")
-                        st.success(f"✅ Berjaya import {ok}/{len(df_normalized)} guru! Header LENGKAP & MUDAH kedua-dua boleh masuk.")
-                        if fail:
-                            st.warning(f"{len(fail)} gagal: {fail[:5]}")
+                                    st.warning(f"Baris {i}: {e}")
+                                bar.progress((i + 1) / len(df_up))
+                        st.success(f"✅ Berjaya import {ok}/{len(df_up)} guru!")
                         st.balloons()
-                        st.rerun()
                 except Exception as e:
-                    st.error(f"Error baca Excel: {e}")
-                    import traceback
-                    st.code(traceback.format_exc())
-            
-            # OLD CODE DISABLED - JANGAN PADAM, UNTUK REFERENCE
-            if False:
-                uploaded_OLD = st.file_uploader("Upload Excel Guru OLD", type=["xlsx", "xls"])
-                if uploaded_OLD:
-                    pass
-                elif menu == "buang":
+                    st.error(f"Excel error: {e}")
+
+        elif menu == "buang":
             st.header(f"Buang Guru - {kod}")
             if df_guru.empty:
                 st.info("Tiada guru untuk dibuang.")
