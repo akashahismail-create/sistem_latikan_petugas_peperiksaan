@@ -30,30 +30,7 @@ import logging
 _log = logging.getLogger("spm2026")
 
 # ================= CONFIGURATION =================
-st.set_page_config(page_title="Pelantikan SPM Selangor 2026 - VERSI RINGAN", layout="wide", page_icon="⚡", initial_sidebar_state="collapsed")
-
-# ================= VERSI RINGAN CONFIG UNTUK 300 USER =================
-IS_LITE = True
-MAX_PDF_KOLEKTIF = 150
-MAX_ZIP_FILES = 200
-CACHE_TTL_MASTER = 3600  # 1 jam untuk master data
-CACHE_TTL_CADANGAN = 300  # 5 minit untuk cadangan
-ENABLE_TESTING_GUIDE = True  # Set False bila live
-
-# ===== BANNER VERSI RINGAN =====
-st.markdown("""
-<div style="background:linear-gradient(135deg,#00c853,#009624);padding:12px 18px;border-radius:12px;color:white;margin-bottom:12px;">
-⚡ VERSI RINGAN AKTIF - Dioptimumkan untuk 300 pengguna serentak | Cache 1 jam | Limit PDF 150 | ZIP 200 | Mode Testing: Password 'a' untuk semua
-</div>
-""", unsafe_allow_html=True)
-
-def clear_all_cache_lite():
-    """Clear cache versi ringan"""
-    try:
-        st.cache_data.clear()
-    except:
-        pass
-
+st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 
 
 # ===== HIDE FORK & GITHUB CAT BUTTON (PPD MINTA BUANG) =====
@@ -175,7 +152,6 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 @st.cache_resource
 def get_supabase():
-    # Connection pooling - reuse client untuk 300 user
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -1008,7 +984,7 @@ def safe_count(table_name):
 def get_sekolah(kod):
     for col in ["kod_sekolah", "kod_sekolah_tuan_rumah", "KOD_SEKOLAH"]:
         try:
-            res = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah,kod_ppd").limit(1000).eq(col, kod.upper()).limit(1).execute()
+            res = supa.table("sekolah_master").select("*").eq(col, kod.upper()).limit(1).execute()
             if res.data:
                 row = res.data[0]
                 return {
@@ -1027,12 +1003,12 @@ def get_guru_df(kod_sekolah):
         res = None
         for col in ["kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_tuan_rumah"]:
             try:
-                r = supa.table("guru_master").select("kod_sekolah,nama_guru,ic_guru,jawatan,opsyen,no_tel").limit(2000).eq(col, kod_sekolah.upper()).limit(2000).execute()
+                r = supa.table("guru_master").select("*").eq(col, kod_sekolah.upper()).limit(2000).execute()
                 if r.data: res=r; break
             except: continue
         
         if not res:
-            res = supa.table("guru_master").select("kod_sekolah,nama_guru,ic_guru,jawatan,opsyen,no_tel").limit(2000).eq("kod_sekolah", kod_sekolah.upper()).limit(2000).execute()
+            res = supa.table("guru_master").select("*").eq("kod_sekolah", kod_sekolah.upper()).limit(2000).execute()
         
         rows = []
         sekolah_map_guru = {}
@@ -1113,7 +1089,7 @@ def get_guru_df(kod_sekolah):
 @st.cache_data(ttl=300, show_spinner=False)
 def get_pusat_df():
     try:
-        res = supa.table("pusat_master").select("kod_pusat,nama_pusat,kod_ppd,alamat,bilik,calon,jumlah_calon,jumlah_kelas,data").limit(1000).limit(2000).execute()
+        res = supa.table("pusat_master").select("*").limit(2000).execute()
         df = pd.DataFrame(res.data or [])
         if not df.empty:
             df_norm = df.copy()
@@ -1694,12 +1670,7 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         return None
 
 
-def generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, ppd_name, title_prefix="SURAT LANTIKAN", max_surat_per_pdf=150):
-    """VERSI RINGAN - Limit 150 surat per PDF untuk 300 user concurrent"""
-    if len(surat_list) > max_surat_per_pdf:
-        st.warning(f"PDF kolektif dihadkan {max_surat_per_pdf} surat sahaja untuk versi ringan. {len(surat_list)} surat akan dipotong.")
-        surat_list = surat_list[:max_surat_per_pdf]
-
+def generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, ppd_name, title_prefix="SURAT LANTIKAN"):
     """Jana PDF kolektif guna template JPN - untuk PPD download pukal"""
     try:
         from reportlab.lib.pagesizes import A4
@@ -1964,10 +1935,10 @@ if st.session_state.role is None:
     </div>
     """, unsafe_allow_html=True)
     
-    @st.cache_data(ttl=3600, show_spinner=False)
+    @st.cache_data(ttl=600)
     def load_sekolah_list():
         try:
-            res = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah,kod_ppd").limit(1000).execute()
+            res = supa.table("sekolah_master").select("*").limit(1000).execute()
             data = res.data or []
             rows = []
             for r in data:
@@ -3228,7 +3199,7 @@ elif st.session_state.role == "PPD":
                 # Load data
                 df_pusat_raw = get_pusat_df()
                 df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
-                df_sekolah_raw = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah,kod_ppd").limit(1000).eq("kod_ppd", kod_ppd).limit(2000).execute()
+                df_sekolah_raw = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
                 df_sekolah_list = pd.DataFrame(df_sekolah_raw.data or [])
                 
                 # Parse pusat
@@ -3551,7 +3522,7 @@ elif st.session_state.role == "PPD":
         elif menu == "sekolah":
             st.header(f"Senarai Sekolah PPD {kod_ppd}")
             try:
-                res = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah,kod_ppd").limit(1000).eq("kod_ppd", kod_ppd).limit(2000).execute()
+                res = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
                 df = pd.DataFrame(res.data or [])
                 st.dataframe(df, use_container_width=True)
                 st.download_button("Export Sekolah", to_excel(df), file_name=f"sekolah_{kod_ppd}.xlsx")
@@ -3643,9 +3614,9 @@ elif st.session_state.role == "PPD":
                                     # Update pusat_master
                                     try:
                                         # Get existing record
-                                        res = supa.table("pusat_master").select("kod_pusat,nama_pusat,kod_ppd,alamat,bilik,calon,jumlah_calon,jumlah_kelas,data").limit(1000).eq("no_pusat", no_p).limit(1).execute()
+                                        res = supa.table("pusat_master").select("*").eq("no_pusat", no_p).limit(1).execute()
                                         if not res.data:
-                                            res = supa.table("pusat_master").select("kod_pusat,nama_pusat,kod_ppd,alamat,bilik,calon,jumlah_calon,jumlah_kelas,data").limit(1000).eq("kod_pusat", no_p).limit(1).execute()
+                                            res = supa.table("pusat_master").select("*").eq("kod_pusat", no_p).limit(1).execute()
                                         if res.data:
                                             rec = res.data[0]
                                             rec_id = rec.get("id")
@@ -3731,7 +3702,7 @@ elif st.session_state.role == "PPD":
                 try:
                     kod_tuan = str(r.iloc[0].get("KOD_SEKOLAH_TUAN_RUMAH") or "").strip() if not r.empty else ""
                     if kod_tuan:
-                        res_sek = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah,kod_ppd").limit(1000).eq("kod_sekolah", kod_tuan).limit(1).execute()
+                        res_sek = supa.table("sekolah_master").select("*").eq("kod_sekolah", kod_tuan).limit(1).execute()
                         if res_sek.data:
                             d = res_sek.data[0].get("data") or {}
                             if isinstance(d, str):
@@ -4990,7 +4961,7 @@ elif st.session_state.role == "PPD":
             
             # Get sekolah list in PPD
             try:
-                res_sek = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah,kod_ppd").limit(1000).eq("kod_ppd", kod_ppd).limit(2000).execute()
+                res_sek = supa.table("sekolah_master").select("*").eq("kod_ppd", kod_ppd).limit(2000).execute()
                 df_sek_list = pd.DataFrame(res_sek.data or [])
             except:
                 df_sek_list = pd.DataFrame()
@@ -7231,7 +7202,7 @@ elif st.session_state.role == "PPD":
             if not df_cad.empty:
                 st.download_button("📥 Export Cadangan PPD (Excel)", to_excel(df_cad), file_name=f"laporan_PPD_{kod_ppd}_{datetime.date.today()}.xlsx", use_container_width=True)
             try:
-                res = supa.table("guru_master").select("kod_sekolah,nama_guru,ic_guru,jawatan,opsyen,no_tel").limit(2000).eq("kod_ppd", kod_ppd.lower()).limit(5000).execute()
+                res = supa.table("guru_master").select("*").eq("kod_ppd", kod_ppd.lower()).limit(5000).execute()
                 df_guru = pd.DataFrame(res.data or [])
                 if not df_guru.empty:
                     st.download_button("📥 Export Guru PPD (Excel)", to_excel(df_guru), file_name=f"guru_PPD_{kod_ppd}.xlsx", use_container_width=True)
@@ -7332,7 +7303,7 @@ elif st.session_state.role == "JPN":
             try:
                 res = supa.table("sekolah_master").select("*", count="exact").limit(5000).execute()
                 df_count = res.count
-                res2 = supa.table("sekolah_master").select("kod_sekolah,nama_sekolah,kod_ppd").limit(1000).execute()
+                res2 = supa.table("sekolah_master").select("*").limit(1000).execute()
                 df = pd.DataFrame(res2.data or [])
                 st.write(f"Total dalam Supabase: **{df_count}** sekolah")
                 if not df.empty:
@@ -7397,7 +7368,7 @@ elif st.session_state.role == "JPN":
             st.subheader("Auto Generate Sekolah dari Pusat 506")
             if st.button("⚡ Generate Sekolah Master dari pusat_master yang sedia ada (506 pusat)", use_container_width=True):
                 try:
-                    res = supa.table("pusat_master").select("kod_pusat,nama_pusat,kod_ppd,alamat,bilik,calon,jumlah_calon,jumlah_kelas,data").limit(1000).limit(1000).execute()
+                    res = supa.table("pusat_master").select("*").limit(1000).execute()
                     df_p = pd.DataFrame(res.data or [])
                     if df_p.empty:
                         st.error("pusat_master kosong, import pusat dulu")
@@ -7425,7 +7396,7 @@ elif st.session_state.role == "JPN":
             st.header("Pusat Master - Selangor 2026 (506 Pusat) - FIX Jumlah Calon")
             try:
                 total = safe_count("pusat_master")
-                res = supa.table("pusat_master").select("kod_pusat,nama_pusat,kod_ppd,alamat,bilik,calon,jumlah_calon,jumlah_kelas,data").limit(1000).limit(1000).execute()
+                res = supa.table("pusat_master").select("*").limit(1000).execute()
                 raw_data = res.data or []
                 df = pd.DataFrame(raw_data)
                 st.write(f"Total Pusat Sedia Ada: **{total}** / 506 pusat")
