@@ -5815,7 +5815,8 @@ elif st.session_state.role == "PPD":
             tab_keseluruhan, tab_pusat_surat, tab_sekolah_asal = st.tabs(["📄 Semua Surat (Keseluruhan)", "🏫 Ikut Pusat", "🏫 Ikut Sekolah Asal (Untuk Hantar)"])
             
             with tab_keseluruhan:
-                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat")
+                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat - INDIVIDU SEORANG")
+                st.caption("Setiap guru ada surat PDF individu - klik Download PDF untuk setiap orang")
                 
                 display_rows = []
                 for _, r in df_lulus_surat.iterrows():
@@ -5833,6 +5834,76 @@ elif st.session_state.role == "PPD":
                     })
                 df_display_all = pd.DataFrame(display_rows)
                 st.dataframe(df_display_all, use_container_width=True, hide_index=True)
+                
+                # ===== INDIVIDU SEORANG - DOWNLOAD PDF SETIAP GURU =====
+                st.markdown("---")
+                st.markdown("#### 📄 Surat Individu Seorang - Download PDF Per Guru")
+                for idx, row in df_display_all.iterrows():
+                    try:
+                        nama_g = row["NAMA GURU"]
+                        ic_g = row["IC"]
+                        jaw_g = row["JAWATAN"]
+                        sek_asal = row["SEKOLAH ASAL"]
+                        nama_sek_asal_full = row["NAMA SEKOLAH ASAL"]
+                        pusat_t = row["PUSAT TUGAS"]
+                        nama_pusat_full = row["NAMA PUSAT"]
+                        no_surat_g = row["NO SURAT"]
+                        
+                        # Bersihkan nan
+                        def clean_s(s):
+                            s = str(s).strip()
+                            return "" if s.lower() in ("nan","none","null","") else s
+                        
+                        nama_g = clean_s(nama_g) or "GURU"
+                        no_surat_g = clean_s(no_surat_g) or f"JPN.SPP.HHJH/{idx+1:04d}"
+                        
+                        # Generate PDF individu
+                        try:
+                            pdf_individu = generate_surat_pdf_bytes(
+                                nama_g, ic_g, jaw_g,
+                                sek_asal, nama_sek_asal_full,
+                                pusat_t, nama_pusat_full,
+                                no_surat_g,
+                                kod_ppd, PPD_MAP.get(kod_ppd,""),
+                                datetime.date.today().strftime('%d %B %Y'),
+                                no_surat_g
+                            )
+                        except:
+                            pdf_individu = None
+                        
+                        col_nama, col_info, col_dl = st.columns([2,2,1])
+                        with col_nama:
+                            st.markdown(f"**{idx+1}. {nama_g}** ({ic_g}) - {jaw_g}")
+                            st.caption(f"{sek_asal} -> {pusat_t} | No: {no_surat_g}")
+                        with col_info:
+                            st.caption(f"Sekolah Asal: {sek_asal} | Pusat: {pusat_t}")
+                        with col_dl:
+                            if pdf_individu:
+                                st.download_button(
+                                    f"📥 PDF",
+                                    data=pdf_individu,
+                                    file_name=f"Surat_{nama_g.replace(' ','_')}_{no_surat_g.replace('/','_')}.pdf",
+                                    mime="application/pdf",
+                                    key=f"dl_individu_{kod_ppd}_{idx}_{row['id']}",
+                                    use_container_width=True
+                                )
+                            else:
+                                # Fallback HTML
+                                try:
+                                    html_ind = generate_surat_html(nama_g, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
+                                    st.download_button(
+                                        f"📥 HTML",
+                                        data=html_ind.encode('utf-8'),
+                                        file_name=f"Surat_{nama_g.replace(' ','_')}.html",
+                                        mime="text/html",
+                                        key=f"dl_individu_html_{kod_ppd}_{idx}_{row['id']}",
+                                        use_container_width=True
+                                    )
+                                except:
+                                    st.caption("Gagal jana")
+                    except Exception as e:
+                        st.error(f"Error guru {idx}: {e}")
+                st.markdown("---")
                 
                 # Generate PDF Keseluruhan
                 col_gen1, col_gen2 = st.columns(2)
@@ -5893,7 +5964,7 @@ elif st.session_state.role == "PPD":
                         pusat_groups_surat[kp].append(r)
                 
                 pilih_pusat_jana = st.selectbox(
-                    "Pilih Pusat Untuk Jana Surat PDF",
+                    "Pilih Pusat Untuk Jana Surat PDF - Individu Seorang",
                     sorted(pusat_groups_surat.keys()),
                     format_func=lambda x: f"{x} - {pusat_map_surat.get(x,'')} ({len(pusat_groups_surat[x])} surat)",
                     key="pilih_pusat_jana_surat"
@@ -5910,6 +5981,39 @@ elif st.session_state.role == "PPD":
                         "STATUS": r.get("status","")
                     } for r in guru_pusat])
                     st.dataframe(df_pusat_surat, use_container_width=True, hide_index=True)
+                    
+                    # Individu seorang untuk pusat ini
+                    st.markdown(f"#### 📄 Surat Individu - Pusat {pilih_pusat_jana} - Seorang-Seorang")
+                    for idx_p, r in enumerate(guru_pusat):
+                        try:
+                            nama_gp = r.get("NAMA_GURU","") or r.get("nama_guru","")
+                            ic_gp = r.get("IC_GURU","") or r.get("ic_guru","")
+                            jaw_gp = r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan","")
+                            sek_gp = r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal","")
+                            ns_gp = r.get("no_surat","") or f"JPN.SPP.HHJH/{idx_p+1:04d}"
+                            nama_pusat_gp = pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), "")
+                            
+                            def clean_sp(s):
+                                s = str(s).strip()
+                                return "" if s.lower() in ("nan","none","null","") else s
+                            nama_gp = clean_sp(nama_gp) or "GURU"
+                            ns_gp = clean_sp(ns_gp) or f"JPN.SPP.HHJH/{idx_p+1:04d}"
+                            
+                            try:
+                                pdf_gp = generate_surat_pdf_bytes(nama_gp, ic_gp, jaw_gp, sek_gp, "", pilih_pusat_jana, nama_pusat_gp, ns_gp, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), ns_gp)
+                            except:
+                                pdf_gp = None
+                            
+                            col_a, col_b, col_c = st.columns([2,2,1])
+                            with col_a:
+                                st.write(f"**{idx_p+1}. {nama_gp}** - {jaw_gp}")
+                            with col_b:
+                                st.caption(f"{sek_gp} | {ns_gp}")
+                            with col_c:
+                                if pdf_gp:
+                                    st.download_button(f"📥 PDF", data=pdf_gp, file_name=f"Surat_{pilih_pusat_jana}_{nama_gp.replace(' ','_')}.pdf", mime="application/pdf", key=f"dl_pusat_ind_{pilih_pusat_jana}_{idx_p}_{r.get('id','')}", use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Error: {e}")
                     
                     if st.button(f"📄 Jana PDF Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
                         try:
@@ -5950,9 +6054,9 @@ elif st.session_state.role == "PPD":
                         sekolah_groups_surat[ks].append(r)
                 
                 pilih_sekolah_surat = st.selectbox(
-                    "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai",
+                    "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai - Individu Seorang",
                     sorted(sekolah_groups_surat.keys()),
-                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak)",
+                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak) - individu",
                     key="pilih_sekolah_surat_jana"
                 )
                 
@@ -6491,7 +6595,8 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
             tab_keseluruhan, tab_pusat_surat, tab_sekolah_asal = st.tabs(["📄 Semua Surat (Keseluruhan)", "🏫 Ikut Pusat", "🏫 Ikut Sekolah Asal (Untuk Hantar)"])
             
             with tab_keseluruhan:
-                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat")
+                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat - INDIVIDU SEORANG")
+                st.caption("Setiap guru ada surat PDF individu - klik Download PDF untuk setiap orang")
                 
                 display_rows = []
                 for _, r in df_lulus_surat.iterrows():
@@ -6509,6 +6614,76 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                     })
                 df_display_all = pd.DataFrame(display_rows)
                 st.dataframe(df_display_all, use_container_width=True, hide_index=True)
+                
+                # ===== INDIVIDU SEORANG - DOWNLOAD PDF SETIAP GURU =====
+                st.markdown("---")
+                st.markdown("#### 📄 Surat Individu Seorang - Download PDF Per Guru")
+                for idx, row in df_display_all.iterrows():
+                    try:
+                        nama_g = row["NAMA GURU"]
+                        ic_g = row["IC"]
+                        jaw_g = row["JAWATAN"]
+                        sek_asal = row["SEKOLAH ASAL"]
+                        nama_sek_asal_full = row["NAMA SEKOLAH ASAL"]
+                        pusat_t = row["PUSAT TUGAS"]
+                        nama_pusat_full = row["NAMA PUSAT"]
+                        no_surat_g = row["NO SURAT"]
+                        
+                        # Bersihkan nan
+                        def clean_s(s):
+                            s = str(s).strip()
+                            return "" if s.lower() in ("nan","none","null","") else s
+                        
+                        nama_g = clean_s(nama_g) or "GURU"
+                        no_surat_g = clean_s(no_surat_g) or f"JPN.SPP.HHJH/{idx+1:04d}"
+                        
+                        # Generate PDF individu
+                        try:
+                            pdf_individu = generate_surat_pdf_bytes(
+                                nama_g, ic_g, jaw_g,
+                                sek_asal, nama_sek_asal_full,
+                                pusat_t, nama_pusat_full,
+                                no_surat_g,
+                                kod_ppd, PPD_MAP.get(kod_ppd,""),
+                                datetime.date.today().strftime('%d %B %Y'),
+                                no_surat_g
+                            )
+                        except:
+                            pdf_individu = None
+                        
+                        col_nama, col_info, col_dl = st.columns([2,2,1])
+                        with col_nama:
+                            st.markdown(f"**{idx+1}. {nama_g}** ({ic_g}) - {jaw_g}")
+                            st.caption(f"{sek_asal} -> {pusat_t} | No: {no_surat_g}")
+                        with col_info:
+                            st.caption(f"Sekolah Asal: {sek_asal} | Pusat: {pusat_t}")
+                        with col_dl:
+                            if pdf_individu:
+                                st.download_button(
+                                    f"📥 PDF",
+                                    data=pdf_individu,
+                                    file_name=f"Surat_{nama_g.replace(' ','_')}_{no_surat_g.replace('/','_')}.pdf",
+                                    mime="application/pdf",
+                                    key=f"dl_individu_{kod_ppd}_{idx}_{row['id']}",
+                                    use_container_width=True
+                                )
+                            else:
+                                # Fallback HTML
+                                try:
+                                    html_ind = generate_surat_html(nama_g, ic_g, jaw_g, sek_asal, nama_sek_asal_full, pusat_t, nama_pusat_full, no_surat_g, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
+                                    st.download_button(
+                                        f"📥 HTML",
+                                        data=html_ind.encode('utf-8'),
+                                        file_name=f"Surat_{nama_g.replace(' ','_')}.html",
+                                        mime="text/html",
+                                        key=f"dl_individu_html_{kod_ppd}_{idx}_{row['id']}",
+                                        use_container_width=True
+                                    )
+                                except:
+                                    st.caption("Gagal jana")
+                    except Exception as e:
+                        st.error(f"Error guru {idx}: {e}")
+                st.markdown("---")
                 
                 # Generate PDF Keseluruhan
                 col_gen1, col_gen2 = st.columns(2)
@@ -6569,7 +6744,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         pusat_groups_surat[kp].append(r)
                 
                 pilih_pusat_jana = st.selectbox(
-                    "Pilih Pusat Untuk Jana Surat PDF",
+                    "Pilih Pusat Untuk Jana Surat PDF - Individu Seorang",
                     sorted(pusat_groups_surat.keys()),
                     format_func=lambda x: f"{x} - {pusat_map_surat.get(x,'')} ({len(pusat_groups_surat[x])} surat)",
                     key="pilih_pusat_jana_surat"
@@ -6586,6 +6761,39 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         "STATUS": r.get("status","")
                     } for r in guru_pusat])
                     st.dataframe(df_pusat_surat, use_container_width=True, hide_index=True)
+                    
+                    # Individu seorang untuk pusat ini
+                    st.markdown(f"#### 📄 Surat Individu - Pusat {pilih_pusat_jana} - Seorang-Seorang")
+                    for idx_p, r in enumerate(guru_pusat):
+                        try:
+                            nama_gp = r.get("NAMA_GURU","") or r.get("nama_guru","")
+                            ic_gp = r.get("IC_GURU","") or r.get("ic_guru","")
+                            jaw_gp = r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan","")
+                            sek_gp = r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal","")
+                            ns_gp = r.get("no_surat","") or f"JPN.SPP.HHJH/{idx_p+1:04d}"
+                            nama_pusat_gp = pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), "")
+                            
+                            def clean_sp(s):
+                                s = str(s).strip()
+                                return "" if s.lower() in ("nan","none","null","") else s
+                            nama_gp = clean_sp(nama_gp) or "GURU"
+                            ns_gp = clean_sp(ns_gp) or f"JPN.SPP.HHJH/{idx_p+1:04d}"
+                            
+                            try:
+                                pdf_gp = generate_surat_pdf_bytes(nama_gp, ic_gp, jaw_gp, sek_gp, "", pilih_pusat_jana, nama_pusat_gp, ns_gp, kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'), ns_gp)
+                            except:
+                                pdf_gp = None
+                            
+                            col_a, col_b, col_c = st.columns([2,2,1])
+                            with col_a:
+                                st.write(f"**{idx_p+1}. {nama_gp}** - {jaw_gp}")
+                            with col_b:
+                                st.caption(f"{sek_gp} | {ns_gp}")
+                            with col_c:
+                                if pdf_gp:
+                                    st.download_button(f"📥 PDF", data=pdf_gp, file_name=f"Surat_{pilih_pusat_jana}_{nama_gp.replace(' ','_')}.pdf", mime="application/pdf", key=f"dl_pusat_ind_{pilih_pusat_jana}_{idx_p}_{r.get('id','')}", use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Error: {e}")
                     
                     if st.button(f"📄 Jana PDF Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
                         try:
@@ -6626,9 +6834,9 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         sekolah_groups_surat[ks].append(r)
                 
                 pilih_sekolah_surat = st.selectbox(
-                    "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai",
+                    "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai - Individu Seorang",
                     sorted(sekolah_groups_surat.keys()),
-                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak)",
+                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak) - individu",
                     key="pilih_sekolah_surat_jana"
                 )
                 
