@@ -25,6 +25,9 @@ import datetime
 import math
 import json
 import re
+import logging
+
+_log = logging.getLogger("spm2026")
 
 # ================= CONFIGURATION =================
 st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
@@ -70,6 +73,78 @@ try:
     hide_fork_github()
 except:
     pass
+
+# ================= TEMA CANTIK =================
+def apply_pretty_theme():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    html, body, [class*="css"], .stApp { font-family: 'Inter', 'Segoe UI', Arial, sans-serif !important; }
+    .stApp { background: linear-gradient(180deg, #eef3fb 0%, #f8fafd 40%, #ffffff 100%); }
+    .block-container { padding-top: 1.6rem !important; padding-bottom: 3rem !important; max-width: 1400px; }
+
+    h1, h2, h3, h4 { color: #0d47a1; letter-spacing: -0.3px; font-weight: 700 !important; }
+
+    /* Butang */
+    .stButton > button, .stDownloadButton > button {
+        border-radius: 12px !important; font-weight: 600 !important;
+        border: 1px solid #cfd8e8 !important; transition: all .18s ease !important;
+        box-shadow: 0 1px 2px rgba(13,71,161,.06);
+    }
+    .stButton > button:hover, .stDownloadButton > button:hover {
+        transform: translateY(-1px); box-shadow: 0 6px 16px rgba(13,71,161,.18) !important;
+        border-color: #1565c0 !important;
+    }
+    .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%) !important;
+        color: #fff !important; border: none !important;
+    }
+
+    /* Tab */
+    .stTabs [data-baseweb="tab-list"] { gap: 6px; background: #e8eef8; padding: 6px; border-radius: 14px; }
+    .stTabs [data-baseweb="tab"] { border-radius: 10px; padding: 8px 18px; font-weight: 600; color: #34527f; }
+    .stTabs [aria-selected="true"] { background: #ffffff !important; color: #0d47a1 !important; box-shadow: 0 2px 8px rgba(13,71,161,.15); }
+    .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] { display: none; }
+
+    /* Kad metrik */
+    [data-testid="stMetric"] {
+        background: #ffffff; border: 1px solid #e1e8f5; border-radius: 16px;
+        padding: 14px 18px; box-shadow: 0 2px 10px rgba(13,71,161,.07);
+    }
+    [data-testid="stMetricValue"] { color: #0d47a1; font-weight: 800; }
+    [data-testid="stMetricLabel"] { color: #5b6f94; font-weight: 600; }
+
+    /* Container bersempadan, expander, jadual */
+    [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 16px !important; }
+    [data-testid="stExpander"] { border: 1px solid #e1e8f5 !important; border-radius: 14px !important; background: #fff; overflow: hidden; }
+    [data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; border: 1px solid #e1e8f5; }
+
+    /* Input */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea, [data-baseweb="select"] > div { border-radius: 10px !important; }
+
+    /* Alert */
+    [data-testid="stAlert"] { border-radius: 12px; }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] { background: linear-gradient(180deg, #0d47a1 0%, #1565c0 100%); }
+    [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4, [data-testid="stSidebar"] [data-testid="stCaptionContainer"] { color: #ffffff !important; }
+    [data-testid="stSidebar"] .stButton > button { background: rgba(255,255,255,.12) !important; border: 1px solid rgba(255,255,255,.25) !important; color: #fff !important; }
+
+    /* Hero log masuk */
+    .hero-login {
+        background: linear-gradient(135deg, #0d47a1 0%, #1976d2 60%, #42a5f5 100%);
+        color: #fff; border-radius: 22px; padding: 30px 24px; text-align: center; margin-bottom: 20px;
+        box-shadow: 0 12px 32px rgba(13,71,161,.28);
+    }
+    .hero-login h1 { color: #fff !important; font-size: 1.7rem; margin: 0 0 6px 0; }
+    .hero-login p { margin: 0; opacity: .92; font-size: .98rem; }
+    .hero-stats { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+    .hero-stats span { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28); padding: 6px 16px; border-radius: 999px; font-weight: 600; font-size: .9rem; }
+    .app-footer { text-align: center; color: #7a8bab; font-size: .82rem; margin-top: 36px; padding-top: 14px; border-top: 1px solid #e1e8f5; }
+    </style>
+    """, unsafe_allow_html=True)
+
+apply_pretty_theme()
 
 
 SUPABASE_URL = "https://gnmaijhugkkvxejvsotk.supabase.co"
@@ -171,7 +246,7 @@ def render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, 
             html = html.replace(f"[{k}]", str(v))
         return html
     except Exception as e:
-        print(f"render JPN error: {e}")
+        _log.debug(f"render JPN error: {e}")
         return None
 
 supa = get_supabase()
@@ -793,9 +868,7 @@ def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURA
         buffer.close()
         return pdf_bytes
     except Exception as e:
-        print(f"Error kolektif: {e}")
-        import traceback
-        traceback.print_exc()
+        _log.debug(f"Error kolektif: {e}")
         return None
 
 
@@ -1515,7 +1588,7 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
             t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 1.2, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
             story.append(t)
         story.append(Spacer(1,6))
-        # Rujukan Kami dan Tarikh - sebelah kanan, tanpa sumber debug - SAMA ATAS BAWAH
+        # Rujukan Kami dan Tarikh - sebelah kanan - SAMA ATAS BAWAH
         story.append(Paragraph(f"Ruj. Kami: {no_surat}", style_right))
         story.append(Paragraph(f"Tarikh: {tarikh}", style_right))
         story.append(Spacer(1,10))
@@ -1586,16 +1659,14 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         else:
             story.append(Paragraph("Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal_left))
         story.append(Spacer(1,12))
-        # Footer kecil sahaja - tanpa debug TEMPLATE JPN
+        # Footer kecil sahaja
         story.append(Paragraph("<font size=6 color='#666666'>JABATAN PENDIDIKAN NEGERI SELANGOR SENTIASA BERKUALITI DAN TERUS UNGGUL</font>", style_normal_left))
         doc.build(story)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
     except Exception as e:
-        print(f"PDF FINAL CLEAN error {e}")
-        import traceback
-        traceback.print_exc()
+        _log.debug(f"PDF FINAL CLEAN error {e}")
         return None
 
 
@@ -1653,7 +1724,7 @@ def generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, ppd_name, title_p
         buffer.close()
         return pdf_bytes
     except Exception as e:
-        print(f"Kolektif JPN error: {e}")
+        _log.debug(f"Kolektif JPN error: {e}")
         return None
 
 def create_zip_pukal_dari_JPN(surat_list, kod_ppd, ppd_name):
@@ -1683,7 +1754,7 @@ def create_zip_pukal_dari_JPN(surat_list, kod_ppd, ppd_name):
         zip_buffer.seek(0)
         return zip_buffer.getvalue()
     except Exception as e:
-        print(f"ZIP JPN error: {e}")
+        _log.debug(f"ZIP JPN error: {e}")
         return None
 
 def hantar_surat_ke_sekolah_asal_bulk(surat_list, kod_ppd):
@@ -1742,7 +1813,7 @@ def hantar_surat_ke_sekolah_asal_bulk(surat_list, kod_ppd):
             pass
         return berjaya
     except Exception as e:
-        print(f"hantar sekolah asal error: {e}")
+        _log.debug(f"hantar sekolah asal error: {e}")
         return 0
 
 # Monkey-patch
@@ -1856,8 +1927,13 @@ if "role" not in st.session_state:
 
 # ================= LOGIN PAGE =================
 if st.session_state.role is None:
-    st.markdown("<h1 style='text-align:center; color:#0d47a1;'>🏫 SISTEM PELANTIKAN PETUGAS PEPERIKSAAN SPM SELANGOR 2026</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center;'>369 Sekolah | 506 Pusat | 71,064 Calon</p>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class="hero-login">
+        <h1>🏫 Sistem Pelantikan Petugas Peperiksaan SPM Selangor 2026</h1>
+        <p>Jabatan Pendidikan Negeri Selangor</p>
+        <div class="hero-stats"><span>🏫 369 Sekolah</span><span>📍 506 Pusat</span><span>🎓 71,064 Calon</span></div>
+    </div>
+    """, unsafe_allow_html=True)
     
     @st.cache_data(ttl=600)
     def load_sekolah_list():
@@ -1885,7 +1961,7 @@ if st.session_state.role is None:
             return pd.DataFrame()
 
     df_sekolah_all = load_sekolah_list()
-    tab1, tab2, tab3 = st.tabs(["SUP - Sekolah", "🏢 PPD - Daerah", "🏛️ JPN - Negeri"])
+    tab1, tab2, tab3 = st.tabs(["🏫 SUP - Sekolah", "🏢 PPD - Daerah", "🏛️ JPN - Negeri"])
     
     with tab1:
         st.markdown("### 🏫 Log Masuk SUP - Penyelia Sekolah")
@@ -1924,75 +2000,59 @@ if st.session_state.role is None:
         with col_b:
             st.markdown(f"**Sekolah Dipilih:** `{pilih_sekolah_kod}` - {pilih_sekolah_nama}")
             st.markdown(f"**ID Sekolah:** {sup_id} | **PPD:** {pilih_ppd_code} - {PPD_MAP.get(pilih_ppd_code, '')}")
-            with st.container(border=True):
-                st.markdown("🔑 **Password Untuk Testing**")
-                if not df_filtered.empty and 'sup_password_expected' in locals():
-                    st.code(f"ID: {sup_id}\nPassword Baru: {sup_password_expected}\nPassword Lama: {sup_password_lama}", language="text")
-                else:
-                    st.code(f"Password: {sup_id} atau 12345{sup_id}", language="text")
-            
-            pwd_input = st.text_input("3️⃣ Masuk Password", type="password", key="sup_pwd", placeholder=f"Contoh: {sup_password_expected if 'sup_password_expected' in locals() else '1'}")
+            pwd_input = st.text_input("3️⃣ Masuk Password", type="password", key="sup_pwd", placeholder="Masukkan password")
             if st.button("🚀 Masuk SUP Sekolah", use_container_width=True, type="primary", key="btn_sup"):
                 valid_pw = [str(sup_id), f"12345{sup_id}", sup_password_expected if 'sup_password_expected' in locals() else str(sup_id)]
                 if not df_sekolah_all.empty and 'sup_password_lama' in locals():
                     valid_pw.append(sup_password_lama)
                 
-                if pwd_input.strip() in valid_pw or pwd_input.strip() == "12345" or pwd_input.strip().lower() == "a" or pwd_input.strip() == "":
-                    if pwd_input.strip() == "" and not st.checkbox("Benarkan login tanpa password untuk testing?", key="allow_empty"):
-                        st.error(f"Password salah! Cuba {sup_password_expected} atau {sup_password_lama}")
-                    else:
-                        info = get_sekolah(pilih_sekolah_kod)
-                        info["kod_sekolah"] = pilih_sekolah_kod
-                        info["nama_sekolah"] = pilih_sekolah_nama
-                        info["kod_ppd"] = pilih_ppd_code
-                        st.session_state.role = "SUP"
-                        st.session_state.kod = pilih_sekolah_kod
-                        st.session_state.info = info
-                        st.session_state.sup_id = sup_id
-                        st.rerun()
+                if pwd_input.strip() in valid_pw or pwd_input.strip() == "12345" or pwd_input.strip().lower() == "a":
+                    info = get_sekolah(pilih_sekolah_kod)
+                    info["kod_sekolah"] = pilih_sekolah_kod
+                    info["nama_sekolah"] = pilih_sekolah_nama
+                    info["kod_ppd"] = pilih_ppd_code
+                    st.session_state.role = "SUP"
+                    st.session_state.kod = pilih_sekolah_kod
+                    st.session_state.info = info
+                    st.session_state.sup_id = sup_id
+                    st.rerun()
                 else:
-                    st.error(f"Password salah! Sepatutnya: {sup_password_expected} atau {sup_password_lama}")
+                    st.error("🔒 Password tidak sah. Sila semak dan cuba semula.")
 
     with tab2:
         st.markdown("### 🏢 Log Masuk PPD - Pejabat Pendidikan Daerah")
         col1, col2 = st.columns(2)
         with col1:
-            ppd_labels = [f"{i+1}. {KOD_DAERAH[i]} - {PPD_MAP[KOD_DAERAH[i]]} (ID:{i+1} Pwd:{chr(97+i)})" for i in range(len(KOD_DAERAH))]
+            ppd_labels = [f"{i+1}. {KOD_DAERAH[i]} - {PPD_MAP[KOD_DAERAH[i]]}" for i in range(len(KOD_DAERAH))]
             pilih_ppd_full = st.selectbox("Pilih PPD", options=ppd_labels, key="ppd_full")
             ppd_code = pilih_ppd_full.split(" - ")[0].split(". ")[1] if ". " in pilih_ppd_full else KOD_DAERAH[0]
             ppd_id = KOD_DAERAH.index(ppd_code) + 1 if ppd_code in KOD_DAERAH else 1
             ppd_pwd_expected = chr(96 + ppd_id)
         
         with col2:
-            with st.container(border=True):
-                st.markdown("🔑 **Password PPD Untuk Testing**")
-                st.code(f"ID PPD: {ppd_id}\nPPD: {ppd_code} - {PPD_MAP.get(ppd_code, '')}\nPassword: {ppd_pwd_expected}", language="text")
-            ppd_pwd = st.text_input("Masuk Password PPD", type="password", key="ppd_pwd", placeholder=f"Contoh: {ppd_pwd_expected}")
+            ppd_pwd = st.text_input("Masuk Password PPD", type="password", key="ppd_pwd", placeholder="Masukkan password")
             if st.button("🚀 Masuk PPD", use_container_width=True, type="primary", key="btn_ppd"):
                 valid = [ppd_pwd_expected, str(ppd_id), f"12345{ppd_id}", chr(96 + ppd_id).upper(), ppd_code.lower(), "a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
-                if ppd_pwd.strip().lower() in [v.lower() for v in valid] or ppd_pwd.strip() == "":
+                if ppd_pwd.strip().lower() in [v.lower() for v in valid]:
                     st.session_state.role = "PPD"
                     st.session_state.kod = ppd_code
                     st.session_state.ppd_id = ppd_id
                     st.rerun()
                 else:
-                    st.error(f"Password salah! Cuba {ppd_pwd_expected} atau {ppd_id}")
+                    st.error("🔒 Password tidak sah. Sila semak dan cuba semula.")
 
     with tab3:
         st.markdown("### 🏛️ Log Masuk JPN - Jabatan Pendidikan Negeri")
         col1, col2 = st.columns(2)
         with col1:
             jpn_id = st.text_input("ID JPN", value="1", key="jpn_id")
-            jpn_pwd = st.text_input("Password JPN", type="password", key="jpn_pwd", placeholder="a")
-            with st.container(border=True):
-                st.code("ID: 1\nPassword: a atau 1 atau 123451", language="text")
+            jpn_pwd = st.text_input("Password JPN", type="password", key="jpn_pwd", placeholder="Masukkan password")
             if st.button("🚀 Masuk JPN", use_container_width=True, type="primary", key="btn_jpn"):
-                if jpn_id == "1" and jpn_pwd.strip().lower() in ["a", "1", "123451", "12345", ""]:
+                if jpn_id == "1" and jpn_pwd.strip().lower() in ["a", "1", "123451", "12345"]:
                     st.session_state.role = "JPN"
                     st.rerun()
                 else:
-                    st.session_state.role = "JPN"
-                    st.rerun()
+                    st.error("🔒 ID atau password tidak sah. Sila semak dan cuba semula.")
         with col2:
             st.info("JPN boleh tengok semua PPD, semua sekolah (369), semua pusat (506), semua cadangan.")
     
@@ -2985,9 +3045,9 @@ if st.session_state.role == "SUP":
                                     if pdf_sel:
                                         st.download_button(f"📥 Download PDF {nama}", data=pdf_sel, file_name=f"Surat_{nama.replace(' ','_')}_{no_surat.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_sup_selected_{kod}_{pilih_sup_idx}", use_container_width=True)
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
+                                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
                             except Exception as e:
-                                st.error(f"Error: {e}")
+                                st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
 
                     st.markdown(f"**Papar {len(df_lulus_page)} surat (Halaman {page_sup}/{total_pages_sup}) - Total {len(df_lulus_filtered)} surat:**")
 
@@ -3992,7 +4052,7 @@ elif st.session_state.role == "PPD":
                                     st.balloons()
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
+                                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
                         with col_export_j:
                             st.download_button(f"📥 Export {pilih_jawatan_jana}", to_excel(df_eligible_disp), file_name=f"{pilih_jawatan_jana.replace(' ','_')}_{pilihan_pusat_jawatan}.xlsx", use_container_width=True, key=f"exp_jawatan_v3_{pilih_jawatan_jana}")
 
@@ -5596,7 +5656,7 @@ elif st.session_state.role == "PPD":
                         st.success(f"✅ No Surat Disahkan: {no_rujukan_input}/{bil_surat_input:04d} - Akan guna untuk jana surat")
                         st.balloons()
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
             with col_btn2:
                 if max_exist > 0:
                     st.caption(f"Sedia ada max: {max_exist} | Seterusnya: {max_exist+1}")
@@ -6338,7 +6398,7 @@ elif st.session_state.role == "PPD":
                                         st.balloons()
                                         st.rerun()
                                     except Exception as e:
-                                        st.error(f"Error: {e}")
+                                        st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
                             else:
                                 st.info("Pilih Penyelia Kawasan di atas")
                         else:
@@ -6962,9 +7022,7 @@ elif st.session_state.role == "PPD":
                                 st.success(f"✅ Berjaya! {len(surat_list)} surat dijana guna template JPN, {jml_hantar} surat sampai ke sekolah asal!")
                                 st.balloons()
                             except Exception as e:
-                                st.error(f"Error jana PDF: {e}")
-                                import traceback
-                                st.code(traceback.format_exc())
+                                st.error("Maaf, surat tidak dapat dijana. Sila cuba lagi atau hubungi pentadbir sistem.")
                 
                 with col_gen2:
                     if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
@@ -7051,9 +7109,7 @@ elif st.session_state.role == "PPD":
                                         st.session_state[f"zip_pusat_{pilih_pusat_jana}"] = zip_pusat
                                     st.success(f"✅ PDF+ZIP {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana (Template JPN) + {jml_hantar} sampai sekolah asal!")
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
+                                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
                     with c2:
                         if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
                             pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
@@ -7123,9 +7179,7 @@ elif st.session_state.role == "PPD":
                                         st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"] = zip_sek
                                     st.success(f"✅ PDF+ZIP Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana (JPN)!")
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
+                                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
                     with c2:
                         if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
                             pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
@@ -7242,9 +7296,7 @@ elif st.session_state.role == "JPN":
                     prev = edited.replace("{{NAMA}}","ALI BIN ABU").replace("{{PUSAT}}","BA001").replace("{{NO_SURAT}}","JPN/0001").replace("{{PPD}}","KLANG").replace("{{IC}}","800101-01-1234")
                     st.markdown(prev, unsafe_allow_html=True)
             except Exception as e:
-                st.error(f"Error template: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                st.error("Maaf, template tidak dapat dipaparkan. Sila cuba lagi.")
 
         elif menu == "sekolah":
             st.header("Semua Sekolah Master (369 Sekolah)")
@@ -7310,7 +7362,7 @@ elif st.session_state.role == "JPN":
                         st.balloons()
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
             
             st.markdown("---")
             st.subheader("Auto Generate Sekolah dari Pusat 506")
@@ -7538,7 +7590,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                             st.balloons()
                             st.rerun()
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
             
             st.markdown("---")
             if st.button("🗑️ Kosongkan Semua Pusat (Hati-hati!)", type="secondary"):
@@ -7603,7 +7655,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         st.success(f"✅ Selesai import {ok}/{len(df_m)} guru!")
                         st.balloons()
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
             
             st.markdown("---")
             st.subheader("Data Sedia Ada")
@@ -7733,9 +7785,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                 st.success(f"✅ Berjaya! {len(surat_list)} surat dijana guna template JPN, {jml_hantar} surat sampai ke sekolah asal!")
                                 st.balloons()
                             except Exception as e:
-                                st.error(f"Error jana PDF: {e}")
-                                import traceback
-                                st.code(traceback.format_exc())
+                                st.error("Maaf, surat tidak dapat dijana. Sila cuba lagi atau hubungi pentadbir sistem.")
                 
                 with col_gen2:
                     if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
@@ -7822,9 +7872,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                         st.session_state[f"zip_pusat_{pilih_pusat_jana}"] = zip_pusat
                                     st.success(f"✅ PDF+ZIP {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana (Template JPN) + {jml_hantar} sampai sekolah asal!")
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
+                                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
                     with c2:
                         if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
                             pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
@@ -7894,9 +7942,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                                         st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"] = zip_sek
                                     st.success(f"✅ PDF+ZIP Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana (JPN)!")
                                 except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
+                                    st.error("Maaf, berlaku masalah semasa memproses. Sila cuba lagi.")
                     with c2:
                         if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
                             pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
@@ -7920,7 +7966,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                 st.error(str(e))
 
         elif menu == "admin":
-            st.header("Admin - Check Tables & Connection")
+            st.header("⚙️ Status Sistem & Sambungan Pangkalan Data")
             for t in ["sekolah_master", "pusat_master", "guru_master", "cadangan_sup"]:
                 try:
                     res = supa.table(t).select("*", count="exact").limit(1).execute()
@@ -7948,3 +7994,6 @@ ALTER TABLE cadangan_sup ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow all" ON cadangan_sup;
 CREATE POLICY "allow all" ON cadangan_sup FOR ALL USING (true) WITH CHECK (true);
 """, language="sql")
+
+# ================= FOOTER =================
+st.markdown("<div class='app-footer'>Sistem Pelantikan Petugas SPM Selangor 2026 · Jabatan Pendidikan Negeri Selangor</div>", unsafe_allow_html=True)
