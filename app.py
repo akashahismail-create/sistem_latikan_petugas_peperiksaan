@@ -1,20 +1,22 @@
 """
-VERSION BARU - APP_33 - SISTEM LANTIKAN PETUGAS SPM 2026 - JPN TEMPLATE + ZIP PUKAL + SEKOLAH ASAL
-Tarikh: 2026-10-23 23:59 - UPGRADE dari app_32.py LOCKED VERSION
-Status: NEW FEATURE - TEMPLATE JPN SELARAS + ZIP + HANTAR SEKOLAH ASAL
+LOCKED VERSION - SISTEM LANTIKAN PETUGAS PEPERIKSAAN SPM 2026
+Tarikh Lock: 2026-10-23 00:29:45
+Status: OK - SEMUA FIX SIAP
 
-UPGRADE V33:
-1. ✅ Template surat lantikan ambil dari function JPN surat_templates_jpn (get_jpn_template_for_jawatan + render_jpn_template_html)
-   - PPD punya akan diganti dengan template JPN jika JPN sudah cipta
-   - Guna placeholder {{NAMA}}, {{IC}}, {{JAWATAN}}, {{SEKOLAH_ASAL}}, {{PUSAT}}, {{NO_SURAT}}, {{PPD}}, {{TARIKH}}
-2. ✅ Bila PPD Jana Surat - keluar 2 button terus: PDF Kolektif (Pukal) + ZIP Individu Pukal (1000 PDF dalam 1 ZIP)
-   - Guna create_zip_pukal_dari_JPN + generate_surat_kolektif_pdf_bytes_JPN
-3. ✅ Surat yang dijana auto sampai ke sekolah asal petugas
-   - Function hantar_surat_ke_sekolah_asal_bulk() update status SURAT_SAMPAI_SEKOLAH_ASAL
-   - SUP boleh nampak di dashboard tab Surat Sampai Sekolah Asal
-4. ✅ Semua tab (Keseluruhan, Ikut Pusat, Ikut Sekolah Asal) upgrade guna Template JPN + ZIP
+FIX YANG SUDAH SIAP DALAM VERSION INI:
+1. ✅ Fix NameError get_pusat_df, get_cadangan_df, show_flash
+2. ✅ Fix No Surat nan & Sekolah Asal BFT0003 - BFT0003 (clean_nan + get_nama_sekolah_full)
+3. ✅ Fix PDF individu + ZIP (PPD & SUP) - create_zip_of_individual_pdfs
+4. ✅ Fix Lulus Keseluruhan 22 tinggal (nan check)
+5. ✅ Fix 1000 petugas panjang - search + pagination 10/20/50 + dropdown cepat
+6. ✅ Fix SUP Surat Lantikan Saya ada ZIP individu
+7. ✅ Fix PPD Sepang nampak Klang (strict filter ikut daerah)
+8. ✅ Fix Selenggara Bilik Kebal - No Surat Penyelia ikut berturutan daerah + PDF + Hantar ke sekolah asal
+9. ✅ Fix Petugas sudah dilantik hide dari pilihan (sama seperti Penyelia)
+10. ✅ Fix Fork + kucing GitHub hide
 
-BASE: app_32.py LOCKED VERSION OK
+JANGAN UBAH FAIL INI - Jika ada perubahan baru, buat fail baru app_29_vXXX.py
+Fail ini adalah rujukan OK.
 """
 
 import streamlit as st
@@ -86,93 +88,6 @@ def get_jpn_templates_one():
         return {r["jawatan"].upper(): r["template_html"] for r in res.data} if res.data else {}
     except:
         return {}
-
-# ===== NEW: JPN TEMPLATE FETCHER UNTUK PDF - WAJIB GUNA INI =====
-@st.cache_data(ttl=300, show_spinner=False)
-def get_jpn_template_for_jawatan(jawatan_str):
-    """Ambil template JPN ikut jawatan - PPD punya akan diganti dengan template JPN"""
-    try:
-        jw = str(jawatan_str or "").upper().strip()
-        if not jw:
-            return None
-        # cuba exact match dulu
-        res = supa.table("surat_templates_jpn").select("template_html, jawatan").eq("jawatan", jw).limit(1).execute()
-        if res.data and len(res.data) > 0:
-            html = res.data[0].get("template_html")
-            if html and len(html) > 30:
-                return html
-        # cuba ilike
-        try:
-            res2 = supa.table("surat_templates_jpn").select("template_html, jawatan").ilike("jawatan", f"%{jw}%").limit(1).execute()
-            if res2.data:
-                html = res2.data[0].get("template_html")
-                if html and len(html) > 30:
-                    return html
-        except:
-            pass
-        # fallback dari cache dict
-        all_t = get_jpn_templates_one()
-        for k,v in all_t.items():
-            if jw in k or k in jw:
-                return v
-        return None
-    except:
-        return None
-
-def render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh):
-    """Render template JPN dengan placeholder - ini yang PPD wajib guna"""
-    try:
-        tmpl = get_jpn_template_for_jawatan(jawatan)
-        if not tmpl:
-            return None
-        # Bersihkan
-        nama = clean_nan(nama) or "Nama Guru"
-        ic = clean_nan(ic)
-        jawatan = clean_nan(jawatan) or "Petugas"
-        sek_asal = clean_nan(sek_asal)
-        nama_sek_asal = clean_nan(nama_sek_asal) or get_nama_sekolah_full(sek_asal, "")
-        pusat = clean_nan(pusat)
-        nama_pusat = clean_nan(nama_pusat) or pusat
-        no_surat = clean_nan(no_surat)
-        kod_ppd = clean_nan(kod_ppd)
-        ppd_name = clean_nan(ppd_name) or kod_ppd
-        tarikh = clean_nan(tarikh) or str(datetime.date.today().strftime("%d %B %Y"))
-
-        replacements = {
-            "NAMA": nama,
-            "NAMA_GURU": nama,
-            "IC": ic,
-            "IC_GURU": ic,
-            "JAWATAN": jawatan,
-            "JAWATAN_CADANGAN": jawatan,
-            "SEKOLAH_ASAL": sek_asal,
-            "KOD_SEKOLAH_ASAL": sek_asal,
-            "NAMA_SEKOLAH_ASAL": nama_sek_asal,
-            "PUSAT": pusat,
-            "KOD_PUSAT": pusat,
-            "NAMA_PUSAT": nama_pusat,
-            "NO_SURAT": no_surat,
-            "PPD": kod_ppd,
-            "KOD_PPD": kod_ppd,
-            "PPD_NAME": ppd_name,
-            "NAMA_PPD": ppd_name,
-            "TARIKH": tarikh,
-            "sekolah_asal": sek_asal,
-            "nama_sekolah_asal": nama_sek_asal,
-            "pusat": pusat,
-            "nama_pusat": nama_pusat,
-        }
-        html = tmpl
-        for k,v in replacements.items():
-            html = html.replace("{{"+k+"}}", str(v))
-            html = html.replace("{{ "+k+" }}", str(v))
-            html = html.replace("{{"+k.lower()+"}}", str(v))
-            html = html.replace("{{ "+k.lower()+" }}", str(v))
-            html = html.replace(f"[{k}]", str(v))
-        return html
-    except Exception as e:
-        print(f"render JPN error: {e}")
-        return None
 
 supa = get_supabase()
 
@@ -1415,6 +1330,233 @@ def create_zip_of_individual_pdfs(surat_list, kod_ppd, ppd_name):
     except Exception as e:
         return None
 
+# ================= ZIP PDF INDIVIDU - GUNA TAPAK SURAT (TEMPLAT) JPN =================
+def _ambil_nilai(row, *keys):
+    """Ambil nilai pertama yang tidak kosong/nan daripada dict atau Series (cuba beberapa nama kolum)."""
+    for k in keys:
+        try:
+            v = clean_nan(row.get(k))
+        except Exception:
+            v = ""
+        if v:
+            return v
+    return ""
+
+
+def _html_templat_ke_pdf_bytes(html_str):
+    """Tukar HTML templat JPN (yang placeholder-nya sudah diganti) kepada PDF 1 surat.
+    Guna reportlab sahaja (sudah ada) - tiada pakej tambahan diperlukan."""
+    import io
+    from html.parser import HTMLParser
+    from xml.sax.saxutils import escape as _esc
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, HRFlowable
+
+    BLOCK = {"div", "p", "h1", "h2", "h3", "h4", "h5", "tr", "td", "th", "table",
+             "li", "ul", "ol", "center", "section", "header", "footer", "body", "html"}
+    HEADING = {"h1", "h2", "h3", "h4", "h5"}
+    SKIP = {"style", "script", "title", "head"}
+    INLINE = {"b": ("<b>", "</b>"), "strong": ("<b>", "</b>"),
+              "i": ("<i>", "</i>"), "em": ("<i>", "</i>"), "u": ("<u>", "</u>"),
+              "small": ('<font size="8">', "</font>")}
+
+    class _Parser(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.blocks = []
+            self.buf = []
+            self.open = []          # (htmltag, opener, closer)
+            self.align = ["left"]
+            self.skip = 0
+
+        def _flush(self):
+            txt = "".join(self.buf)
+            visible = re.sub(r"<[^>]+>", "", txt).replace("\xa0", " ").strip()
+            if visible:
+                closers = "".join(e[2] for e in reversed(self.open))
+                self.blocks.append(("p", self.align[-1], txt + closers))
+            self.buf = [e[1] for e in self.open]
+
+        def handle_starttag(self, tag, attrs):
+            tag = tag.lower()
+            if tag in SKIP:
+                self.skip += 1
+                return
+            if self.skip:
+                return
+            a = dict(attrs)
+            if tag == "br":
+                self.buf.append("<br/>")
+            elif tag == "hr":
+                self._flush()
+                self.blocks.append(("hr", None, None))
+            elif tag in BLOCK or tag in HEADING:
+                self._flush()
+                al = self.align[-1]
+                m = re.search(r"text-align\s*:\s*(left|right|center)", a.get("style", "") or "", re.I)
+                if m:
+                    al = m.group(1).lower()
+                if tag == "center":
+                    al = "center"
+                if (a.get("align") or "").lower() in ("left", "right", "center"):
+                    al = a["align"].lower()
+                self.align.append(al)
+                if tag in HEADING:
+                    self.open.append((tag, "<b>", "</b>"))
+                    self.buf.append("<b>")
+            if tag in INLINE:
+                op, cl = INLINE[tag]
+                self.open.append((tag, op, cl))
+                self.buf.append(op)
+
+        def handle_endtag(self, tag):
+            tag = tag.lower()
+            if tag in SKIP:
+                if self.skip:
+                    self.skip -= 1
+                return
+            if self.skip:
+                return
+            if tag in INLINE or tag in HEADING:
+                idx = None
+                for i in range(len(self.open) - 1, -1, -1):
+                    if self.open[i][0] == tag:
+                        idx = i
+                        break
+                if idx is not None:
+                    above = self.open[idx + 1:]
+                    for e in reversed(above):
+                        self.buf.append(e[2])
+                    self.buf.append(self.open[idx][2])
+                    for e in above:
+                        self.buf.append(e[1])
+                    del self.open[idx]
+                if tag in HEADING:
+                    self._flush()
+                    if len(self.align) > 1:
+                        self.align.pop()
+            elif tag in BLOCK:
+                self._flush()
+                if len(self.align) > 1:
+                    self.align.pop()
+
+        def handle_data(self, data):
+            if self.skip:
+                return
+            d = re.sub(r"\s+", " ", data)
+            if d:
+                self.buf.append(_esc(d))
+
+    p = _Parser()
+    p.feed(html_str)
+    p._flush()
+
+    styles = getSampleStyleSheet()
+    amap = {"left": 0, "center": 1, "right": 2}
+    story = []
+    for kind, al, markup in p.blocks:
+        if kind == "hr":
+            story.append(HRFlowable(width="100%", thickness=1.5, color=colors.black, spaceBefore=2, spaceAfter=8))
+            continue
+        st_p = ParagraphStyle("TplJPN", parent=styles["Normal"], fontName="Helvetica",
+                              fontSize=10, leading=14, spaceAfter=5, alignment=amap.get(al, 0))
+        try:
+            story.append(Paragraph(markup, st_p))
+        except Exception:
+            story.append(Paragraph(_esc(re.sub(r"<[^>]+>", " ", markup)), st_p))
+    if not story:
+        return None
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm,
+                            topMargin=15 * mm, bottomMargin=15 * mm)
+    doc.build(story)
+    return buf.getvalue()
+
+
+def generate_surat_pdf_templat_jpn(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat,
+                                   no_surat, kod_ppd, ppd_name, tarikh, bilik_kebal="", templates=None):
+    """Jana PDF 1 surat guna TAPAK SURAT (templat) yang JPN simpan dalam surat_templates_jpn.
+    Pulang None jika tiada templat untuk jawatan ini (pemanggil akan guna reka bentuk lama)."""
+    import html as _htmlmod
+    jaw = clean_nan(jawatan).upper().strip()
+    if templates is None:
+        templates = get_jpn_templates_one() or {}
+    tmpl = templates.get(jaw)
+    if not tmpl or len(tmpl) < 50:
+        return None
+    vals = {
+        "NAMA": nama, "IC": ic, "JAWATAN": clean_nan(jawatan),
+        "SEKOLAH_ASAL": sek_asal, "NAMA_SEKOLAH_ASAL": nama_sek_asal or sek_asal,
+        "PUSAT": pusat, "KOD_PUSAT": pusat, "NAMA_PUSAT": nama_pusat or pusat,
+        "NO_SURAT": no_surat, "TARIKH": tarikh,
+        "PPD": (ppd_name or kod_ppd or "").upper(), "KOD_PPD": kod_ppd, "PPD_NAME": ppd_name,
+        "BILIK_KEBAL": bilik_kebal or "-", "NAMA_BILIK_KEBAL": "",
+    }
+    html_str = re.sub(r"\{\{\s*([A-Za-z_]+)\s*\}\}",
+                      lambda m: _htmlmod.escape(str(vals.get(m.group(1).upper(), ""))), tmpl)
+    return _html_templat_ke_pdf_bytes(html_str)
+
+
+def create_zip_surat_individu_jpn(surat_list, kod_ppd, ppd_name, pusat_map=None):
+    """Satu PDF setiap guru (guna templat JPN) -> dimampatkan dalam satu ZIP.
+    Pulang: (zip_bytes atau None, jumlah_berjaya, jumlah_guna_templat_jpn, senarai_gagal)"""
+    import io, zipfile
+    templates = get_jpn_templates_one() or {}
+    pusat_map = pusat_map or {}
+    tarikh = datetime.date.today().strftime('%d %B %Y')
+    sek_cache = {}
+    zip_buffer = io.BytesIO()
+    ok, guna_tpl, gagal = 0, 0, []
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for idx, s in enumerate(surat_list, start=1):
+            nama = _ambil_nilai(s, "nama", "NAMA GURU", "NAMA") or f"GURU_{idx}"
+            ic = _ambil_nilai(s, "ic", "IC")
+            jawatan = _ambil_nilai(s, "jawatan", "JAWATAN") or "Petugas Peperiksaan"
+            sek_asal = _ambil_nilai(s, "sekolah_asal", "SEKOLAH ASAL").upper()
+            pusat = _ambil_nilai(s, "pusat", "PUSAT", "PUSAT TUGAS")
+            no_surat = _ambil_nilai(s, "no_surat", "NO SURAT", "NO SURAT BARU") or f"JPN_{idx:04d}"
+            bilik = _ambil_nilai(s, "bilik_kebal", "BILIK KEBAL")
+            nama_sek = _ambil_nilai(s, "nama_sekolah_asal", "NAMA SEKOLAH ASAL")
+            if not nama_sek and sek_asal:
+                if sek_asal not in sek_cache:
+                    try:
+                        nm = get_nama_sekolah_full(sek_asal, "")
+                        sek_cache[sek_asal] = "" if str(nm).upper().strip() == sek_asal else str(nm).strip()
+                    except Exception:
+                        sek_cache[sek_asal] = ""
+                nama_sek = sek_cache[sek_asal]
+            nama_pusat = _ambil_nilai(s, "nama_pusat", "NAMA PUSAT") or pusat_map.get(pusat.upper().strip(), "")
+
+            pdf = None
+            try:
+                pdf = generate_surat_pdf_templat_jpn(nama, ic, jawatan, sek_asal, nama_sek, pusat, nama_pusat,
+                                                     no_surat, kod_ppd, ppd_name, tarikh, bilik, templates)
+                if pdf:
+                    guna_tpl += 1
+            except Exception:
+                pdf = None
+            if not pdf:   # tiada templat JPN untuk jawatan ini -> guna reka bentuk lama
+                try:
+                    pdf = generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek, pusat, nama_pusat,
+                                                   no_surat, kod_ppd, ppd_name, tarikh, no_surat)
+                except Exception:
+                    pdf = None
+            if not pdf or bytes(pdf[:4]) != b"%PDF":
+                gagal.append(nama)
+                continue
+            safe_nama = re.sub(r"[^A-Za-z0-9_-]+", "_", nama)[:40].strip("_") or f"GURU_{idx}"
+            safe_no = re.sub(r"[^A-Za-z0-9_-]+", "_", no_surat).strip("_")
+            zf.writestr(f"{idx:03d}_{safe_nama}_{safe_no}.pdf", pdf)
+            ok += 1
+    if ok == 0:
+        return None, 0, 0, gagal
+    return zip_buffer.getvalue(), ok, guna_tpl, gagal
+
+
 def generate_surat_html_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh):
     nama = clean_nan(nama) or "Nama Guru"
     ic = clean_nan(ic)
@@ -1451,15 +1593,7 @@ def generate_surat_html_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat,
     return html
 
 def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, no_rujukan=""):
-    """NEW V33 - Guna template JPN jika ada, fallback lama jika tiada"""
     try:
-        # === CUBA GUNA TEMPLATE JPN DULU - PPD punya diganti ===
-        jpn_html = None
-        try:
-            jpn_html = render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh)
-        except:
-            jpn_html = None
-
         nama = clean_nan(nama) or "Nama Guru"
         ic = clean_nan(ic)
         jawatan = clean_nan(jawatan) or "Petugas"
@@ -1480,45 +1614,6 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
             except:
                 display_sek_asal = sek_asal
         display_pusat = f"{pusat} - {nama_pusat}" if nama_pusat and nama_pusat.upper() != pusat.upper() else pusat
-
-        # Jika ada template JPN, guna content JPN untuk PDF body
-        if jpn_html and len(jpn_html) > 50:
-            try:
-                # Strip HTML tags untuk masuk dalam ReportLab Paragraph
-                import re
-                # Simpan sebagai text dengan <br/> kekal
-                clean_html_for_pdf = jpn_html
-                # Buang <html><head> dll tapi kekal isi
-                clean_html_for_pdf = re.sub(r'<style.*?</style>', '', clean_html_for_pdf, flags=re.DOTALL|re.IGNORECASE)
-                clean_html_for_pdf = re.sub(r'<head.*?</head>', '', clean_html_for_pdf, flags=re.DOTALL|re.IGNORECASE)
-                # Untuk PDF kita guna html terus sebagai Paragraph - ReportLab support <b>, <br/>, <p> sikit
-                # Jadi kita guna jpn_html yang sudah replace sebagai isi utama
-                from reportlab.lib.pagesizes import A4
-                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-                from reportlab.lib.units import mm
-                import io
-                buffer = io.BytesIO()
-                doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=15*mm, bottomMargin=15*mm)
-                styles = getSampleStyleSheet()
-                style_title = ParagraphStyle('TitleJPN', parent=styles['Heading1'], fontSize=11, alignment=1, spaceAfter=4)
-                style_normal = ParagraphStyle('NormalJPN', parent=styles['Normal'], fontSize=9, leading=13, spaceAfter=3)
-                story = []
-                story.append(Paragraph(f"JABATAN PENDIDIKAN NEGERI SELANGOR - Template JPN Selaras [{jawatan}]", style_title))
-                story.append(Spacer(1,6))
-                # Masukkan JPN html sebagai paragraph (potong kalau terlalu besar)
-                # Clean untuk elak error ReportLab: hanya benarkan tag basic
-                allowed_content = clean_html_for_pdf[:10000]
-                story.append(Paragraph(allowed_content, style_normal))
-                doc.build(story)
-                pdf_bytes = buffer.getvalue()
-                buffer.close()
-                if pdf_bytes and len(pdf_bytes) > 1000:
-                    return pdf_bytes
-            except Exception as e:
-                print(f"PDF JPN fallback error: {e}")
-                pass
-        # Jika tiada template JPN atau gagal, teruskan ke template lama di bawah
         try:
             from reportlab.lib.pagesizes import A4
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -1584,153 +1679,6 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         except:
             return None
 
-# ===== NEW V33 BULK FUNCTIONS - JPN TEMPLATE + ZIP + SEKOLAH ASAL =====
-def generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, ppd_name, title_prefix="SURAT LANTIKAN"):
-    """Jana PDF kolektif guna template JPN - untuk PPD download pukal"""
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import mm
-        import io
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
-        styles = getSampleStyleSheet()
-        style_title = ParagraphStyle('TitleKolektif', parent=styles['Heading1'], fontSize=12, alignment=1, spaceAfter=6)
-        style_normal = ParagraphStyle('NormalKolektif', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=3)
-        story = []
-        story.append(Paragraph(f"{title_prefix} - PPD {kod_ppd} {ppd_name} - {len(surat_list)} Surat - JPN SELARAS", style_title))
-        story.append(Spacer(1,8))
-        for idx, s in enumerate(surat_list, 1):
-            try:
-                # Guna function JPN baru
-                pdf_one = generate_surat_pdf_bytes_FIXED(
-                    s.get("nama",""), s.get("ic",""), s.get("jawatan",""),
-                    s.get("sekolah_asal",""), s.get("nama_sekolah_asal","") or s.get("sekolah_asal",""),
-                    s.get("pusat",""), s.get("nama_pusat","") or s.get("pusat",""),
-                    s.get("no_surat",""), kod_ppd, ppd_name,
-                    datetime.date.today().strftime("%d %B %Y")
-                )
-                # Kita tak embed pdf_one, kita buat text representation kolektif - buat isi ringkas
-                # Tapi untuk kolektif kita buat paragraph per surat guna template JPN HTML rendering
-                jpn_html = render_jpn_template_html(
-                    s.get("jawatan",""), s.get("nama",""), s.get("ic",""),
-                    s.get("sekolah_asal",""), s.get("nama_sekolah_asal",""),
-                    s.get("pusat",""), s.get("nama_pusat",""),
-                    s.get("no_surat",""), kod_ppd, ppd_name,
-                    datetime.date.today().strftime("%d %B %Y")
-                )
-                if jpn_html:
-                    # bersihkan sikit
-                    import re
-                    clean = re.sub(r'<style.*?</style>', '', jpn_html, flags=re.DOTALL|re.IGNORECASE)
-                    clean = re.sub(r'<head.*?</head>', '', clean, flags=re.DOTALL|re.IGNORECASE)
-                    story.append(Paragraph(f"<b>{idx}. {s.get('nama','')} - {s.get('no_surat','')} - {s.get('sekolah_asal','')}</b>", style_normal))
-                    story.append(Paragraph(clean[:8000], style_normal))
-                else:
-                    story.append(Paragraph(f"<b>{idx}. {s.get('nama','')} - {s.get('jawatan','')} - {s.get('pusat','')} - {s.get('no_surat','')}</b><br/>Sekolah Asal: {s.get('sekolah_asal','')} - Pusat: {s.get('pusat','')}", style_normal))
-                story.append(Spacer(1,6))
-                if idx % 3 == 0:
-                    story.append(PageBreak())
-            except Exception as e:
-                story.append(Paragraph(f"Error surat {idx}: {e}", style_normal))
-        doc.build(story)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
-        return pdf_bytes
-    except Exception as e:
-        print(f"Kolektif JPN error: {e}")
-        return None
-
-def create_zip_pukal_dari_JPN(surat_list, kod_ppd, ppd_name):
-    """NEW: Buat ZIP pukal PDF individu - semua guna template JPN"""
-    try:
-        import zipfile, io
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for idx, s in enumerate(surat_list, 1):
-                try:
-                    pdf_bytes = generate_surat_pdf_bytes_FIXED(
-                        s.get("nama",""), s.get("ic",""), s.get("jawatan",""),
-                        s.get("sekolah_asal",""), s.get("nama_sekolah_asal","") or s.get("sekolah_asal",""),
-                        s.get("pusat",""), s.get("nama_pusat","") or s.get("pusat",""),
-                        s.get("no_surat",""), kod_ppd, ppd_name,
-                        datetime.date.today().strftime("%d %B %Y")
-                    )
-                    if pdf_bytes:
-                        safe_nama = "".join(c if c.isalnum() or c in ("_","-") else "_" for c in str(s.get("nama",""))[:25])
-                        safe_no = str(s.get("no_surat","")).replace("/","_").replace("\\","_").replace(" ","_")[:30]
-                        safe_sek = str(s.get("sekolah_asal","")).replace("/","_")[:10]
-                        # Format: 01_NAMA_SEKOLAH_NOSURAT.pdf - senang SUP cari
-                        file_name = f"{idx:03d}_{safe_nama}_{safe_sek}_{safe_no}.pdf"
-                        zip_file.writestr(file_name, pdf_bytes)
-                except Exception as e:
-                    continue
-        zip_buffer.seek(0)
-        return zip_buffer.getvalue()
-    except Exception as e:
-        print(f"ZIP JPN error: {e}")
-        return None
-
-def hantar_surat_ke_sekolah_asal_bulk(surat_list, kod_ppd):
-    """NEW: Bila PPD jana surat, auto update status supaya surat sampai ke sekolah asal petugas"""
-    try:
-        # Kita update cadangan_sup dengan status SURAT_SAMPAI_SEKOLAH_ASAL + tambah log
-        berjaya = 0
-        for s in surat_list:
-            try:
-                no_surat = s.get("no_surat","")
-                ic = s.get("ic","")
-                sek_asal = s.get("sekolah_asal","")
-                pusat = s.get("pusat","")
-                if not ic:
-                    continue
-                # Update cadangan_sup
-                payload = {
-                    "status": "SURAT_SAMPAI_SEKOLAH_ASAL",
-                    "no_surat": no_surat,
-                    "kod_pusat": pusat,
-                    "tarikh_jana_surat": str(datetime.date.today()),
-                    "sekolah_asal_hantar": sek_asal
-                }
-                try:
-                    supa.table("cadangan_sup").update(payload).eq("ic_guru", ic).eq("kod_ppd", kod_ppd.lower() if kod_ppd else "bh").execute()
-                    berjaya += 1
-                except:
-                    try:
-                        supa.table("cadangan_sup").update(payload).eq("ic_guru", ic).execute()
-                        berjaya += 1
-                    except:
-                        pass
-            except:
-                continue
-        # Cuba simpan ke table log khas jika ada (surat_hantar_sekolah_asal) - optional
-        try:
-            log_data = []
-            for s in surat_list:
-                log_data.append({
-                    "kod_ppd": kod_ppd,
-                    "ic_guru": s.get("ic",""),
-                    "nama_guru": s.get("nama",""),
-                    "kod_sekolah_asal": s.get("sekolah_asal",""),
-                    "kod_pusat": s.get("pusat",""),
-                    "no_surat": s.get("no_surat",""),
-                    "jawatan": s.get("jawatan",""),
-                    "tarikh_hantar": str(datetime.date.today()),
-                    "status": "SAMPAI_KE_SEKOLAH_ASAL"
-                })
-            # batch insert kalau table wujud
-            try:
-                supa.table("surat_hantar_sekolah_asal").insert(log_data).execute()
-            except:
-                pass
-        except:
-            pass
-        return berjaya
-    except Exception as e:
-        print(f"hantar sekolah asal error: {e}")
-        return 0
-
 # Monkey-patch
 try:
     generate_surat_html = generate_surat_html_FIXED
@@ -1739,10 +1687,6 @@ try:
     # keep original names also
     globals()['generate_surat_html'] = generate_surat_html_FIXED
     globals()['generate_surat_pdf_bytes'] = generate_surat_pdf_bytes_FIXED
-    # new bulk funcs
-    globals()['generate_surat_kolektif_pdf_bytes_JPN'] = generate_surat_kolektif_pdf_bytes_JPN
-    globals()['create_zip_pukal_dari_JPN'] = create_zip_pukal_dari_JPN
-    globals()['hantar_surat_ke_sekolah_asal_bulk'] = hantar_surat_ke_sekolah_asal_bulk
 except:
     pass
 
@@ -6896,8 +6840,7 @@ elif st.session_state.role == "PPD":
             tab_keseluruhan, tab_pusat_surat, tab_sekolah_asal = st.tabs(["📄 Semua Surat (Keseluruhan)", "🏫 Ikut Pusat", "🏫 Ikut Sekolah Asal (Untuk Hantar)"])
             
             with tab_keseluruhan:
-                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat - Template JPN Selaras")
-                st.info(f"🔹 Template surat diambil dari function JPN `surat_templates_jpn` - JPN cipta, PPD guna. Jika JPN belum cipta template untuk jawatan, akan guna fallback PPD.")
+                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat")
                 
                 display_rows = []
                 for _, r in df_lulus_surat.iterrows():
@@ -6915,74 +6858,77 @@ elif st.session_state.role == "PPD":
                     })
                 df_display_all = pd.DataFrame(display_rows)
                 st.dataframe(df_display_all, use_container_width=True, hide_index=True)
-
-                # ===== NEW V33: JANA DENGAN TEMPLATE JPN + ZIP + HANTAR KE SEKOLAH ASAL =====
-                col_gen1, col_gen2, col_gen3 = st.columns(3)
+                
+                # Generate PDF Keseluruhan
+                col_gen1, col_gen2 = st.columns(2)
                 with col_gen1:
-                    if st.button(f"📄 Jana Surat {len(df_display_all)} (Template JPN)", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan_v33"):
-                        with st.spinner(f"Menjana {len(df_display_all)} surat guna template JPN..."):
-                            try:
-                                surat_list = []
-                                for _, r in df_display_all.iterrows():
-                                    surat_list.append({
-                                        "nama": r["NAMA GURU"],
-                                        "ic": r["IC"],
-                                        "jawatan": r["JAWATAN"],
-                                        "sekolah_asal": r["SEKOLAH ASAL"],
-                                        "nama_sekolah_asal": r["NAMA SEKOLAH ASAL"],
-                                        "pusat": r["PUSAT TUGAS"],
-                                        "nama_pusat": r["NAMA PUSAT"],
-                                        "no_surat": r["NO SURAT"]
-                                    })
-                                # 1. PDF Kolektif guna JPN template
-                                pdf_kolektif = generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU - JPN SELARAS")
-                                if pdf_kolektif:
-                                    st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_kolektif
-                                # 2. ZIP Pukal individu guna JPN template
-                                zip_bytes = create_zip_pukal_dari_JPN(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""))
-                                if zip_bytes:
-                                    st.session_state[f"zip_keseluruhan_{kod_ppd}"] = zip_bytes
-                                # 3. Hantar ke sekolah asal petugas (auto update status)
-                                jml_hantar = hantar_surat_ke_sekolah_asal_bulk(surat_list, kod_ppd)
-                                st.session_state[f"surat_list_keseluruhan_{kod_ppd}"] = surat_list
-                                st.success(f"✅ Berjaya! {len(surat_list)} surat dijana guna template JPN, {jml_hantar} surat sampai ke sekolah asal!")
-                                st.balloons()
-                            except Exception as e:
-                                st.error(f"Error jana PDF: {e}")
-                                import traceback
-                                st.code(traceback.format_exc())
+                    if st.button(f"📄 Jana Surat Keseluruhan {len(df_display_all)} (PDF + ZIP Individu)", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
+                        try:
+                            surat_list = []
+                            for _, r in df_display_all.iterrows():
+                                surat_list.append({
+                                    "nama": r["NAMA GURU"],
+                                    "ic": r["IC"],
+                                    "jawatan": r["JAWATAN"],
+                                    "sekolah_asal": r["SEKOLAH ASAL"],
+                                    "pusat": r["PUSAT TUGAS"],
+                                    "nama_pusat": r["NAMA PUSAT"],
+                                    "no_surat": r["NO SURAT"]
+                                })
+                            pdf_bytes = generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU")
+                            if pdf_bytes:
+                                st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_bytes
+                                st.success(f"✅ PDF Keseluruhan {len(surat_list)} surat berjaya dijana!")
+                            else:
+                                st.error("Gagal jana PDF - cuba HTML")
+                                # Fallback HTML
+                                full_html = f"<html><head><meta charset='UTF-8'></head><body><h1>Surat Keseluruhan PPD {kod_ppd}</h1>"
+                                for s in surat_list:
+                                    try:
+                                        h = generate_surat_html(s["nama"], s["ic"], s["jawatan"], s["sekolah_asal"], s["sekolah_asal"], s["pusat"], s["nama_pusat"], s["no_surat"], kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
+                                        full_html += h
+                                    except:
+                                        pass
+                                full_html += "</body></html>"
+                                st.session_state[f"html_keseluruhan_{kod_ppd}"] = full_html
+                        except Exception as e:
+                            st.error(f"Error jana PDF: {e}")
+
+                        # === ZIP PDF INDIVIDU (1 PDF = 1 guru, guna tapak surat JPN) ===
+                        try:
+                            zip_list_k = [{
+                                "nama": r["NAMA GURU"], "ic": r["IC"], "jawatan": r["JAWATAN"],
+                                "sekolah_asal": r["SEKOLAH ASAL"], "pusat": r["PUSAT TUGAS"],
+                                "no_surat": r["NO SURAT"]
+                            } for _, r in df_display_all.iterrows()]
+                            with st.spinner(f"Menjana {len(zip_list_k)} PDF individu untuk ZIP..."):
+                                zb_k, ok_k, tpl_k, gagal_k = create_zip_surat_individu_jpn(zip_list_k, kod_ppd, PPD_MAP.get(kod_ppd, ""), pusat_map_surat)
+                            if zb_k:
+                                st.session_state[f"zip_keseluruhan_{kod_ppd}"] = zb_k
+                                st.success(f"✅ ZIP {ok_k} PDF individu siap ({tpl_k} guna tapak surat JPN)")
+                                if gagal_k:
+                                    st.warning(f"{len(gagal_k)} surat gagal dijana: " + ", ".join(gagal_k[:10]))
+                            else:
+                                st.error("Gagal jana ZIP PDF individu")
+                        except Exception as e:
+                            st.error(f"Error jana ZIP: {e}")
                 
                 with col_gen2:
                     if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
                         pdf_data = st.session_state[f"pdf_keseluruhan_{kod_ppd}"]
-                        st.download_button(f"📥 Download PDF Pukal Kolektif {len(df_display_all)} Surat (Template JPN)", data=pdf_data, file_name=f"Surat_Kolektif_JPN_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main_v33")
-                    else:
-                        st.caption("Belum jana PDF kolektif")
-
-                with col_gen3:
+                        st.download_button(f"📥 Download PDF Keseluruhan {len(df_display_all)} Surat (PPD)", data=pdf_data, file_name=f"Surat_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
                     if f"zip_keseluruhan_{kod_ppd}" in st.session_state:
-                        zip_data = st.session_state[f"zip_keseluruhan_{kod_ppd}"]
-                        st.download_button(f"📦 Download ZIP Pukal Individu {len(df_display_all)} PDF (Template JPN)", data=zip_data, file_name=f"ZIP_Surat_Individu_JPN_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key="dl_zip_keseluruhan_main_v33", type="primary")
-                        st.caption(f"✅ {len(df_display_all)} fail PDF individu dalam ZIP - senang edar")
-                    else:
-                        st.caption("Belum jana ZIP pukal")
-
+                        st.download_button(f"📦 Download ZIP PDF Individu ({len(df_display_all)} Surat)", data=st.session_state[f"zip_keseluruhan_{kod_ppd}"], file_name=f"Surat_Individu_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key="dl_zip_keseluruhan_ppd")
+                    if f"html_keseluruhan_{kod_ppd}" in st.session_state:
+                        html_data = st.session_state[f"html_keseluruhan_{kod_ppd}"]
+                        st.download_button("📥 Download HTML Keseluruhan", data=html_data.encode('utf-8'), file_name=f"Surat_Keseluruhan_{kod_ppd}.html", mime="text/html", use_container_width=True, key="dl_html_keseluruhan_main")
+                
                 # Preview if exists
                 if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
-                    st.success(f"✅ PDF & ZIP telah dijana guna template JPN. Surat auto sampai ke sekolah asal guru untuk SUP cetak. ({len(df_display_all)} surat)")
-                    # Tunjuk breakdown ikut sekolah asal
-                    if f"surat_list_keseluruhan_{kod_ppd}" in st.session_state:
-                        sl = st.session_state[f"surat_list_keseluruhan_{kod_ppd}"]
-                        from collections import Counter
-                        cnt = Counter([s.get("sekolah_asal","") for s in sl])
-                        st.markdown("**📊 Surat sampai ke sekolah asal:**")
-                        cols = st.columns(4)
-                        for i, (sek, jml) in enumerate(cnt.most_common(12)):
-                            cols[i % 4].metric(sek, f"{jml} surat")
+                    st.info("PDF Keseluruhan telah dijana - klik Download di atas untuk dapatkan PDF. Surat yang sama juga telah sampai ke sekolah asal guru untuk SUP cetak.")
             
             with tab_pusat_surat:
-                st.markdown("### 🏫 Janaan Surat Ikut Pusat - Template JPN + ZIP")
-                st.info("Guna template JPN selaras, jana PDF kolektif + ZIP pukal individu, auto sampai ke sekolah asal")
+                st.markdown("### 🏫 Janaan Surat Ikut Pusat")
                 # Group by pusat
                 pusat_groups_surat = {}
                 for _, r in df_lulus_surat.iterrows():
@@ -7011,48 +6957,59 @@ elif st.session_state.role == "PPD":
                     } for r in guru_pusat])
                     st.dataframe(df_pusat_surat, use_container_width=True, hide_index=True)
                     
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.button(f"📄 Jana {len(guru_pusat)} Surat {pilih_pusat_jana} (JPN + ZIP)", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}_v33"):
-                            with st.spinner(f"Menjana {len(guru_pusat)} surat..."):
-                                try:
-                                    surat_list_p = []
-                                    for r in guru_pusat:
-                                        surat_list_p.append({
-                                            "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
-                                            "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
-                                            "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
-                                            "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
-                                            "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""),
-                                            "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
-                                            "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
-                                            "no_surat": r.get("no_surat","")
-                                        })
-                                    pdf_pusat = generate_surat_kolektif_pdf_bytes_JPN(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')} - JPN SELARAS")
-                                    zip_pusat = create_zip_pukal_dari_JPN(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""))
-                                    jml_hantar = hantar_surat_ke_sekolah_asal_bulk(surat_list_p, kod_ppd)
-                                    if pdf_pusat:
-                                        st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
-                                    if zip_pusat:
-                                        st.session_state[f"zip_pusat_{pilih_pusat_jana}"] = zip_pusat
-                                    st.success(f"✅ PDF+ZIP {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana (Template JPN) + {jml_hantar} sampai sekolah asal!")
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
-                    with c2:
-                        if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
-                            pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
-                            st.download_button(f"📥 PDF Kolektif {pilih_pusat_jana} ({len(guru_pusat)}) - JPN", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}_JPN.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}_v33")
-                        if f"zip_pusat_{pilih_pusat_jana}" in st.session_state:
-                            zip_d = st.session_state[f"zip_pusat_{pilih_pusat_jana}"]
-                            st.download_button(f"📦 ZIP Pukal Individu {pilih_pusat_jana} ({len(guru_pusat)}) - JPN", data=zip_d, file_name=f"ZIP_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}_JPN.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_pusat_{pilih_pusat_jana}_v33", type="primary")
-                        if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
-                            st.info(f"Surat {pilih_pusat_jana} auto sampai ke sekolah asal guru untuk SUP cetak")
+                    if st.button(f"📄 Jana PDF + ZIP Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
+                        try:
+                            surat_list_p = []
+                            for r in guru_pusat:
+                                surat_list_p.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_pusat = generate_surat_kolektif_pdf_bytes(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')}")
+                            if pdf_pusat:
+                                st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
+                                st.success(f"✅ PDF {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+
+                        # === ZIP PDF INDIVIDU (guna tapak surat JPN) ===
+                        try:
+                            zip_list_p = [{
+                                "nama": _ambil_nilai(r, "NAMA_GURU", "nama_guru"),
+                                "ic": _ambil_nilai(r, "IC_GURU", "ic_guru"),
+                                "jawatan": _ambil_nilai(r, "JAWATAN_CADANGAN", "jawatan_cadangan"),
+                                "sekolah_asal": _ambil_nilai(r, "KOD_SEKOLAH_ASAL", "kod_sekolah_asal"),
+                                "pusat": _ambil_nilai(r, "kod_pusat", "KOD_PUSAT"),
+                                "no_surat": _ambil_nilai(r, "no_surat")
+                            } for r in guru_pusat]
+                            with st.spinner(f"Menjana {len(zip_list_p)} PDF individu untuk ZIP..."):
+                                zb_p, ok_p, tpl_p, gagal_p = create_zip_surat_individu_jpn(zip_list_p, kod_ppd, PPD_MAP.get(kod_ppd, ""), pusat_map_surat)
+                            if zb_p:
+                                st.session_state[f"zip_pusat_{pilih_pusat_jana}"] = zb_p
+                                st.success(f"✅ ZIP {ok_p} PDF individu {pilih_pusat_jana} siap ({tpl_p} guna tapak surat JPN)")
+                                if gagal_p:
+                                    st.warning(f"{len(gagal_p)} surat gagal dijana: " + ", ".join(gagal_p[:10]))
+                            else:
+                                st.error("Gagal jana ZIP PDF individu")
+                        except Exception as e:
+                            st.error(f"Error jana ZIP: {e}")
+
+                    if f"zip_pusat_{pilih_pusat_jana}" in st.session_state:
+                        st.download_button(f"📦 Download ZIP PDF Individu {pilih_pusat_jana} ({len(guru_pusat)} Surat)", data=st.session_state[f"zip_pusat_{pilih_pusat_jana}"], file_name=f"Surat_Individu_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_pusat_{pilih_pusat_jana}")
+
+                    if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
+                        pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
+                        st.download_button(f"📥 Download PDF Surat {pilih_pusat_jana} ({len(guru_pusat)} Surat)", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
+                        st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas")
             
             with tab_sekolah_asal:
-                st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak - Template JPN + ZIP")
-                st.caption("Surat yang telah diluluskan akan sampai ke sekolah asal guru - SUP boleh cetak dan bagi pada guru berkenaan. Guna template JPN selaras + ZIP pukal.")
+                st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak")
+                st.caption("Surat yang telah diluluskan akan sampai ke sekolah asal guru - SUP boleh cetak dan bagi pada guru berkenaan")
                 
                 # Group by sekolah asal
                 sekolah_groups_surat = {}
@@ -7066,7 +7023,7 @@ elif st.session_state.role == "PPD":
                 pilih_sekolah_surat = st.selectbox(
                     "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai",
                     sorted(sekolah_groups_surat.keys()),
-                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak) - Template JPN",
+                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak)",
                     key="pilih_sekolah_surat_jana"
                 )
                 
@@ -7082,45 +7039,57 @@ elif st.session_state.role == "PPD":
                         "STATUS": r.get("status","")
                     } for r in guru_sekolah])
                     st.dataframe(df_sek_surat, use_container_width=True, hide_index=True)
-                    st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak (Template JPN)")
+                    st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak dan bagi pada guru berkenaan di mana dia kena bertugas")
                     
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.button(f"📄 Jana PDF {pilih_sekolah_surat} - {len(guru_sekolah)} Guru (JPN+ZIP)", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}_v33"):
-                            with st.spinner(f"Menjana {len(guru_sekolah)} surat sekolah asal..."):
-                                try:
-                                    surat_list_s = []
-                                    for r in guru_sekolah:
-                                        surat_list_s.append({
-                                            "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
-                                            "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
-                                            "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
-                                            "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
-                                            "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal","") or pilih_sekolah_surat,
-                                            "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
-                                            "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
-                                            "no_surat": r.get("no_surat","")
-                                        })
-                                    pdf_sek = generate_surat_kolektif_pdf_bytes_JPN(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK - JPN SELARAS")
-                                    zip_sek = create_zip_pukal_dari_JPN(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""))
-                                    if pdf_sek:
-                                        st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
-                                    if zip_sek:
-                                        st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"] = zip_sek
-                                    st.success(f"✅ PDF+ZIP Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana (JPN)!")
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
-                    with c2:
-                        if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                            pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
-                            st.download_button(f"📥 PDF Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)}) - JPN", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}_JPN.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}_v33")
-                        if f"zip_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                            zip_s = st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"]
-                            st.download_button(f"📦 ZIP Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)}) - JPN", data=zip_s, file_name=f"ZIP_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}_JPN.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_sekolah_{pilih_sekolah_surat}_v33", type="primary")
-                        if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                            st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan (Template JPN selaras)")
+                    if st.button(f"📄 Jana PDF + ZIP Surat Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
+                        try:
+                            surat_list_s = []
+                            for r in guru_sekolah:
+                                surat_list_s.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_sek = generate_surat_kolektif_pdf_bytes(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK")
+                            if pdf_sek:
+                                st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
+                                st.success(f"✅ PDF Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+
+                        # === ZIP PDF INDIVIDU (guna tapak surat JPN) ===
+                        try:
+                            zip_list_s = [{
+                                "nama": _ambil_nilai(r, "NAMA_GURU", "nama_guru"),
+                                "ic": _ambil_nilai(r, "IC_GURU", "ic_guru"),
+                                "jawatan": _ambil_nilai(r, "JAWATAN_CADANGAN", "jawatan_cadangan"),
+                                "sekolah_asal": _ambil_nilai(r, "KOD_SEKOLAH_ASAL", "kod_sekolah_asal"),
+                                "pusat": _ambil_nilai(r, "kod_pusat", "KOD_PUSAT"),
+                                "no_surat": _ambil_nilai(r, "no_surat")
+                            } for r in guru_sekolah]
+                            with st.spinner(f"Menjana {len(zip_list_s)} PDF individu untuk ZIP..."):
+                                zb_s, ok_s, tpl_s, gagal_s = create_zip_surat_individu_jpn(zip_list_s, kod_ppd, PPD_MAP.get(kod_ppd, ""), pusat_map_surat)
+                            if zb_s:
+                                st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"] = zb_s
+                                st.success(f"✅ ZIP {ok_s} PDF individu {pilih_sekolah_surat} siap ({tpl_s} guna tapak surat JPN)")
+                                if gagal_s:
+                                    st.warning(f"{len(gagal_s)} surat gagal dijana: " + ", ".join(gagal_s[:10]))
+                            else:
+                                st.error("Gagal jana ZIP PDF individu")
+                        except Exception as e:
+                            st.error(f"Error jana ZIP: {e}")
+
+                    if f"zip_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                        st.download_button(f"📦 Download ZIP PDF Individu Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat) - Untuk SUP Cetak", data=st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"], file_name=f"Surat_Individu_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_sekolah_{pilih_sekolah_surat}")
+
+                    if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                        pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
+                        st.download_button(f"📥 Download PDF Surat Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat) - Untuk SUP Cetak & Bagi Pada Guru", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
+                        st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan di mana dia kena bertugas (pusat masing-masing)")
 
 
 
@@ -7667,8 +7636,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
             tab_keseluruhan, tab_pusat_surat, tab_sekolah_asal = st.tabs(["📄 Semua Surat (Keseluruhan)", "🏫 Ikut Pusat", "🏫 Ikut Sekolah Asal (Untuk Hantar)"])
             
             with tab_keseluruhan:
-                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat - Template JPN Selaras")
-                st.info(f"🔹 Template surat diambil dari function JPN `surat_templates_jpn` - JPN cipta, PPD guna. Jika JPN belum cipta template untuk jawatan, akan guna fallback PPD.")
+                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat")
                 
                 display_rows = []
                 for _, r in df_lulus_surat.iterrows():
@@ -7686,74 +7654,56 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                     })
                 df_display_all = pd.DataFrame(display_rows)
                 st.dataframe(df_display_all, use_container_width=True, hide_index=True)
-
-                # ===== NEW V33: JANA DENGAN TEMPLATE JPN + ZIP + HANTAR KE SEKOLAH ASAL =====
-                col_gen1, col_gen2, col_gen3 = st.columns(3)
+                
+                # Generate PDF Keseluruhan
+                col_gen1, col_gen2 = st.columns(2)
                 with col_gen1:
-                    if st.button(f"📄 Jana Surat {len(df_display_all)} (Template JPN)", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan_v33"):
-                        with st.spinner(f"Menjana {len(df_display_all)} surat guna template JPN..."):
-                            try:
-                                surat_list = []
-                                for _, r in df_display_all.iterrows():
-                                    surat_list.append({
-                                        "nama": r["NAMA GURU"],
-                                        "ic": r["IC"],
-                                        "jawatan": r["JAWATAN"],
-                                        "sekolah_asal": r["SEKOLAH ASAL"],
-                                        "nama_sekolah_asal": r["NAMA SEKOLAH ASAL"],
-                                        "pusat": r["PUSAT TUGAS"],
-                                        "nama_pusat": r["NAMA PUSAT"],
-                                        "no_surat": r["NO SURAT"]
-                                    })
-                                # 1. PDF Kolektif guna JPN template
-                                pdf_kolektif = generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU - JPN SELARAS")
-                                if pdf_kolektif:
-                                    st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_kolektif
-                                # 2. ZIP Pukal individu guna JPN template
-                                zip_bytes = create_zip_pukal_dari_JPN(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""))
-                                if zip_bytes:
-                                    st.session_state[f"zip_keseluruhan_{kod_ppd}"] = zip_bytes
-                                # 3. Hantar ke sekolah asal petugas (auto update status)
-                                jml_hantar = hantar_surat_ke_sekolah_asal_bulk(surat_list, kod_ppd)
-                                st.session_state[f"surat_list_keseluruhan_{kod_ppd}"] = surat_list
-                                st.success(f"✅ Berjaya! {len(surat_list)} surat dijana guna template JPN, {jml_hantar} surat sampai ke sekolah asal!")
-                                st.balloons()
-                            except Exception as e:
-                                st.error(f"Error jana PDF: {e}")
-                                import traceback
-                                st.code(traceback.format_exc())
+                    if st.button(f"📄 Jana & Preview Surat Keseluruhan {len(df_display_all)} PDF", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
+                        try:
+                            surat_list = []
+                            for _, r in df_display_all.iterrows():
+                                surat_list.append({
+                                    "nama": r["NAMA GURU"],
+                                    "ic": r["IC"],
+                                    "jawatan": r["JAWATAN"],
+                                    "sekolah_asal": r["SEKOLAH ASAL"],
+                                    "pusat": r["PUSAT TUGAS"],
+                                    "nama_pusat": r["NAMA PUSAT"],
+                                    "no_surat": r["NO SURAT"]
+                                })
+                            pdf_bytes = generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU")
+                            if pdf_bytes:
+                                st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_bytes
+                                st.success(f"✅ PDF Keseluruhan {len(surat_list)} surat berjaya dijana!")
+                            else:
+                                st.error("Gagal jana PDF - cuba HTML")
+                                # Fallback HTML
+                                full_html = f"<html><head><meta charset='UTF-8'></head><body><h1>Surat Keseluruhan PPD {kod_ppd}</h1>"
+                                for s in surat_list:
+                                    try:
+                                        h = generate_surat_html(s["nama"], s["ic"], s["jawatan"], s["sekolah_asal"], s["sekolah_asal"], s["pusat"], s["nama_pusat"], s["no_surat"], kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
+                                        full_html += h
+                                    except:
+                                        pass
+                                full_html += "</body></html>"
+                                st.session_state[f"html_keseluruhan_{kod_ppd}"] = full_html
+                        except Exception as e:
+                            st.error(f"Error jana PDF: {e}")
                 
                 with col_gen2:
                     if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
                         pdf_data = st.session_state[f"pdf_keseluruhan_{kod_ppd}"]
-                        st.download_button(f"📥 Download PDF Pukal Kolektif {len(df_display_all)} Surat (Template JPN)", data=pdf_data, file_name=f"Surat_Kolektif_JPN_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main_v33")
-                    else:
-                        st.caption("Belum jana PDF kolektif")
-
-                with col_gen3:
-                    if f"zip_keseluruhan_{kod_ppd}" in st.session_state:
-                        zip_data = st.session_state[f"zip_keseluruhan_{kod_ppd}"]
-                        st.download_button(f"📦 Download ZIP Pukal Individu {len(df_display_all)} PDF (Template JPN)", data=zip_data, file_name=f"ZIP_Surat_Individu_JPN_{kod_ppd}_{datetime.date.today()}.zip", mime="application/zip", use_container_width=True, key="dl_zip_keseluruhan_main_v33", type="primary")
-                        st.caption(f"✅ {len(df_display_all)} fail PDF individu dalam ZIP - senang edar")
-                    else:
-                        st.caption("Belum jana ZIP pukal")
-
+                        st.download_button(f"📥 Download PDF Keseluruhan {len(df_display_all)} Surat (PPD)", data=pdf_data, file_name=f"Surat_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
+                    if f"html_keseluruhan_{kod_ppd}" in st.session_state:
+                        html_data = st.session_state[f"html_keseluruhan_{kod_ppd}"]
+                        st.download_button("📥 Download HTML Keseluruhan", data=html_data.encode('utf-8'), file_name=f"Surat_Keseluruhan_{kod_ppd}.html", mime="text/html", use_container_width=True, key="dl_html_keseluruhan_main")
+                
                 # Preview if exists
                 if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
-                    st.success(f"✅ PDF & ZIP telah dijana guna template JPN. Surat auto sampai ke sekolah asal guru untuk SUP cetak. ({len(df_display_all)} surat)")
-                    # Tunjuk breakdown ikut sekolah asal
-                    if f"surat_list_keseluruhan_{kod_ppd}" in st.session_state:
-                        sl = st.session_state[f"surat_list_keseluruhan_{kod_ppd}"]
-                        from collections import Counter
-                        cnt = Counter([s.get("sekolah_asal","") for s in sl])
-                        st.markdown("**📊 Surat sampai ke sekolah asal:**")
-                        cols = st.columns(4)
-                        for i, (sek, jml) in enumerate(cnt.most_common(12)):
-                            cols[i % 4].metric(sek, f"{jml} surat")
+                    st.info("PDF Keseluruhan telah dijana - klik Download di atas untuk dapatkan PDF. Surat yang sama juga telah sampai ke sekolah asal guru untuk SUP cetak.")
             
             with tab_pusat_surat:
-                st.markdown("### 🏫 Janaan Surat Ikut Pusat - Template JPN + ZIP")
-                st.info("Guna template JPN selaras, jana PDF kolektif + ZIP pukal individu, auto sampai ke sekolah asal")
+                st.markdown("### 🏫 Janaan Surat Ikut Pusat")
                 # Group by pusat
                 pusat_groups_surat = {}
                 for _, r in df_lulus_surat.iterrows():
@@ -7782,48 +7732,34 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                     } for r in guru_pusat])
                     st.dataframe(df_pusat_surat, use_container_width=True, hide_index=True)
                     
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.button(f"📄 Jana {len(guru_pusat)} Surat {pilih_pusat_jana} (JPN + ZIP)", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}_v33"):
-                            with st.spinner(f"Menjana {len(guru_pusat)} surat..."):
-                                try:
-                                    surat_list_p = []
-                                    for r in guru_pusat:
-                                        surat_list_p.append({
-                                            "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
-                                            "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
-                                            "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
-                                            "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
-                                            "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""),
-                                            "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
-                                            "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
-                                            "no_surat": r.get("no_surat","")
-                                        })
-                                    pdf_pusat = generate_surat_kolektif_pdf_bytes_JPN(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')} - JPN SELARAS")
-                                    zip_pusat = create_zip_pukal_dari_JPN(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""))
-                                    jml_hantar = hantar_surat_ke_sekolah_asal_bulk(surat_list_p, kod_ppd)
-                                    if pdf_pusat:
-                                        st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
-                                    if zip_pusat:
-                                        st.session_state[f"zip_pusat_{pilih_pusat_jana}"] = zip_pusat
-                                    st.success(f"✅ PDF+ZIP {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana (Template JPN) + {jml_hantar} sampai sekolah asal!")
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
-                    with c2:
-                        if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
-                            pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
-                            st.download_button(f"📥 PDF Kolektif {pilih_pusat_jana} ({len(guru_pusat)}) - JPN", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}_JPN.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}_v33")
-                        if f"zip_pusat_{pilih_pusat_jana}" in st.session_state:
-                            zip_d = st.session_state[f"zip_pusat_{pilih_pusat_jana}"]
-                            st.download_button(f"📦 ZIP Pukal Individu {pilih_pusat_jana} ({len(guru_pusat)}) - JPN", data=zip_d, file_name=f"ZIP_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}_JPN.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_pusat_{pilih_pusat_jana}_v33", type="primary")
-                        if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
-                            st.info(f"Surat {pilih_pusat_jana} auto sampai ke sekolah asal guru untuk SUP cetak")
+                    if st.button(f"📄 Jana PDF Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
+                        try:
+                            surat_list_p = []
+                            for r in guru_pusat:
+                                surat_list_p.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_pusat = generate_surat_kolektif_pdf_bytes(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')}")
+                            if pdf_pusat:
+                                st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
+                                st.success(f"✅ PDF {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    
+                    if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
+                        pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
+                        st.download_button(f"📥 Download PDF Surat {pilih_pusat_jana} ({len(guru_pusat)} Surat)", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
+                        st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas")
             
             with tab_sekolah_asal:
-                st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak - Template JPN + ZIP")
-                st.caption("Surat yang telah diluluskan akan sampai ke sekolah asal guru - SUP boleh cetak dan bagi pada guru berkenaan. Guna template JPN selaras + ZIP pukal.")
+                st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak")
+                st.caption("Surat yang telah diluluskan akan sampai ke sekolah asal guru - SUP boleh cetak dan bagi pada guru berkenaan")
                 
                 # Group by sekolah asal
                 sekolah_groups_surat = {}
@@ -7837,7 +7773,7 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                 pilih_sekolah_surat = st.selectbox(
                     "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai",
                     sorted(sekolah_groups_surat.keys()),
-                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak) - Template JPN",
+                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak)",
                     key="pilih_sekolah_surat_jana"
                 )
                 
@@ -7853,45 +7789,32 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         "STATUS": r.get("status","")
                     } for r in guru_sekolah])
                     st.dataframe(df_sek_surat, use_container_width=True, hide_index=True)
-                    st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak (Template JPN)")
+                    st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak dan bagi pada guru berkenaan di mana dia kena bertugas")
                     
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.button(f"📄 Jana PDF {pilih_sekolah_surat} - {len(guru_sekolah)} Guru (JPN+ZIP)", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}_v33"):
-                            with st.spinner(f"Menjana {len(guru_sekolah)} surat sekolah asal..."):
-                                try:
-                                    surat_list_s = []
-                                    for r in guru_sekolah:
-                                        surat_list_s.append({
-                                            "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
-                                            "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
-                                            "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
-                                            "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
-                                            "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal","") or pilih_sekolah_surat,
-                                            "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
-                                            "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
-                                            "no_surat": r.get("no_surat","")
-                                        })
-                                    pdf_sek = generate_surat_kolektif_pdf_bytes_JPN(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK - JPN SELARAS")
-                                    zip_sek = create_zip_pukal_dari_JPN(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""))
-                                    if pdf_sek:
-                                        st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
-                                    if zip_sek:
-                                        st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"] = zip_sek
-                                    st.success(f"✅ PDF+ZIP Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana (JPN)!")
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
-                                    import traceback
-                                    st.code(traceback.format_exc())
-                    with c2:
-                        if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                            pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
-                            st.download_button(f"📥 PDF Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)}) - JPN", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}_JPN.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}_v33")
-                        if f"zip_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                            zip_s = st.session_state[f"zip_sekolah_{pilih_sekolah_surat}"]
-                            st.download_button(f"📦 ZIP Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)}) - JPN", data=zip_s, file_name=f"ZIP_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}_JPN.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_sekolah_{pilih_sekolah_surat}_v33", type="primary")
-                        if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
-                            st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan (Template JPN selaras)")
+                    if st.button(f"📄 Jana PDF Surat Untuk Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
+                        try:
+                            surat_list_s = []
+                            for r in guru_sekolah:
+                                surat_list_s.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_sek = generate_surat_kolektif_pdf_bytes(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK")
+                            if pdf_sek:
+                                st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
+                                st.success(f"✅ PDF Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    
+                    if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                        pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
+                        st.download_button(f"📥 Download PDF Surat Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat) - Untuk SUP Cetak & Bagi Pada Guru", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
+                        st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan di mana dia kena bertugas (pusat masing-masing)")
 
 
 
