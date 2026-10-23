@@ -1616,11 +1616,11 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         # FONT ARIAL 11 - MARGIN ASAL
         style_header_mid = ParagraphStyle('HeaderMid', parent=styles['Normal'], fontSize=10, leading=12, alignment=0, fontName='Helvetica')
         style_header_right = ParagraphStyle('HeaderRight', parent=styles['Normal'], fontSize=8, leading=10, alignment=0, fontName='Helvetica')
-        style_normal = ParagraphStyle('NormalJPN', parent=styles['Normal'], fontSize=11, leading=13, spaceAfter=2, alignment=4, fontName='Helvetica')
-        style_normal_left = ParagraphStyle('NormalLeft', parent=styles['Normal'], fontSize=11, leading=13, spaceAfter=2, alignment=0, fontName='Helvetica')
-        style_bold = ParagraphStyle('BoldJPN', parent=styles['Normal'], fontSize=11, leading=13, spaceAfter=2, alignment=0, fontName='Helvetica-Bold')
-        style_tajuk = ParagraphStyle('TajukJPN', parent=styles['Normal'], fontSize=11, leading=13, spaceAfter=4, alignment=0, fontName='Helvetica-Bold')
-        style_small = ParagraphStyle('Small', parent=styles['Normal'], fontSize=11, leading=13, alignment=0, fontName='Helvetica')
+        style_normal = ParagraphStyle('NormalJPN', parent=styles['Normal'], fontSize=11, leading=12, spaceAfter=2, alignment=4, fontName='Helvetica')
+        style_normal_left = ParagraphStyle('NormalLeft', parent=styles['Normal'], fontSize=11, leading=12, spaceAfter=2, alignment=0, fontName='Helvetica')
+        style_bold = ParagraphStyle('BoldJPN', parent=styles['Normal'], fontSize=11, leading=12, spaceAfter=2, alignment=0, fontName='Helvetica-Bold')
+        style_tajuk = ParagraphStyle('TajukJPN', parent=styles['Normal'], fontSize=11, leading=12, spaceAfter=4, alignment=0, fontName='Helvetica-Bold')
+        style_small = ParagraphStyle('Small', parent=styles['Normal'], fontSize=11, leading=12, alignment=0, fontName='Helvetica')
         
         story = []
         
@@ -1655,9 +1655,9 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         story.append(Spacer(1,3))
         
         # RUJ KAMI & TARIKH - KANAN COMPACT
-        style_ruj_label = ParagraphStyle('RujLabel', parent=styles['Normal'], fontSize=11, leading=13, alignment=0, fontName='Helvetica')
-        style_ruj_value = ParagraphStyle('RujValue', parent=styles['Normal'], fontSize=11, leading=13, alignment=0, fontName='Helvetica')
-        style_ruj_colon = ParagraphStyle('RujColon', parent=styles['Normal'], fontSize=11, leading=13, alignment=0, fontName='Helvetica')
+        style_ruj_label = ParagraphStyle('RujLabel', parent=styles['Normal'], fontSize=11, leading=12, alignment=0, fontName='Helvetica')
+        style_ruj_value = ParagraphStyle('RujValue', parent=styles['Normal'], fontSize=11, leading=12, alignment=0, fontName='Helvetica')
+        style_ruj_colon = ParagraphStyle('RujColon', parent=styles['Normal'], fontSize=11, leading=12, alignment=0, fontName='Helvetica')
         
         ruj_inner_data = [
             [Paragraph("Ruj. Kami", style_ruj_label), Paragraph(":", style_ruj_colon), Paragraph(no_surat, style_ruj_value)],
@@ -1758,6 +1758,8 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         import traceback
         print(f"PDF FIX error {e} {traceback.format_exc()}")
         return None
+
+
 
 
 
