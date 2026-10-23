@@ -2409,7 +2409,7 @@ if st.session_state.role == "SUP":
                                 kp_list = df_final[df_final["JAWATAN_NORM"].str.contains("Ketua Pengawas", case=False, na=False) & ~df_final["JAWATAN_NORM"].str.contains("Timbalan", case=False, na=False)]
                                 tkp_list = df_final[df_final["JAWATAN_NORM"].str.contains("Timbalan", case=False, na=False)]
                                 peng_list = df_final[~df_final["JAWATAN_NORM"].str.contains("Ketua Pengawas|Timbalan", case=False, na=False, regex=True)]
-                                col_kp, col_tkp, col_peng = st.columns(3)
+                                col_kp, col_tkp, col_peng, col_jt, col_jb, col_pb = st.columns(6)
                                 with col_kp: st.metric("Ketua Pengawas (Luar)", len(kp_list))
                                 with col_tkp: st.metric("Timbalan KP (Luar)", len(tkp_list))
                                 with col_peng: st.metric("Pengawas (Luar)", len(peng_list))
@@ -4231,6 +4231,115 @@ elif st.session_state.role == "PPD":
                             except Exception as e:
                                 st.error(str(e))
             
+
+            # ===== KOLUM JURU TULIS (Pengawas Khas - Tak Termasuk Kiraan Biasa) =====
+            with col_jt:
+                st.markdown('<div style="background:#ede7f6; border:2px solid #4527a0; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;"><div style="font-size:28px;">✍️</div><div style="font-weight:800; color:#4527a0;">JURU TULIS</div><div style="font-size:11px; color:#666;">Pengawas Khas (Tambahan)</div></div>', unsafe_allow_html=True)
+                jt_curr = [c for k,c in tugas_pusat_ini.items() if "JURU TULIS" in str(c.get("JAWATAN_CADANGAN") or "").upper()]
+                if jt_curr:
+                    st.markdown(f"**Semasa: {len(jt_curr)} (Khas)**")
+                    for c in jt_curr[:3]:
+                        st.markdown(f'<div style="background:#d1c4e9; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
+                    if st.button("🗑️ Buang Juru Tulis", key="buang_jt", use_container_width=True):
+                        for c in jt_curr:
+                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
+                        st.success("Juru Tulis dibuang"); st.rerun()
+                else:
+                    st.info("Belum ada Juru Tulis")
+                st.markdown("**Pilih Juru Tulis Baru (Hanya Belum Dilantik):**")
+                try:
+                    df_jt_calon_all = df_cad_all[df_cad_all.apply(is_belum_peng_manual, axis=1)].copy()
+                except:
+                    try:
+                        df_jt_calon_all = df_cad_all[df_cad_all.apply(is_belum_peng, axis=1)].copy()
+                    except:
+                        df_jt_calon_all = df_cad_all.copy()
+                df_jt_calon = df_jt_calon_all[df_jt_calon_all["JAWATAN_CADANGAN"].astype(str).str.contains("Juru Tulis", case=False, na=False)]
+                if kod_tuan_m:
+                    df_jt_calon = df_jt_calon[~df_jt_calon["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_m)]
+                df_jt_calon["MAX3_OK"] = df_jt_calon.apply(lambda r: sekolah_count_manual.get(str(r.get("KOD_SEKOLAH_ASAL","")).upper().strip(),0) < 3, axis=1)
+                df_jt_layak = df_jt_calon[df_jt_calon["MAX3_OK"]==True]
+                st.caption(f"{len(df_jt_layak)} calon JT belum dilantik (Khas, tak kira dalam 19)")
+                if not df_jt_layak.empty:
+                    pilih_jt = st.multiselect("Pilih Juru Tulis", df_jt_layak["id"].tolist(), format_func=lambda x: f"{df_jt_layak[df_jt_layak['id']==x]['NAMA_GURU'].values[0]} - {df_jt_layak[df_jt_layak['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_jt_layak[df_jt_layak['id']==x].empty else str(x), key="pilih_jt_manual")
+                    if pilih_jt and st.button(f"✅ Lantik {len(pilih_jt)} Juru Tulis", type="primary", use_container_width=True, key="lantik_jt"):
+                        for pid in pilih_jt:
+                            supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pid).execute()
+                        st.success(f"✅ {len(pilih_jt)} Juru Tulis dilantik (Khas)"); st.balloons(); st.rerun()
+
+            # ===== KOLUM JURU BACA (Pengawas Khas) =====
+            with col_jb:
+                st.markdown('<div style="background:#e0f7fa; border:2px solid #006064; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;"><div style="font-size:28px;">📖</div><div style="font-weight:800; color:#006064;">JURU BACA</div><div style="font-size:11px; color:#666;">Pengawas Khas (Tambahan)</div></div>', unsafe_allow_html=True)
+                jb_curr = [c for k,c in tugas_pusat_ini.items() if "JURU BACA" in str(c.get("JAWATAN_CADANGAN") or "").upper()]
+                if jb_curr:
+                    st.markdown(f"**Semasa: {len(jb_curr)} (Khas)**")
+                    for c in jb_curr[:3]:
+                        st.markdown(f'<div style="background:#b2ebf2; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
+                    if st.button("🗑️ Buang Juru Baca", key="buang_jb", use_container_width=True):
+                        for c in jb_curr:
+                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
+                        st.success("Juru Baca dibuang"); st.rerun()
+                else:
+                    st.info("Belum ada Juru Baca")
+                st.markdown("**Pilih Juru Baca Baru:**")
+                try:
+                    df_jb_calon_all = df_cad_all[df_cad_all.apply(is_belum_peng_manual, axis=1)].copy()
+                except:
+                    try:
+                        df_jb_calon_all = df_cad_all[df_cad_all.apply(is_belum_peng, axis=1)].copy()
+                    except:
+                        df_jb_calon_all = df_cad_all.copy()
+                df_jb_calon = df_jb_calon_all[df_jb_calon_all["JAWATAN_CADANGAN"].astype(str).str.contains("Juru Baca", case=False, na=False)]
+                if kod_tuan_m:
+                    df_jb_calon = df_jb_calon[~df_jb_calon["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_m)]
+                df_jb_calon["MAX3_OK"] = df_jb_calon.apply(lambda r: sekolah_count_manual.get(str(r.get("KOD_SEKOLAH_ASAL","")).upper().strip(),0) < 3, axis=1)
+                df_jb_layak = df_jb_calon[df_jb_calon["MAX3_OK"]==True]
+                st.caption(f"{len(df_jb_layak)} calon JB belum dilantik (Khas)")
+                if not df_jb_layak.empty:
+                    pilih_jb = st.multiselect("Pilih Juru Baca", df_jb_layak["id"].tolist(), format_func=lambda x: f"{df_jb_layak[df_jb_layak['id']==x]['NAMA_GURU'].values[0]} - {df_jb_layak[df_jb_layak['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_jb_layak[df_jb_layak['id']==x].empty else str(x), key="pilih_jb_manual")
+                    if pilih_jb and st.button(f"✅ Lantik {len(pilih_jb)} Juru Baca", type="primary", use_container_width=True, key="lantik_jb"):
+                        for pid in pilih_jb:
+                            supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pid).execute()
+                        st.success(f"✅ {len(pilih_jb)} Juru Baca dilantik (Khas)"); st.balloons(); st.rerun()
+
+            # ===== KOLUM PENGEMAS BILIK (Pengawas Khas) =====
+            with col_pb:
+                st.markdown('<div style="background:#fff3e0; border:2px solid #e65100; border-radius:10px; padding:12px; text-align:center; margin-bottom:10px;"><div style="font-size:28px;">🧹</div><div style="font-weight:800; color:#e65100;">PENGEMAS BILIK</div><div style="font-size:11px; color:#666;">Pengawas Khas (Tambahan)</div></div>', unsafe_allow_html=True)
+                pb_curr = [c for k,c in tugas_pusat_ini.items() if "PENGEMAS BILIK" in str(c.get("JAWATAN_CADANGAN") or "").upper()]
+                if pb_curr:
+                    st.markdown(f"**Semasa: {len(pb_curr)} (Khas)**")
+                    for c in pb_curr[:3]:
+                        st.markdown(f'<div style="background:#ffe0b2; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
+                    if st.button("🗑️ Buang Pengemas Bilik", key="buang_pb", use_container_width=True):
+                        for c in pb_curr:
+                            supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
+                        st.success("Pengemas Bilik dibuang"); st.rerun()
+                else:
+                    st.info("Belum ada Pengemas Bilik")
+                st.markdown("**Pilih Pengemas Bilik Baru:**")
+                try:
+                    df_pb_calon_all = df_cad_all[df_cad_all.apply(is_belum_peng_manual, axis=1)].copy()
+                except:
+                    try:
+                        df_pb_calon_all = df_cad_all[df_cad_all.apply(is_belum_peng, axis=1)].copy()
+                    except:
+                        df_pb_calon_all = df_cad_all.copy()
+                df_pb_calon = df_pb_calon_all[df_pb_calon_all["JAWATAN_CADANGAN"].astype(str).str.contains("Pengemas Bilik", case=False, na=False)]
+                if kod_tuan_m:
+                    df_pb_calon = df_pb_calon[~df_pb_calon["KOD_SEKOLAH_ASAL"].astype(str).str.upper().str.strip().eq(kod_tuan_m)]
+                df_pb_calon["MAX3_OK"] = df_pb_calon.apply(lambda r: sekolah_count_manual.get(str(r.get("KOD_SEKOLAH_ASAL","")).upper().strip(),0) < 3, axis=1)
+                df_pb_layak = df_pb_calon[df_pb_calon["MAX3_OK"]==True]
+                st.caption(f"{len(df_pb_layak)} calon PB belum dilantik (Khas)")
+                if not df_pb_layak.empty:
+                    pilih_pb = st.multiselect("Pilih Pengemas Bilik", df_pb_layak["id"].tolist(), format_func=lambda x: f"{df_pb_layak[df_pb_layak['id']==x]['NAMA_GURU'].values[0]} - {df_pb_layak[df_pb_layak['id']==x]['KOD_SEKOLAH_ASAL'].values[0]}" if not df_pb_layak[df_pb_layak['id']==x].empty else str(x), key="pilih_pb_manual")
+                    if pilih_pb and st.button(f"✅ Lantik {len(pilih_pb)} Pengemas Bilik", type="primary", use_container_width=True, key="lantik_pb"):
+                        for pid in pilih_pb:
+                            supa.table("cadangan_sup").update({"kod_pusat": pilih_pusat_manual, "status": "DILANTIK PPD"}).eq("id", pid).execute()
+                        st.success(f"✅ {len(pilih_pb)} Pengemas Bilik dilantik (Khas)"); st.balloons(); st.rerun()
+            
+            # ===== END 3 KOLUM TAMBAHAN =====
+
+
             st.markdown("---")
             st.markdown("### 📊 Ringkasan Penempatan Manual - Kumulatif (Tidak Hilang Bila Pilih Sekolah Kedua)")
             st.info("💡 Ringkasan ini kumulatif - bila PPD lantik Sekolah Kedua, lantikan Pertama masih kekal di bawah. Column ikut jawatan: KP, TKP, Pengawas.")
