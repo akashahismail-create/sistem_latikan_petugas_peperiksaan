@@ -2369,10 +2369,54 @@ if st.session_state.role == "SUP":
                 ada_surat_cnt = int(df_cad_sup["ADA_SURAT"].sum())
                 tunggu_cnt = total_cad - ada_surat_cnt
                 
-                c1,c2,c3 = st.columns(3)
+                c1,c2,c3,c4 = st.columns(4)
                 c1.metric("Total Cadangan Sekolah", total_cad)
                 c2.metric("✅ Sudah Ada Surat", ada_surat_cnt)
                 c3.metric("⏳ Tunggu Surat", tunggu_cnt)
+                with c4:
+                    if ada_surat_cnt > 0:
+                        if st.button(f"📦 Jana ZIP {ada_surat_cnt} Surat PDF Individu", type="primary", use_container_width=True, key=f"btn_zip_sup_{kod}"):
+                            try:
+                                df_lulus_zip = df_cad_sup[df_cad_sup["ADA_SURAT"] == True].copy()
+                                surat_list_sup = []
+                                for _, r in df_lulus_zip.iterrows():
+                                    surat_list_sup.append({
+                                        "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                        "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                        "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                        "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal","") or kod,
+                                        "nama_sekolah_asal": r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal","") or info.get('nama_sekolah',''),
+                                        "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                        "nama_pusat": "",
+                                        "no_surat": r.get("no_surat","") or r.get("NO_SURAT","")
+                                    })
+                                # Try get pusat names
+                                try:
+                                    df_pusat_tmp = get_pusat_df()
+                                    pusat_map_tmp = {}
+                                    for _, pr in df_pusat_tmp.iterrows():
+                                        d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
+                                        if isinstance(d, str):
+                                            try: d = json.loads(d)
+                                            except: d = {}
+                                        no_p = str(pr.get("no_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                                        nama_p = pr.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                                        if no_p:
+                                            pusat_map_tmp[no_p] = nama_p
+                                    for s in surat_list_sup:
+                                        s["nama_pusat"] = pusat_map_tmp.get(str(s["pusat"]).upper().strip(), "")
+                                except:
+                                    pass
+                                zip_bytes = create_zip_of_individual_pdfs(surat_list_sup, info.get('kod_ppd',''), PPD_MAP.get(info.get('kod_ppd',''), ''))
+                                if zip_bytes:
+                                    st.session_state[f"zip_sup_{kod}"] = zip_bytes
+                                    st.success(f"✅ ZIP {len(surat_list_sup)} surat individu berjaya dijana!")
+                                else:
+                                    st.error("Gagal jana ZIP")
+                            except Exception as e:
+                                st.error(f"Error jana ZIP: {e}")
+                        if f"zip_sup_{kod}" in st.session_state:
+                            st.download_button(f"📥 Download ZIP {ada_surat_cnt} Surat Individu (SUP {kod})", data=st.session_state[f"zip_sup_{kod}"], file_name=f"Surat_Individu_SUP_{kod}_{__import__('datetime').date.today()}.zip", mime="application/zip", use_container_width=True, key=f"dl_zip_sup_{kod}")
                 
                 def papar_table_jawatan(df_input, tajuk, icon, keyword_list, warna_header):
                     if keyword_list:
@@ -2430,14 +2474,56 @@ if st.session_state.role == "SUP":
                 papar_table_jawatan(df_cad_sup, "TABLE 2: Ketua Pengawas & Timbalan", "👑", ["Ketua Pengawas", "Timbalan Ketua"], "linear-gradient(135deg, #0d47a1 0%, #1976d2 100%)")
                 papar_table_jawatan(df_cad_sup, "TABLE 3: Pengawas Peperiksaan", "👨‍🏫", ["Pengawas Peperiksaan", "Pengawas"], "linear-gradient(135deg, #2e7d32 0%, #43a047 100%)")
                 
-                st.markdown("## 📄 Paparan Surat Lantikan (Yang Ada Surat Sahaja)")
+                st.markdown("## 📄 Paparan Surat Lantikan (Yang Ada Surat Sahaja) - Individu")
                 df_lulus = df_cad_sup[df_cad_sup["ADA_SURAT"] == True].copy()
                 if df_lulus.empty:
                     st.info("Belum ada surat lantikan.")
                 else:
-                    st.success(f"Ada {len(df_lulus)} surat lantikan untuk sekolah {kod}")
+                    st.success(f"Ada {len(df_lulus)} surat lantikan untuk sekolah {kod} - SUP boleh download ZIP individu atau PDF seorang-seorang di bawah")
+                    
+                    # Search & Pagination untuk SUP juga (elak panjang kalau 1000)
+                    col_s1, col_s2 = st.columns([2,1])
+                    with col_s1:
+                        search_sup = st.text_input("🔍 Cari Nama Guru / IC / Pusat di Surat Saya", placeholder="Taip nama atau pusat...", key=f"search_sup_surat_{kod}")
+                    with col_s2:
+                        per_page_sup = st.selectbox("Per Page", [10,20,50], index=1, key=f"per_page_sup_{kod}")
+                    
+                    df_lulus_filtered = df_lulus.copy()
+                    if search_sup:
+                        s = search_sup.lower()
+                        df_lulus_filtered = df_lulus_filtered[df_lulus_filtered.apply(lambda r: s in str(r.get("NAMA_GURU","") or r.get("nama_guru","")).lower() or s in str(r.get("IC_GURU","") or r.get("ic_guru","")).lower() or s in str(r.get("kod_pusat","") or r.get("KOD_PUSAT","")).lower(), axis=1)]
+                    
+                    total_pages_sup = max(1, (len(df_lulus_filtered) + per_page_sup -1)//per_page_sup)
+                    page_sup = st.number_input(f"Halaman SUP 1-{total_pages_sup}", min_value=1, max_value=total_pages_sup, value=1, step=1, key=f"page_sup_{kod}")
+                    start_sup = (page_sup-1)*per_page_sup
+                    end_sup = start_sup + per_page_sup
+                    df_lulus_page = df_lulus_filtered.iloc[start_sup:end_sup]
 
-                    for _, r in df_lulus.iterrows():
+                    # Quick select dropdown
+                    if not df_lulus_filtered.empty:
+                        options_sup = [f"{i+1}. {r.get('NAMA_GURU','') or r.get('nama_guru','')} | {r.get('IC_GURU','') or r.get('ic_guru','')} | {r.get('kod_pusat','') or r.get('KOD_PUSAT','')} | {r.get('no_surat','')}" for i, (_, r) in enumerate(df_lulus_filtered.iterrows())]
+                        pilih_sup_idx = st.selectbox("⚡ Pilih Guru untuk Download Cepat", range(len(options_sup)), format_func=lambda x: options_sup[x], key=f"select_sup_surat_{kod}")
+                        if st.button("📥 Jana PDF Guru Terpilih (SUP)", type="primary", key=f"btn_sup_selected_{kod}"):
+                            try:
+                                r_sel = df_lulus_filtered.iloc[pilih_sup_idx]
+                                nama = r_sel.get("NAMA_GURU", "") or r_sel.get("nama_guru", "")
+                                ic = r_sel.get("IC_GURU", "") or r_sel.get("ic_guru", "")
+                                jawatan = r_sel.get("JAWATAN_CADANGAN", "") or r_sel.get("jawatan_cadangan", "") or ""
+                                pusat = r_sel.get("kod_pusat", "") or r_sel.get("KOD_PUSAT", "") or ""
+                                no_surat = r_sel.get("no_surat", "") or ""
+                                telefon = r_sel.get("TELEFON_GURU", "") or r_sel.get("telefon_guru", "") or ""
+                                try:
+                                    pdf_sel = generate_surat_pdf_bytes(nama, ic, jawatan, r_sel.get("KOD_SEKOLAH_ASAL", "") or kod, r_sel.get("NAMA_SEKOLAH_ASAL", "") or info.get('nama_sekolah',''), pusat, "", no_surat, r_sel.get("KOD_PPD", "") or info.get('kod_ppd',''), PPD_MAP.get(r_sel.get("KOD_PPD", "") or info.get('kod_ppd',''), ""), __import__("datetime").date.today().strftime('%d %B %Y'), no_surat)
+                                    if pdf_sel:
+                                        st.download_button(f"📥 Download PDF {nama}", data=pdf_sel, file_name=f"Surat_{nama.replace(' ','_')}_{no_surat.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_sup_selected_{kod}_{pilih_sup_idx}", use_container_width=True)
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+
+                    st.markdown(f"**Papar {len(df_lulus_page)} surat (Halaman {page_sup}/{total_pages_sup}) - Total {len(df_lulus_filtered)} surat:**")
+
+                    for _, r in df_lulus_page.iterrows():
                         nama = r.get("NAMA_GURU", "") or r.get("nama_guru", "")
                         ic = r.get("IC_GURU", "") or r.get("ic_guru", "")
                         jawatan = r.get("JAWATAN_CADANGAN", "") or r.get("jawatan_cadangan", "") or ""
