@@ -5335,13 +5335,27 @@ elif st.session_state.role == "PPD":
             </div>
             """, unsafe_allow_html=True)
             
-            df_cad_all_surat = get_cadangan_df(kod_ppd=kod_ppd)
+            # FIX NameError: guna direct supabase query, bukan get_cadangan_df yang scope terhad
+            try:
+                res_cad = supa.table("cadangan_sup").select("*").eq("kod_ppd", kod_ppd).limit(10000).execute()
+                df_cad_all_surat = __import__("pandas").DataFrame(res_cad.data or [])
+            except Exception as e:
+                st.error(f"Error load cadangan: {e}")
+                df_cad_all_surat = __import__("pandas").DataFrame()
+            
             if df_cad_all_surat.empty:
                 st.warning("Belum ada cadangan di PPD ini")
                 st.stop()
             
-            # Build pusat map
-            df_pusat_raw_surat = get_pusat_df()
+            # Build pusat map - guna direct query juga
+            try:
+                res_pusat = supa.table("pusat_master").select("*").eq("kod_ppd", kod_ppd).limit(5000).execute()
+                df_pusat_raw_surat = __import__("pandas").DataFrame(res_pusat.data or [])
+            except:
+                try:
+                    df_pusat_raw_surat = get_pusat_df()
+                except:
+                    df_pusat_raw_surat = __import__("pandas").DataFrame()
             pusat_map_surat = {}
             try:
                 for _, r in df_pusat_raw_surat.iterrows():
@@ -6011,13 +6025,27 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
             </div>
             """, unsafe_allow_html=True)
             
-            df_cad_all_surat = get_cadangan_df(kod_ppd=kod_ppd)
+            # FIX NameError: guna direct supabase query, bukan get_cadangan_df yang scope terhad
+            try:
+                res_cad = supa.table("cadangan_sup").select("*").eq("kod_ppd", kod_ppd).limit(10000).execute()
+                df_cad_all_surat = __import__("pandas").DataFrame(res_cad.data or [])
+            except Exception as e:
+                st.error(f"Error load cadangan: {e}")
+                df_cad_all_surat = __import__("pandas").DataFrame()
+            
             if df_cad_all_surat.empty:
                 st.warning("Belum ada cadangan di PPD ini")
                 st.stop()
             
-            # Build pusat map
-            df_pusat_raw_surat = get_pusat_df()
+            # Build pusat map - guna direct query juga
+            try:
+                res_pusat = supa.table("pusat_master").select("*").eq("kod_ppd", kod_ppd).limit(5000).execute()
+                df_pusat_raw_surat = __import__("pandas").DataFrame(res_pusat.data or [])
+            except:
+                try:
+                    df_pusat_raw_surat = get_pusat_df()
+                except:
+                    df_pusat_raw_surat = __import__("pandas").DataFrame()
             pusat_map_surat = {}
             try:
                 for _, r in df_pusat_raw_surat.iterrows():
