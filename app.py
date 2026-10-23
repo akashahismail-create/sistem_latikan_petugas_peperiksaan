@@ -726,9 +726,9 @@ def hantar_ke_ppd(ids, kod_ppd, df_sasaran=None):
     for i in range(0, len(ids), 100):
         kelompok = ids[i:i+100]
         payloads_to_try = [
-            {"status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"},
+            {"status": "HANTAR KE PPD", "status": "HANTAR KE PPD"},
             {"status": "HANTAR KE PPD"},
-            {"STATUS": "HANTAR KE PPD"},
+            {"status": "HANTAR KE PPD"},
         ]
         success = False
         last_err = ""
@@ -1516,7 +1516,7 @@ if st.session_state.role == "SUP":
                                     nama_sek_guru = info.get("nama_sekolah", "SAM NURUL IMAN")
                                 
                                 email = email or ""
-                                clean_insert = {"kod_ppd": kod_ppd_guru.upper(), "kod_sekolah": kod_sek_guru, "kod_sekolah_asal": kod_sek_guru, "nama_sekolah_asal": nama_sek_guru, "ic_guru": ic, "nama_guru": nama, "jantina": jantina or "L", "poskod_rumah": poskod or "0", "alamat_rumah": alamat or "-", "telefon_guru": telefon, "email_guru": email, "jawatan_cadangan": jawatan_clean, "pengalaman_spm": pengalaman, "no_pusat_asal": no_pusat_asal or "BA142", "kod_pusat": None, "kod_ppd_asal": kod_ppd_guru.upper(), "status": "DICADANGKAN", "tarikh_cadang": str(datetime.date.today()), "data": {"KOD_PPD": kod_ppd_guru.upper(), "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(), "NAMA_SEKOLAH_ASAL": nama_sek_guru, "IC_GURU": ic, "NAMA_GURU": nama, "JANTINA": jantina, "POSKOD_RUMAH": poskod, "ALAMAT_RUMAH": alamat, "TELEFON_GURU": telefon, "EMAIL_GURU": email, "JAWATAN_CADANGAN": jawatan_clean, "PENGALAMAN_SPM": pengalaman, "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih, "STATUS": "DICADANGKAN"}}
+                                clean_insert = {"kod_ppd": kod_ppd_guru.upper(), "kod_sekolah": kod_sek_guru, "kod_sekolah_asal": kod_sek_guru, "nama_sekolah_asal": nama_sek_guru, "ic_guru": ic, "nama_guru": nama, "jantina": jantina or "L", "poskod_rumah": poskod or "0", "alamat_rumah": alamat or "-", "telefon_guru": telefon, "email_guru": email, "jawatan_cadangan": jawatan_clean, "pengalaman_spm": pengalaman, "no_pusat_asal": no_pusat_asal or "BA142", "kod_pusat": None, "kod_ppd_asal": kod_ppd_guru.upper(), "status": "DICADANGKAN", "tarikh_cadang": str(datetime.date.today()), "data": {"KOD_PPD": kod_ppd_guru.upper(), "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(), "NAMA_SEKOLAH_ASAL": nama_sek_guru, "IC_GURU": ic, "NAMA_GURU": nama, "JANTINA": jantina, "POSKOD_RUMAH": poskod, "ALAMAT_RUMAH": alamat, "TELEFON_GURU": telefon, "EMAIL_GURU": email, "JAWATAN_CADANGAN": jawatan_clean, "PENGALAMAN_SPM": pengalaman, "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih, "status": "DICADANGKAN"}}
                                 
                                 minimal_insert = {"kod_ppd": kod_ppd_guru.upper(), "kod_sekolah": kod_sek_guru.upper(), "ic_guru": ic, "nama_guru": nama, "status": "DICADANGKAN"}
                                 
@@ -3837,7 +3837,7 @@ elif st.session_state.role == "PPD":
                     "JUMLAH CADANGAN": len(guru_list),
                     "BELUM LANTIK": belum_cnt,
                     "SUDAH LANTIK": sudah_cnt,
-                    "STATUS": "✅ Lengkap" if belum_cnt == 0 else f"⏳ {belum_cnt} belum"
+                    "status": "✅ Lengkap" if belum_cnt == 0 else f"⏳ {belum_cnt} belum"
                 })
             df_summary = pd.DataFrame(summary_rows)
             st.dataframe(df_summary, use_container_width=True, hide_index=True)
@@ -4075,7 +4075,7 @@ elif st.session_state.role == "PPD":
                                 berjaya = 0
                                 for gid in batal_ids:
                                     # Batalkan: set kod_pusat None, status HANTAR KE PPD supaya masuk semula ke cadangan
-                                    supa.table("cadangan_sup").update({"kod_pusat": None, "status": "HANTAR KE PPD", "STATUS": "HANTAR KE PPD"}).eq("id", gid).execute()
+                                    supa.table("cadangan_sup").update({"kod_pusat": None, "status": "HANTAR KE PPD", "status": "HANTAR KE PPD"}).eq("id", gid).execute()
                                     berjaya+=1
                                 st.success(f"✅ Berjaya batalkan {berjaya} {tajuk} dari {pilihan_pusat_semak}. Guru masuk semula ke cadangan SUP untuk dipilih di pusat lain.")
                                 st.balloons()
@@ -4198,7 +4198,7 @@ elif st.session_state.role == "PPD":
                             try:
                                 berjaya = 0
                                 for gid in pilih_guru_isi:
-                                    supa.table("cadangan_sup").update({"kod_pusat": pilihan_pusat_semak, "status": "DILANTIK PPD", "STATUS": "DILANTIK PPD"}).eq("id", gid).execute()
+                                    supa.table("cadangan_sup").update({"kod_pusat": pilihan_pusat_semak, "status": "DILANTIK PPD", "status": "DILANTIK PPD"}).eq("id", gid).execute()
                                     berjaya+=1
                                 st.success(f"✅ Berjaya lantik {berjaya} guru untuk isi kekosongan di {pilihan_pusat_semak}")
                                 st.balloons()
