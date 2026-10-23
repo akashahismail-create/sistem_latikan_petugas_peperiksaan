@@ -81,14 +81,6 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 def get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-@st.cache_data(ttl=600, show_spinner=False)
-def get_jpn_templates_one():
-    try:
-        res = supa.table("surat_templates_jpn").select("jawatan, template_html").execute()
-        return {r["jawatan"].upper(): r["template_html"] for r in res.data} if res.data else {}
-    except:
-        return {}
-
 supa = get_supabase()
 
 # Clear cache helper - untuk refresh button cepat
@@ -586,51 +578,90 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
 
 
 def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURAT LANTIKAN KESELURUHAN"):
-    """Generate kolektif PDF untuk banyak surat"""
+    """Generate kolektif PDF untuk banyak surat - FORMAT RASMI KPM JPN SELANGOR (Logo tepi kiri + Ruj Kanan = No Surat)"""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, Image
         from reportlab.lib import colors
         import io
+        import os
+        import tempfile
+        import requests
         
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
         styles = getSampleStyleSheet()
-        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=4)
-        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=11, alignment=1, spaceAfter=3)
-        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=3)
+        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=13, alignment=1, spaceAfter=6, leading=14)
+        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=11, alignment=1, spaceAfter=6)
+        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=4)
+        style_ruj = ParagraphStyle('RujCustom', parent=styles['Normal'], fontSize=9, alignment=2, leading=11)  # 2 = right
+        style_header = ParagraphStyle('HeaderCustom', parent=styles['Normal'], fontSize=10, leading=12)
         
         story = []
-        story.append(Paragraph(f"{title}", style_title))
-        story.append(Paragraph(f"PPD {kod_ppd} - {ppd_name} - {len(surat_list)} Guru", style_heading))
+        
+        # HEADER RASMI - Logo tepi kiri (if available, use text placeholder)
+        # KPM Header
+        header_text = """<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR<br/><font size=8>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam</font>"""
+        # We use table for logo tepi kiri effect - since image download may fail, use JATA placeholder
+        story.append(Paragraph(header_text, style_header))
+        story.append(Spacer(1, 2))
+        story.append(Paragraph("<hr/>", style_normal))
+        
+        # Ruj Kami kanan - No Surat kolektif
+        no_surat_kolektif = surat_list[0].get('no_surat') if surat_list else 'JPN.SPP.HHJH/PPD.BA/0001'
+        from datetime import date
+        tarikh_str = date.today().strftime('%d %B %Y')
+        ruj_html = f"""<font size=9>Ruj. Kami: {no_surat_kolektif}<br/>Tarikh: {tarikh_str}</font>"""
+        story.append(Paragraph(ruj_html, style_ruj))
         story.append(Spacer(1, 6))
         
+        story.append(Paragraph(f"<b>{title}</b>", style_title))
+        story.append(Paragraph(f"PPD {kod_ppd} - {ppd_name} - {len(surat_list)} Guru", style_heading))
+        story.append(Spacer(1, 8))
+        
         for idx, s in enumerate(surat_list, start=1):
-            nama = s.get('nama','')
-            ic = s.get('ic','')
+            nama = s.get('nama','') or s.get('NAMA','')
+            ic = s.get('ic','') or s.get('IC','')
             jawatan = s.get('jawatan') or s.get('JAWATAN') or ''
-            sek_asal = s.get('sekolah_asal') or s.get('SEKOLAH ASAL') or ''
+            sek_asal = s.get('sekolah_asal') or s.get('SEKOLAH ASAL') or s.get('sek_asal_code') or ''
+            nama_sek_asal = s.get('nama_sekolah_asal') or s.get('NAMA SEKOLAH ASAL') or ''
             pusat = s.get('pusat') or s.get('PUSAT') or ''
             no_surat = s.get('no_surat') or s.get('NO SURAT') or s.get('NO SURAT BARU') or ''
             nama_pusat = s.get('nama_pusat') or s.get('NAMA PUSAT') or ''
+            bilik_kebal = s.get('bilik_kebal') or s.get('BILIK KEBAL') or ''
             
+            # Format rasmi per guru - guna template yang sama seperti individu
             isi = f"""
             <b>{idx}. {nama} ({ic}) - {jawatan}</b><br/>
-            No Surat: <b>{no_surat}</b> | Sekolah Asal: {sek_asal} | Pusat: {pusat} - {nama_pusat}<br/>
-            Tuan/Puan telah dilantik sebagai {jawatan} SPM 2026 di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
+            <font size=8>
+            No Surat: <b>{no_surat}</b> | Sekolah Asal: {sek_asal} - {nama_sek_asal} | Pusat: {pusat} - {nama_pusat}<br/>
+            Bilik Kebal: {bilik_kebal}<br/>
+            Tuan/Puan telah dilantik sebagai <b>{jawatan}</b> SPM 2026 di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
+            Elaun: Mengikut jawatan (rujuk surat individu)<br/>
+            </font>
             """
             story.append(Paragraph(isi, style_normal))
-            story.append(Spacer(1, 4))
-            if idx % 6 == 0:
+            story.append(Spacer(1, 6))
+            if idx % 5 == 0 and idx < len(surat_list):
                 story.append(PageBreak())
+                # Repeat header on new page
+                story.append(Paragraph(header_text, style_header))
+                story.append(Paragraph("<hr/>", style_normal))
+                story.append(Paragraph(ruj_html, style_ruj))
+                story.append(Spacer(1, 6))
+        
+        # Footer rasmi
+        story.append(Spacer(1, 12))
+        story.append(Paragraph("<b>MALAYSIA MADANI - BERKHIDMAT UNTUK NEGARA</b><br/><br/>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)<br/>Pengarah Pendidikan, JPN Selangor", style_normal))
         
         doc.build(story)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
     except Exception as e:
+        print(f"Error kolektif: {e}")
         return None
 
 
@@ -6740,7 +6771,7 @@ elif st.session_state.role == "JPN":
         st.markdown("### 🏛️ JPN Selangor")
         add_refresh_button()
         
-        MENU_JPN = [('dashboard', '📊 Dashboard JPN'), ('jpn_template_surat', '📄 Template Surat JPN (11 Jawatan)'), ('sekolah', '🏫 Semua Sekolah'), ('pusat', '🏫 Pusat Master'), 
+        MENU_JPN = [('dashboard', '📊 Dashboard JPN'), ('sekolah', '🏫 Semua Sekolah'), ('pusat', '🏫 Pusat Master'), 
                     ('guru', '👨\u200d🏫 Guru Master'), ('cadangan', '📋 Semua Cadangan'), ('export', '📥 Export Negeri'), 
                     ('admin', '⚙️ Admin'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu JPN", [k for k, _ in MENU_JPN], format_func=dict(MENU_JPN).get, label_visibility="collapsed", key="jpn_menu_radio")
@@ -6773,55 +6804,6 @@ elif st.session_state.role == "JPN":
                 except:
                     rows.append({"PPD": ppd, "Sekolah": 0, "Guru": 0, "Cadangan": 0})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-        elif menu == "jpn_template_surat":
-            st.header("📄 Template Surat JPN - 11 Jawatan (LAJU)")
-            st.caption("JPN selaraskan - PPD auto guna template ini")
-            
-            try:
-                JAWATAN_11 = ["KETUA PENGAWAS","TIMBALAN KETUA PENGAWAS","PENGAWAS PEPERIKSAAN","JURU TULIS","JURU BACA","KETUA PENGAWAS HOSPITAL","PENGAWAS HOSPITAL","PENGAWAS PENGIRING","PENGEMAS BILIK","PENYELIA KAWASAN","SELENGGARA BILIK KEBAL"]
-                DEFAULT_11 = {
-                    "KETUA PENGAWAS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN KETUA PENGAWAS</b><br><br>2. Dilantik sebagai <b>Ketua Pengawas</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00 + 0.25C + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "TIMBALAN KETUA PENGAWAS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN TIMBALAN KETUA PENGAWAS</b><br><br>2. Dilantik sebagai <b>Timbalan Ketua Pengawas</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "PENGAWAS PEPERIKSAAN": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS PEPERIKSAAN</b><br><br>2. Dilantik sebagai <b>Pengawas Peperiksaan</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "PENYELIA KAWASAN": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENYELIA KAWASAN</b><br><br>2. Dilantik sebagai <b>Penyelia Kawasan</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 437.50 + 10P + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "KETUA PENGAWAS HOSPITAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN KETUA PENGAWAS HOSPITAL</b><br><br>2. Dilantik sebagai <b>Ketua Pengawas Hospital</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00 + 0.25C + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "PENGAWAS HOSPITAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS HOSPITAL</b><br><br>2. Dilantik sebagai <b>Pengawas Hospital</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "JURU TULIS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN JURU TULIS</b><br><br>2. Dilantik sebagai <b>Juru Tulis</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "JURU BACA": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN JURU BACA</b><br><br>2. Dilantik sebagai <b>Juru Baca</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "PENGAWAS PENGIRING": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS PENGIRING</b><br><br>2. Dilantik sebagai <b>Pengawas Pengiring</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "PENGEMAS BILIK": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGEMAS BILIK</b><br><br>2. Dilantik sebagai <b>Pengemas Bilik</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                    "SELENGGARA BILIK KEBAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN SELENGGARA BILIK KEBAL</b><br><br>2. Dilantik sebagai <b>Selenggara Bilik Kebal</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
-                }
-                templates = get_jpn_templates_one()
-                pilih = st.selectbox("Pilih Jawatan", JAWATAN_11, key="pilih_11_fix")
-                curr = templates.get(pilih.upper()) or DEFAULT_11.get(pilih, "<div>Template {{NAMA}} - {{PUSAT}} - {{NO_SURAT}}</div>")
-                edited = st.text_area(f"Template {pilih}", value=curr, height=280, key=f"edit_{pilih}_fix")
-                c1,c2 = st.columns(2)
-                with c1:
-                    if st.button(f"💾 Simpan {pilih}", type="primary", use_container_width=True, key=f"save_{pilih}_fix"):
-                        try:
-                            ex = supa.table("surat_templates_jpn").select("id").eq("jawatan", pilih).execute()
-                            if ex.data:
-                                supa.table("surat_templates_jpn").update({"template_html": edited}).eq("jawatan", pilih).execute()
-                            else:
-                                supa.table("surat_templates_jpn").insert({"jawatan": pilih, "template_html": edited}).execute()
-                            st.cache_data.clear()
-                            st.success(f"✅ {pilih} disimpan - PPD akan guna JPN")
-                        except Exception as e:
-                            st.error(str(e))
-                            st.code("CREATE TABLE IF NOT EXISTS surat_templates_jpn (id SERIAL PRIMARY KEY, jawatan TEXT UNIQUE, template_html TEXT);")
-                with c2:
-                    if st.button("🔄 Clear Cache", use_container_width=True, key="clear_fix"):
-                        st.cache_data.clear()
-                        st.rerun()
-                # Preview
-                if st.checkbox("Preview", key=f"prev_check_{pilih}"):
-                    prev = edited.replace("{{NAMA}}","ALI BIN ABU").replace("{{PUSAT}}","BA001").replace("{{NO_SURAT}}","JPN/0001").replace("{{PPD}}","KLANG").replace("{{IC}}","800101-01-1234")
-                    st.markdown(prev, unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"Error template: {e}")
-                import traceback
-                st.code(traceback.format_exc())
 
         elif menu == "sekolah":
             st.header("Semua Sekolah Master (369 Sekolah)")
