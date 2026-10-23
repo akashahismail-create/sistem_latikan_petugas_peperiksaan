@@ -1679,19 +1679,48 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         story.append(Paragraph("Dengan segala hormatnya perkara di atas dirujuk.", style_normal))
         story.append(Spacer(1,8))
         
-        # ===== PARA 2 - IKUT GAMBAR 100% =====
-        para2 = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan tuan dilantik sebagai <b>{jawatan} bagi peperiksaan di atas. Berikut adalah pusat peperiksaan di bawah pengawasan tuan:</b>"
-        story.append(Paragraph(para2, style_normal))
+        # ===== PARA 2 - IKUT GAMBAR 100% - FIX NO PUSAT & BILIK KEBAL =====
+        # LOGIK BARU: No Pusat = No Pusat sebenar (BB017), Bilik Kebal kosong dulu kalau belum set di selenggara
+        # Kalau Penyelia Kawasan, bilik_kebal datang dari selenggara bilik kebal -> kod_bilik_kebal
+        # No Pusat datang dari kod_pusat (pusat jagaan)
+        
+        # Tentukan jenis jawatan
+        is_penyelia_kawasan = "PENYELIA KAWASAN" in jawatan.upper()
+        
+        if is_penyelia_kawasan:
+            para2_text = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan bahawa, tuan dilantik sebagai <b>{jawatan}</b> bagi peperiksaan di atas dari tempoh <b>14 Julai hingga 16 Julai 2026</b>. Pelantikan ini merupakan sebahagian daripada tugas rasmi. Maklumat pusat peperiksaan di bawah pengawasan tuan adalah seperti berikut:"
+        else:
+            para2_text = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan tuan dilantik sebagai <b>{jawatan} bagi peperiksaan di atas. Berikut adalah pusat peperiksaan di bawah pengawasan tuan:</b>"
+        
+        story.append(Paragraph(para2_text, style_normal))
         story.append(Spacer(1,6))
         
-        # 2.1, 2.2, 2.3 - TABLE KEMAS
+        # 2.1, 2.2, 2.3 - TABLE KEMAS - FIX: No Pusat betul, Bilik Kebal ikut selenggara
         style_sub_label = ParagraphStyle('SubLabel', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, leftIndent=15*mm, fontName='Helvetica')
         style_sub_value = ParagraphStyle('SubValue', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, fontName='Helvetica-Bold')
+        style_sub_value_empty = ParagraphStyle('SubValueEmpty', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, fontName='Helvetica', textColor=colors.HexColor('#999999'))
+        
+        # LOGIK: No Pusat = kod pusat sebenar, BUKAN bilik kebal
+        # Kalau bilik_kebal kosong, paparkan - atau kosong untuk isi kemudian
+        if not bilik_kebal or bilik_kebal.strip() == "" or bilik_kebal.lower() in ("nan","none","null","-"):
+            bilik_kebal_display = ""  # Kosongkan dulu seperti request
+            bilik_kebal_para = Paragraph(f": <i>(Akan dikemaskini melalui Selenggara Bilik Kebal)</i>", style_sub_value_empty)
+        else:
+            bilik_kebal_display = bilik_kebal.upper()
+            bilik_kebal_para = Paragraph(f": {bilik_kebal_display}", style_sub_value)
+        
+        # No Pusat - pastikan bukan bilik kebal code (CB, BK)
+        # Jika no_pusat_display mengandungi CB/BK dan kita ada pusat sebenar, guna pusat sebenar
+        if no_pusat_display.upper().startswith(("CB","BK")) and pusat:
+            # no_pusat_display ni sebenarnya bilik kebal, tukar guna pusat sebenar
+            no_pusat_final = pusat.split(",")[0].strip() if "," in pusat else pusat
+        else:
+            no_pusat_final = no_pusat_display
         
         sub_data = [
-            [Paragraph("2.1", style_small), Paragraph("No. Pusat", style_small), Paragraph(f": {no_pusat_display}", style_sub_value)],
+            [Paragraph("2.1", style_small), Paragraph("No. Pusat", style_small), Paragraph(f": {no_pusat_final}", style_sub_value)],
             [Paragraph("2.2", style_small), Paragraph("Nama Pusat", style_small), Paragraph(f": {display_pusat.upper()}", style_sub_value)],
-            [Paragraph("2.3", style_small), Paragraph("Bilik Kebal", style_small), Paragraph(f": {bilik_kebal.upper()}", style_sub_value)],
+            [Paragraph("2.3", style_small), Paragraph("Bilik Kebal", style_small), bilik_kebal_para],
         ]
         t_sub = Table(sub_data, colWidths=[10*mm, 30*mm, 110*mm])
         t_sub.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 2), ('RIGHTPADDING', (0,0), (-1,-1), 2), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
