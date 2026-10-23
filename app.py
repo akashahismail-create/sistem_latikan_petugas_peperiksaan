@@ -1516,7 +1516,7 @@ if st.session_state.role == "SUP":
                                     nama_sek_guru = info.get("nama_sekolah", "SAM NURUL IMAN")
                                 
                                 email = email or ""
-                                clean_insert = {"kod_ppd": kod_ppd_guru.upper(), "kod_sekolah": kod_sek_guru, "kod_sekolah_asal": kod_sek_guru, "nama_sekolah_asal": nama_sek_guru, "ic_guru": ic, "nama_guru": nama, "jantina": jantina or "L", "poskod_rumah": poskod or "0", "alamat_rumah": alamat or "-", "telefon_guru": telefon, "email_guru": email, "jawatan_cadangan": jawatan_clean, "pengalaman_spm": pengalaman, "no_pusat_asal": no_pusat_asal or pusat_pilih, "kod_pusat": pusat_pilih, "kod_ppd_asal": kod_ppd_guru.upper(), "status": "DICADANGKAN", "tarikh_cadang": str(datetime.date.today()), "data": {"KOD_PPD": kod_ppd_guru.upper(), "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(), "NAMA_SEKOLAH_ASAL": nama_sek_guru, "IC_GURU": ic, "NAMA_GURU": nama, "JANTINA": jantina, "POSKOD_RUMAH": poskod, "ALAMAT_RUMAH": alamat, "TELEFON_GURU": telefon, "EMAIL_GURU": email, "JAWATAN_CADANGAN": jawatan_clean, "PENGALAMAN_SPM": pengalaman, "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih, "STATUS": "DICADANGKAN"}}
+                                clean_insert = {"kod_ppd": kod_ppd_guru.upper(), "kod_sekolah": kod_sek_guru, "kod_sekolah_asal": kod_sek_guru, "nama_sekolah_asal": nama_sek_guru, "ic_guru": ic, "nama_guru": nama, "jantina": jantina or "L", "poskod_rumah": poskod or "0", "alamat_rumah": alamat or "-", "telefon_guru": telefon, "email_guru": email, "jawatan_cadangan": jawatan_clean, "pengalaman_spm": pengalaman, "no_pusat_asal": no_pusat_asal or "BA142", "kod_pusat": None, "kod_ppd_asal": kod_ppd_guru.upper(), "status": "DICADANGKAN", "tarikh_cadang": str(datetime.date.today()), "data": {"KOD_PPD": kod_ppd_guru.upper(), "KOD_SEKOLAH_ASAL": kod_sek_guru.upper(), "NAMA_SEKOLAH_ASAL": nama_sek_guru, "IC_GURU": ic, "NAMA_GURU": nama, "JANTINA": jantina, "POSKOD_RUMAH": poskod, "ALAMAT_RUMAH": alamat, "TELEFON_GURU": telefon, "EMAIL_GURU": email, "JAWATAN_CADANGAN": jawatan_clean, "PENGALAMAN_SPM": pengalaman, "NO_PUSAT_ASAL": no_pusat_asal or pusat_pilih, "STATUS": "DICADANGKAN"}}
                                 
                                 minimal_insert = {"kod_ppd": kod_ppd_guru.upper(), "kod_sekolah": kod_sek_guru.upper(), "ic_guru": ic, "nama_guru": nama, "status": "DICADANGKAN"}
                                 
@@ -3616,7 +3616,24 @@ elif st.session_state.role == "PPD":
                 kod = key.split(" - ")[0]
                 nama = key.split(" - ", 1)[1] if " - " in key else key
                 # Kira belum vs sudah
-                belum_cnt = sum(1 for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat"))
+                def _is_sudah_lantik(g):
+                    kp = str(g.get("kod_pusat") or g.get("KOD_PUSAT") or g.get("kod_pusat_tugas") or "").strip()
+                    status = str(g.get("status") or g.get("STATUS") or "").upper().strip()
+                    if kp == "" or kp.lower() in ("none","null","nan","nat",""):
+                        return False
+                    # Jika kod_pusat == no_pusat_asal dan status HANTAR KE PPD, itu BUKAN sudah lantik (bug lama)
+                    no_asal = str(g.get("no_pusat_asal") or g.get("NO_PUSAT_ASAL") or "").upper().strip()
+                    if kp.upper() == no_asal and "HANTAR KE PPD" in status:
+                        return False
+                    # Sudah lantik jika ada kod_pusat dan status LULUS/DILANTIK/SURAT
+                    if any(x in status for x in ["LULUS","DILANTIK","DITEMPATKAN","SURAT","SAH"]):
+                        return True
+                    # Jika kod_pusat ada tapi status masih HANTAR/DICADANGKAN, masih belum lantik
+                    if "HANTAR KE PPD" in status or "DICADANGKAN" in status:
+                        return False
+                    # Default: kalau ada kod_pusat dan bukan HANTAR/DICADANGKAN, anggap sudah
+                    return kp != ""
+                belum_cnt = sum(1 for g in guru_list if not _is_sudah_lantik(g))
                 sudah_cnt = len(guru_list) - belum_cnt
                 summary_rows.append({
                     "KOD SEKOLAH": kod,
@@ -3690,7 +3707,20 @@ elif st.session_state.role == "PPD":
                                 st.metric(jj, cnt)
                 
                 with tab_belum:
-                    belum_list = [g for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() in ("", "None", "none", "null", "nan", "nat")]
+                    def _check_sudah(g):
+                        kp = str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip()
+                        stt = str(g.get("status") or g.get("STATUS") or "").upper()
+                        no_asal = str(g.get("no_pusat_asal") or g.get("NO_PUSAT_ASAL") or "").upper().strip()
+                        if kp == "" or kp.lower() in ("none","null","nan","nat",""):
+                            return False
+                        if kp.upper() == no_asal and "HANTAR KE PPD" in stt:
+                            return False
+                        if "HANTAR KE PPD" in stt or "DICADANGKAN" in stt:
+                            return False
+                        if any(x in stt for x in ["LULUS","DILANTIK","DITEMPATKAN","SURAT"]):
+                            return True
+                        return kp != ""
+                    belum_list = [g for g in guru_list if not _check_sudah(g)]
                     st.markdown(f"**{len(belum_list)} guru belum dilantik dari {pilih_sek_cad}**")
                     if belum_list:
                         df_belum_guru = make_df_from_list(belum_list)
@@ -3700,7 +3730,7 @@ elif st.session_state.role == "PPD":
                         st.success("✅ Semua guru dari sekolah ini telah dilantik!")
                 
                 with tab_sudah:
-                    sudah_list = [g for g in guru_list if str(g.get("kod_pusat") or g.get("KOD_PUSAT") or "").strip() not in ("", "None", "none", "null", "nan", "nat")]
+                    sudah_list = [g for g in guru_list if _check_sudah(g)]
                     st.markdown(f"**{len(sudah_list)} guru sudah dilantik dari {pilih_sek_cad}**")
                     if sudah_list:
                         df_sudah_guru = make_df_from_list(sudah_list)
