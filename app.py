@@ -32,6 +32,60 @@ PPD_MAP = {
     "BG": "Gombak", "BH": "Petaling Perdana", "BJ": "Sepang", "BK": "Petaling Utama"
 }
 
+# ===== HELPER: WARNA HIJAU UNTUK GURU SUDAH HANTAR KE PPD =====
+def style_nama_hijau_hantar(df_input):
+    """Jika STATUS HANTAR/LULUS -> NAMA_GURU jadi hijau, belum hantar kekal biasa"""
+    try:
+        import pandas as pd
+        # Cari column status
+        status_col = None
+        for cand in ["STATUS","status","Status"]:
+            if cand in df_input.columns:
+                status_col = cand
+                break
+        if status_col is None:
+            return df_input
+        
+        # Buat styler
+        def highlight_row(row):
+            status_val = str(row.get(status_col, "") or "").upper()
+            is_hantar = any(x in status_val for x in ["HANTAR","LULUS","DIHANTAR","DILULUSKAN"])
+            is_baru = "DICADANGKAN" in status_val or status_val.strip()=="" or "BARU" in status_val
+            styles = []
+            for col in row.index:
+                col_str = str(col).upper()
+                if "NAMA_GURU" in col_str:
+                    if is_hantar:
+                        styles.append('background-color: #c8e6c9; color: #1b5e20; font-weight: 800; border-left: 4px solid #2e7d32;')
+                    elif is_baru:
+                        styles.append('background-color: #fff9c4; color: #e65100; font-weight: 600;')
+                    else:
+                        styles.append('')
+                else:
+                    if is_hantar:
+                        styles.append('background-color: #e8f5e9;')
+                    elif is_baru:
+                        styles.append('background-color: #fffde7;')
+                    else:
+                        styles.append('')
+            return styles
+        
+        return df_input.style.apply(highlight_row, axis=1)
+    except Exception as e:
+        return df_input
+
+def get_status_label(status_str):
+    s = str(status_str).upper()
+    if "LULUS" in s:
+        return "✅ SUDAH HANTAR & LULUS PPD"
+    elif "HANTAR" in s or "DIHANTAR" in s:
+        return "🟢 SUDAH HANTAR KE PPD"
+    else:
+        return "🟡 BARU DICADANGKAN (Belum Hantar)"
+# ===== END HELPER =====
+
+
+
 # ================= CSS BIRU CAIR - BACKGROUND BIRU CAIR =================
 st.markdown("""
 <style>
@@ -1445,6 +1499,12 @@ if st.session_state.role == "SUP":
                 
                 st.markdown("---")
                 st.subheader(f"Senarai Cadangan Sekolah Ini - Perlu {total_need_simple if 'total_need_simple' in locals() else 18} orang")
+                st.markdown("""
+                <div style="background:#e8f5e9; border-left:4px solid #2e7d32; padding:8px 12px; border-radius:6px; margin-bottom:10px;">
+                <b>🟢 Panduan Warna:</b> Nama guru <span style="background:#c8e6c9; color:#1b5e20; font-weight:800; padding:2px 8px; border-radius:4px;">HIJAU</span> = Sudah hantar ke PPD |
+                <span style="background:#fff9c4; color:#e65100; font-weight:600; padding:2px 8px; border-radius:4px;">KUNING</span> = Baru dicadangkan, belum hantar
+                </div>
+                """, unsafe_allow_html=True)
                 df_cad = get_cadangan_df(kod_sekolah=kod)
                 if df_cad.empty:
                     st.info("Belum ada cadangan")
@@ -1473,7 +1533,24 @@ if st.session_state.role == "SUP":
                         df_clean_show = df_clean_show.loc[:, ~df_clean_show.columns.str.lower().duplicated()]
                     except:
                         pass
-                    st.dataframe(df_clean_show, use_container_width=True)
+                    # === WARNA HIJAU UNTUK SUDAH HANTAR ===
+                    try:
+                        styled = style_nama_hijau_hantar(df_clean_show)
+                        st.dataframe(styled, use_container_width=True)
+                        st.caption("🟢 Hijau = Sudah hantar ke PPD / Lulus  |  🟡 Kuning = Baru dicadangkan (belum hantar)")
+                        # Juga tunjuk legend count
+                        if "STATUS" in df_clean_show.columns or "status" in df_clean_show.columns:
+                            col_status = "STATUS" if "STATUS" in df_clean_show.columns else "status"
+                            s_up = df_clean_show[col_status].astype(str).str.upper()
+                            hantar_cnt = s_up.str.contains("HANTAR|LULUS|DIHANTAR").sum()
+                            baru_cnt = len(df_clean_show) - hantar_cnt
+                            c1, c2 = st.columns(2)
+                            c1.success(f"🟢 Sudah Hantar: {hantar_cnt} guru")
+                            c2.warning(f"🟡 Belum Hantar: {baru_cnt} guru")
+                    except Exception as e:
+                        st.dataframe(df_clean_show, use_container_width=True)
+                        st.caption(f"Style error: {e}")
+                    # === END WARNA ===
                     st.download_button("📥 Export Cadangan", to_excel(df_clean_show), file_name=f"cadangan_{kod}.xlsx")
 
         elif menu == "hantar":
@@ -1513,8 +1590,14 @@ if st.session_state.role == "SUP":
                 # Also ensure df_cad doesn't have duplicate columns (lower + upper)
                 # Keep only upper case versions for display
                 df_display = df_cad[uniq_display].copy() if uniq_display else df_cad
-                # Rename for readability
-                st.dataframe(df_display, use_container_width=True)
+                # === WARNA HIJAU UNTUK SUDAH HANTAR DI MENU HANTAR ===
+                try:
+                    styled_hantar = style_nama_hijau_hantar(df_display)
+                    st.dataframe(styled_hantar, use_container_width=True)
+                    st.caption("🟢 Hijau = Sudah hantar ke PPD  |  🟡 Kuning = Belum hantar (boleh dihantar)")
+                except:
+                    st.dataframe(df_display, use_container_width=True)
+                # === END WARNA ===
                 
                 k1, k2, k3 = st.columns(3)
                 with k1: st.metric("Belum dihantar", bil_baru)
