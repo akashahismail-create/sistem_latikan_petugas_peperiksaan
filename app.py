@@ -1514,7 +1514,7 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
             isi2 = f"2. Dilantik sebagai <b>{jawatan}</b> di <b>{display_pusat}</b><br/>Sekolah Asal: <b>{display_sek_asal}</b><br/>No Surat: <b>{no_surat}</b><br/>3. Elaun: <b>{elaun}</b><br/>4. <b>SULIT - Akta Rahsia Rasmi 1972</b><br/>5. Hadir bertugas ikut jadual.<br/>6. Surat ini dijana dari <b>surat_templates_jpn</b> - JPN cipta, PPD guna - TEMPLATE JPN 100%."
             story.append(Paragraph(isi2, style_normal))
             story.append(Spacer(1,10))
-            # Tandatangan Pengarah
+            # Tandatangan Pengarah - TENGAH-TENGAH
             sig_path = None
             for cand in ["tandatangan_pengarah_hd.png","./tandatangan_pengarah_hd.png","tandatangan_pengarah.png","./tandatangan_pengarah.png","tandatangan.png","./tandatangan.png","/mnt/data/tandatangan_pengarah_hd.png","/mnt/data/tandatangan_pengarah.png","/mnt/data/image_9ef367.png"]:
                 if os.path.exists(cand):
@@ -1522,17 +1522,28 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
                     break
             if sig_path:
                 try:
-                    sig_img = RLImage(sig_path, width=35*mm, height=15*mm, kind='proportional')
+                    sig_img = RLImage(sig_path, width=40*mm, height=18*mm, kind='proportional')
+                    # Buat table untuk center-kan tandatangan di tengah
                     story.append(Paragraph(f"MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/>", style_normal))
-                    story.append(Spacer(1,2))
-                    story.append(sig_img)
-                    story.append(Spacer(1,2))
-                    story.append(Paragraph(f"<b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor<br/><br/><font size=7>PPD {ppd_name} | {kod_ppd} | TEMPLATE JPN 100% | Logo: {logo_path or 'tiada'} | Tandatangan: {sig_path}</font>", style_normal))
+                    story.append(Spacer(1,4))
+                    # Center signature menggunakan Table
+                    sig_table = Table([[sig_img]], colWidths=[80*mm])
+                    sig_table.setStyle(TableStyle([
+                        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                    ]))
+                    story.append(sig_table)
+                    story.append(Spacer(1,3))
+                    # Nama juga center di tengah bawah tandatangan
+                    style_center = ParagraphStyle('CenterJPN', parent=style_normal, alignment=1, spaceAfter=3)
+                    story.append(Paragraph(f"<b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor<br/><br/><font size=7>PPD {ppd_name} | {kod_ppd} | TEMPLATE JPN 100%</font>", style_center))
                 except Exception as e:
                     print(f"sig error {e}")
-                    story.append(Paragraph(f"MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor<br/><br/><font size=7>PPD {ppd_name} | {kod_ppd} | TEMPLATE JPN 100%</font>", style_normal))
+                    style_center = ParagraphStyle('CenterJPN', parent=style_normal, alignment=1, spaceAfter=3)
+                    story.append(Paragraph(f"MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor", style_center))
             else:
-                story.append(Paragraph(f"MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor<br/><br/><font size=7>PPD {ppd_name} | {kod_ppd} | TEMPLATE JPN 100% | Logo: {logo_path or 'tiada'}</font>", style_normal))
+                style_center = ParagraphStyle('CenterJPN', parent=style_normal, alignment=1, spaceAfter=3)
+                story.append(Paragraph(f"MALAYSIA MADANI<br/><b>BERKHIDMAT UNTUK NEGARA</b><br/><br/>Saya yang menjalankan amanah,<br/><br/><br/><b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor<br/><br/><font size=7>PPD {ppd_name} | {kod_ppd} | TEMPLATE JPN 100%</font>", style_center))
             doc.build(story)
             pdf_bytes = buffer.getvalue()
             buffer.close()
