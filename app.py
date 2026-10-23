@@ -797,9 +797,10 @@ def to_excel(df):
         return b""
 
 
+
 def get_template_guru(kod_sekolah_contoh="BFT0003", nama_sekolah_contoh="SAM NURUL IMAN", kod_ppd_contoh="BH"):
-    """Template 100% match schema sebenar guru_master (18 columns) - no no_pusat_asal"""
-    template_lengkap = {
+    """Template FINAL ikut permintaan SUP: hanya yang perlu isi, pengalaman & jawatan boleh kosong"""
+    template = {
         "kod_ppd": [kod_ppd_contoh.lower()],
         "kod_sekolah": [kod_sekolah_contoh.upper()],
         "nama_guru": ["CONTOH: ALI BIN ABU"],
@@ -808,55 +809,57 @@ def get_template_guru(kod_sekolah_contoh="BFT0003", nama_sekolah_contoh="SAM NUR
         "poskod_rumah": ["40000"],
         "alamat_rumah": ["NO 1, JALAN CONTOH, KLANG"],
         "telefon_guru": ["012-3456789"],
-        "email_guru": ["ali@gmail.com"],
-        "jawatan_cadangan": ["Pengawas Peperiksaan"],
-        "pengalaman_spm": ["3"],
         "no_pusat_asal": ["BA142"],
         "kod_sekolah_asal": [kod_sekolah_contoh.upper()],
         "nama_sekolah_asal": [nama_sekolah_contoh],
         "kod_ppd_asal": [kod_ppd_contoh],
+        "jawatan_cadangan": [""],  # KOSONG - akan diisi masa lantikan
+        "pengalaman_spm": [""],    # KOSONG - akan diisi masa lantikan
+        "email_guru": [""],        # Optional
     }
-    return pd.DataFrame(template_lengkap)
+    return pd.DataFrame(template)
 
 def get_template_guru_friendly():
     template_mudah = {
         "NAMA GURU": ["CONTOH: ALI BIN ABU"],
-        "IC": ["900101-01-1234"],
-        "JANTINA": ["L"],
-        "POSKOD_RUMAH": ["40000"],
-        "ALAMAT_RUMAH": ["NO 1, JALAN CONTOH"],
-        "TELEFON_GURU": ["012-3456789"],
-        "EMAIL_GURU": ["ali@gmail.com"],
-        "JAWATAN_CADANGAN": ["Pengawas Peperiksaan"],
-        "PENGALAMAN_SPM": ["3"],
-        "KOD_SEKOLAH": ["BFT0003"],
-        "NAMA_SEKOLAH_ASAL": ["SAM NURUL IMAN"],
-        "NO_PUSAT_ASAL": ["BA142"],
-        "KOD_PPD": ["BH"]
+        "IC GURU": ["900101-01-1234"],
+        "JANTINA": ["L/LELAKI/PEREMPUAN"],
+        "KOD PPD": ["BH"],
+        "KOD SEKOLAH": ["BFT0003"],
+        "POSKOD RUMAH": ["40000"],
+        "ALAMAT RUMAH": ["NO 1, JALAN CONTOH, KLANG"],
+        "TELEFON GURU": ["012-3456789"],
+        "NO PUSAT ASAL": ["BA142"],
+        "KOD SEKOLAH ASAL": ["BFT0003"],
+        "NAMA SEKOLAH ASAL": ["SAM NURUL IMAN"],
+        "KOD PPD ASAL": ["BH"],
+        "JAWATAN CADANGAN": ["(Kosongkan - isi masa lantikan)"],
+        "PENGALAMAN SPM": ["(Kosongkan - isi masa lantikan)"],
     }
     return pd.DataFrame(template_mudah)
 
 def normalize_guru_import(df_upload):
     HEADER_MAP = {
         "NAMA GURU": "nama_guru", "NAMA_GURU": "nama_guru", "nama_guru": "nama_guru", "NAMA": "nama_guru",
-        "IC": "ic_guru", "IC_GURU": "ic_guru", "ic_guru": "ic_guru", "NO IC": "ic_guru",
-        "KOD_PPD": "kod_ppd", "kod_ppd": "kod_ppd", "KOD PPD": "kod_ppd",
-        "KOD_SEKOLAH": "kod_sekolah", "kod_sekolah": "kod_sekolah",
-        "KOD_SEKOLAH_ASAL": "kod_sekolah_asal", "kod_sekolah_asal": "kod_sekolah_asal",
+        "IC GURU": "ic_guru", "IC_GURU": "ic_guru", "ic_guru": "ic_guru", "IC": "ic_guru", "NO IC": "ic_guru",
+        "KOD PPD": "kod_ppd", "KOD_PPD": "kod_ppd", "kod_ppd": "kod_ppd",
+        "KOD SEKOLAH": "kod_sekolah", "KOD_SEKOLAH": "kod_sekolah", "kod_sekolah": "kod_sekolah",
+        "KOD SEKOLAH ASAL": "kod_sekolah_asal", "KOD_SEKOLAH_ASAL": "kod_sekolah_asal", "kod_sekolah_asal": "kod_sekolah_asal",
         "JANTINA": "jantina", "jantina": "jantina",
-        "POSKOD_RUMAH": "poskod_rumah", "poskod_rumah": "poskod_rumah", "POSKOD": "poskod_rumah",
-        "ALAMAT_RUMAH": "alamat_rumah", "alamat_rumah": "alamat_rumah", "ALAMAT": "alamat_rumah",
-        "TELEFON_GURU": "telefon_guru", "telefon_guru": "telefon_guru", "TELEFON": "telefon_guru",
-        "EMAIL_GURU": "email_guru", "email_guru": "email_guru", "EMAIL": "email_guru",
-        "JAWATAN_CADANGAN": "jawatan_cadangan", "jawatan_cadangan": "jawatan_cadangan",
-        "PENGALAMAN_SPM": "pengalaman_spm", "pengalaman_spm": "pengalaman_spm", "PENGALAMAN": "pengalaman_spm",
-        "NO_PUSAT_ASAL": "no_pusat_asal", "no_pusat_asal": "no_pusat_asal", "NO PUSAT ASAL": "no_pusat_asal",
-        "NAMA_SEKOLAH_ASAL": "nama_sekolah_asal", "nama_sekolah_asal": "nama_sekolah_asal",
-        "KOD_PPD_ASAL": "kod_ppd_asal", "kod_ppd_asal": "kod_ppd_asal",
+        "POSKOD RUMAH": "poskod_rumah", "POSKOD_RUMAH": "poskod_rumah", "poskod_rumah": "poskod_rumah", "POSKOD": "poskod_rumah",
+        "ALAMAT RUMAH": "alamat_rumah", "ALAMAT_RUMAH": "alamat_rumah", "alamat_rumah": "alamat_rumah", "ALAMAT": "alamat_rumah",
+        "TELEFON GURU": "telefon_guru", "TELEFON_GURU": "telefon_guru", "telefon_guru": "telefon_guru", "TELEFON": "telefon_guru",
+        "EMAIL GURU": "email_guru", "EMAIL_GURU": "email_guru", "email_guru": "email_guru", "EMAIL": "email_guru",
+        "JAWATAN CADANGAN": "jawatan_cadangan", "JAWATAN_CADANGAN": "jawatan_cadangan", "jawatan_cadangan": "jawatan_cadangan",
+        "PENGALAMAN SPM": "pengalaman_spm", "PENGALAMAN_SPM": "pengalaman_spm", "pengalaman_spm": "pengalaman_spm", "PENGALAMAN": "pengalaman_spm",
+        "NO PUSAT ASAL": "no_pusat_asal", "NO_PUSAT_ASAL": "no_pusat_asal", "no_pusat_asal": "no_pusat_asal",
+        "NAMA SEKOLAH ASAL": "nama_sekolah_asal", "NAMA_SEKOLAH_ASAL": "nama_sekolah_asal", "nama_sekolah_asal": "nama_sekolah_asal",
+        "KOD PPD ASAL": "kod_ppd_asal", "KOD_PPD_ASAL": "kod_ppd_asal", "kod_ppd_asal": "kod_ppd_asal",
     }
     normalized_cols = {}
     for col in df_upload.columns:
         col_str = str(col).strip()
+        # cari exact
         if col_str in HEADER_MAP:
             normalized_cols[col] = HEADER_MAP[col_str]
         elif col_str.upper() in HEADER_MAP:
@@ -864,7 +867,6 @@ def normalize_guru_import(df_upload):
         elif col_str.lower() in HEADER_MAP:
             normalized_cols[col] = HEADER_MAP[col_str.lower()]
         else:
-            # check case-insensitive
             for k,v in HEADER_MAP.items():
                 if k.lower() == col_str.lower():
                     normalized_cols[col] = v
