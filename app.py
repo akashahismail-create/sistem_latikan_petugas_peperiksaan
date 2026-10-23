@@ -308,6 +308,173 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     html += '</body></html>'
     return html
 
+def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, no_rujukan=""):
+    """Generate surat lantikan as PDF bytes - untuk download PDF"""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        import io
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=20*mm, leftMargin=20*mm, topMargin=15*mm, bottomMargin=15*mm)
+        
+        styles = getSampleStyleSheet()
+        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=6)
+        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=12, alignment=1, spaceAfter=4)
+        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=4)
+        style_small = ParagraphStyle('SmallCustom', parent=styles['Normal'], fontSize=9, leading=12)
+        
+        story = []
+        
+        # Header
+        story.append(Paragraph("JABATAN PENDIDIKAN NEGERI SELANGOR", style_title))
+        story.append(Paragraph(f"PEJABAT PENDIDIKAN DAERAH {ppd_name.upper() or kod_ppd}", style_heading))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"<b>SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026</b>", style_heading))
+        story.append(Spacer(1, 8))
+        
+        # No Rujukan
+        no_ruj_display = no_rujukan or no_surat
+        story.append(Paragraph(f"<b>No Rujukan: {no_surat}</b>", style_normal))
+        story.append(Paragraph(f"Tarikh: {tarikh}", style_normal))
+        story.append(Spacer(1, 8))
+        
+        # Isi surat
+        isi = f"""
+        <b>Tuan/Puan {nama} ({ic})</b><br/>
+        {jawatan}<br/>
+        {nama_sek_asal or sek_asal} ({sek_asal})<br/><br/>
+        Tuan/Puan,<br/><br/>
+        <b>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM 2026</b><br/><br/>
+        Dengan hormatnya dimaklumkan bahawa tuan/puan telah dilantik sebagai <b>{jawatan}</b> bagi Peperiksaan SPM Tahun 2026.<br/><br/>
+        <b>Butiran Penempatan:</b><br/>
+        - Sekolah Asal: {nama_sek_asal or sek_asal} ({sek_asal})<br/>
+        - Pusat Peperiksaan Ditugaskan: {nama_pusat or pusat} ({pusat})<br/>
+        - No Surat Lantikan: {no_surat}<br/>
+        - Kod PPD: {kod_ppd} - {ppd_name}<br/><br/>
+        Tuan/puan dikehendaki melapor diri di pusat peperiksaan yang ditetapkan pada tarikh dan masa yang akan dimaklumkan kelak.<br/><br/>
+        Kerjasama tuan/puan amatlah dihargai dan didahului dengan ucapan terima kasih.<br/><br/>
+        Sekian.<br/><br/>
+        <b>"BERKHIDMAT UNTUK NEGARA"</b><br/><br/>
+        Saya yang menjalankan amanah,<br/><br/><br/>
+        <b>PEGAWAI PENDIDIKAN DAERAH</b><br/>
+        {ppd_name}<br/>
+        PPD {kod_ppd}<br/>
+        """
+        story.append(Paragraph(isi, style_normal))
+        story.append(Spacer(1, 12))
+        
+        # Footer table
+        data_footer = [
+            [f"No Surat: {no_surat}", f"Pusat: {pusat}"],
+            [f"Sekolah Asal: {sek_asal}", f"Jawatan: {jawatan}"]
+        ]
+        t = Table(data_footer, colWidths=[85*mm, 85*mm])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f5f5f5')),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('LEFTPADDING', (0,0), (-1,-1), 4),
+            ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(t)
+        
+        doc.build(story)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+        return pdf_bytes
+    except Exception as e:
+        # Fallback: create simple PDF with error info using reportlab basic
+        try:
+            import io
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            buffer = io.BytesIO()
+            c = canvas.Canvas(buffer, pagesize=A4)
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(50, 800, f"SURAT LANTIKAN SPM 2026 - {kod_ppd}")
+            c.setFont("Helvetica", 10)
+            y = 780
+            lines = [
+                f"No Surat: {no_surat}",
+                f"Nama: {nama}",
+                f"IC: {ic}",
+                f"Jawatan: {jawatan}",
+                f"Sekolah Asal: {sek_asal} - {nama_sek_asal}",
+                f"Pusat Tugas: {pusat} - {nama_pusat}",
+                f"Tarikh: {tarikh}",
+                f"PPD: {kod_ppd} - {ppd_name}",
+                "",
+                "Tuan/Puan telah dilantik sebagai petugas peperiksaan SPM 2026.",
+                f"Sila lapor diri di pusat {pusat}.",
+            ]
+            for line in lines:
+                c.drawString(50, y, line)
+                y -= 20
+                if y < 50:
+                    c.showPage()
+                    y = 800
+            c.save()
+            return buffer.getvalue()
+        except Exception as e2:
+            return None
+
+def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURAT LANTIKAN KESELURUHAN"):
+    """Generate kolektif PDF untuk banyak surat"""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
+        from reportlab.lib import colors
+        import io
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=10*mm, bottomMargin=10*mm)
+        styles = getSampleStyleSheet()
+        style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=4)
+        style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=11, alignment=1, spaceAfter=3)
+        style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=9, leading=12, spaceAfter=3)
+        
+        story = []
+        story.append(Paragraph(f"{title}", style_title))
+        story.append(Paragraph(f"PPD {kod_ppd} - {ppd_name} - {len(surat_list)} Guru", style_heading))
+        story.append(Spacer(1, 6))
+        
+        for idx, s in enumerate(surat_list, start=1):
+            nama = s.get('nama','')
+            ic = s.get('ic','')
+            jawatan = s.get('jawatan') or s.get('JAWATAN') or ''
+            sek_asal = s.get('sekolah_asal') or s.get('SEKOLAH ASAL') or ''
+            pusat = s.get('pusat') or s.get('PUSAT') or ''
+            no_surat = s.get('no_surat') or s.get('NO SURAT') or s.get('NO SURAT BARU') or ''
+            nama_pusat = s.get('nama_pusat') or s.get('NAMA PUSAT') or ''
+            
+            isi = f"""
+            <b>{idx}. {nama} ({ic}) - {jawatan}</b><br/>
+            No Surat: <b>{no_surat}</b> | Sekolah Asal: {sek_asal} | Pusat: {pusat} - {nama_pusat}<br/>
+            Tuan/Puan telah dilantik sebagai {jawatan} SPM 2026 di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
+            """
+            story.append(Paragraph(isi, style_normal))
+            story.append(Spacer(1, 4))
+            if idx % 6 == 0:
+                story.append(PageBreak())
+        
+        doc.build(story)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+        return pdf_bytes
+    except Exception as e:
+        return None
+
+
+
+
 def generate_surat_penyelia_kawasan_html(nama, ic, sek_asal, nama_sek_asal, telefon, kod_bilik_kebal, nama_bilik_kebal, alamat_bilik_kebal, pusat_jagaan_list, no_surat, kod_ppd, ppd_name, tarikh):
     """Surat khas untuk Penyelia Kawasan yang ditempatkan ke Bilik Kebal"""
     # V34: Ensure pusat_jagaan_list is not empty, fallback to kod_pusat if needed
@@ -2020,6 +2187,12 @@ if st.session_state.role == "SUP":
                                     )
                                 
                                 st.components.v1.html(html_surat, height=600, scrolling=True)
+                                try:
+                                    pdf_single = generate_surat_pdf_bytes(nama, ic, jawatan, r.get("KOD_SEKOLAH_ASAL", "") or kod, r.get("NAMA_SEKOLAH_ASAL", "") or info.get('nama_sekolah',''), pusat, pusat_nama or nama_bk, no_surat, r.get("KOD_PPD", "") or info.get('kod_ppd',''), PPD_MAP.get(r.get("KOD_PPD", "") or info.get('kod_ppd',''), ""), datetime.date.today().strftime('%d %B %Y'), no_surat)
+                                    if pdf_single:
+                                        st.download_button(f"📥 Download Surat {nama} - {label_bk} (PDF)", data=pdf_single, file_name=f"Surat_{label_bk.replace(' ', '_')}_{nama.replace(' ', '_')}_{no_surat.replace('/', '_')}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_{r.get('id','')}")
+                                except:
+                                    pass
                                 st.download_button(f"📥 Download Surat {nama} - {label_bk}", data=html_surat.encode('utf-8'), file_name=f"Surat_{label_bk.replace(' ', '_')}_{nama.replace(' ', '_')}_{no_surat.replace('/', '_')}.html", mime="text/html", use_container_width=True, key=f"dl_{r.get('id','')}")
                                 
                                 # Show extra info for penyelia kawasan
@@ -2043,7 +2216,7 @@ elif st.session_state.role == "PPD":
         add_refresh_button()
         
         MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'), 
-                    ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('selenggara', '🔐 Selenggara Bilik Kebal'), ('semakan', '🔍 Semakan Lantikan'), ('kelulusan', '✅ Kelulusan'), 
+                    ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('selenggara', '🔐 Selenggara Bilik Kebal'), ('semakan', '🔍 Semakan Lantikan'), ('kelulusan', '✅ Kelulusan'), ('jana_surat', '📄 Janaan Surat Lantikan'),
                     ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu PPD", [k for k, _ in MENU_PPD], format_func=dict(MENU_PPD).get, label_visibility="collapsed", key="ppd_menu_radio")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -4493,7 +4666,15 @@ elif st.session_state.role == "PPD":
                                 st.balloons()
                                 st.info(f"📄 Surat yang sama telah dihantar ke sekolah asal guru (SUP boleh lihat di menu Surat Lantikan Saya > ada surat - untuk SUP cetak dan bagi pada guru di mana dia kena bertugas)")
                                 st.components.v1.html(full_html_all[:15000], height=700, scrolling=True)
+                                try:
+                                    pdf_bytes_all = generate_surat_kolektif_pdf_bytes(surat_list_all, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd}")
+                                    if pdf_bytes_all:
+                                        st.download_button("📥 Download Surat Keseluruhan (PDF)", data=pdf_bytes_all, file_name=f"Surat_Lantikan_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_surat_keseluruhan_pdf_after_lulus")
+                                except:
+                                    pass
                                 st.download_button("📥 Download Surat Keseluruhan (HTML) - Untuk PPD", data=full_html_all.encode('utf-8'), file_name=f"Surat_Lantikan_Keseluruhan_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key="dl_surat_keseluruhan_after_lulus")
+                                # Also PDF individual zip? For now collective PDF
+                                
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error lulus keseluruhan: {e}")
@@ -4509,6 +4690,12 @@ elif st.session_state.role == "PPD":
                             st.session_state["surat_keseluruhan_html"] = full_html
                             st.success(f"Surat Keseluruhan {len(preview_rows)} guru berjaya dijana! No Surat {max_no_global+1} hingga {max_no_global+len(preview_rows)} berturutan")
                             st.components.v1.html(full_html[:10000], height=600, scrolling=True)
+                            try:
+                                pdf_k = generate_surat_kolektif_pdf_bytes([{"nama": s["NAMA GURU"], "ic": s["IC"], "jawatan": s["JAWATAN"], "sekolah_asal": s["SEKOLAH ASAL"], "pusat": s["PUSAT"], "no_surat": s["NO SURAT BARU"], "nama_pusat": s["NAMA PUSAT"]} for s in preview_rows], kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd}")
+                                if pdf_k:
+                                    st.download_button("📥 Download Surat Keseluruhan (PDF)", data=pdf_k, file_name=f"Surat_Lantikan_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_surat_keseluruhan_pdf")
+                            except:
+                                pass
                             st.download_button("📥 Download Surat Keseluruhan (HTML)", data=full_html.encode('utf-8'), file_name=f"Surat_Lantikan_Keseluruhan_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key="dl_surat_keseluruhan")
             
             # ===== OPTION 2: LULUS MENGIKUT PUSAT =====
@@ -4654,7 +4841,13 @@ elif st.session_state.role == "PPD":
                                     st.balloons()
                                     st.info(f"📄 Surat yang sama telah sampai ke sekolah asal guru - SUP boleh lihat di Surat Lantikan Saya untuk cetak & bagi pada guru di mana dia kena bertugas ({pilihan_pusat_lulus})")
                                     st.components.v1.html(full_html_pusat[:15000], height=700, scrolling=True)
-                                    st.download_button(f"📥 Download Surat {pilihan_pusat_lulus} (HTML) & Hantar ke Sekolah Asal", data=full_html_pusat.encode('utf-8'), file_name=f"Surat_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key=f"dl_surat_pusat_after_{pilihan_pusat_lulus}")
+                                    try:
+                                        pdf_pusat = generate_surat_kolektif_pdf_bytes(surat_list_pusat, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilihan_pusat_lulus}")
+                                        if pdf_pusat:
+                                            st.download_button(f"📥 Download Surat {pilihan_pusat_lulus} (PDF) & Hantar ke Sekolah Asal", data=pdf_pusat, file_name=f"Surat_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_surat_pusat_pdf_after_{pilihan_pusat_lulus}")
+                                except:
+                                    pass
+                                st.download_button(f"📥 Download Surat {pilihan_pusat_lulus} (HTML) & Hantar ke Sekolah Asal", data=full_html_pusat.encode('utf-8'), file_name=f"Surat_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key=f"dl_surat_pusat_after_{pilihan_pusat_lulus}")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error lulus pusat: {e}")
@@ -4670,6 +4863,12 @@ elif st.session_state.role == "PPD":
                                 st.session_state[f"surat_pusat_{pilihan_pusat_lulus}"] = full_html
                                 st.success(f"Surat {pilihan_pusat_lulus} berjaya dijana! {len(preview_pusat)} guru")
                                 st.components.v1.html(full_html[:10000], height=600, scrolling=True)
+                                try:
+                                    pdf_k2 = generate_surat_kolektif_pdf_bytes([{"nama": s["NAMA GURU"], "ic": s["IC"], "jawatan": s["JAWATAN"], "sekolah_asal": s["SEKOLAH ASAL"], "pusat": s["PUSAT"], "no_surat": s["NO SURAT BARU"]} for s in preview_pusat], kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilihan_pusat_lulus}")
+                                    if pdf_k2:
+                                        st.download_button(f"📥 Download Surat {pilihan_pusat_lulus} (PDF)", data=pdf_k2, file_name=f"Surat_Lantikan_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_surat_pusat_pdf_{pilihan_pusat_lulus}")
+                                except:
+                                    pass
                                 st.download_button(f"📥 Download Surat {pilihan_pusat_lulus}", data=full_html.encode('utf-8'), file_name=f"Surat_Lantikan_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key=f"dl_surat_pusat_{pilihan_pusat_lulus}")
             
 
@@ -5474,6 +5673,241 @@ elif st.session_state.role == "PPD":
                                         except Exception as e:
                                             st.error(f"Error hantar: {e}")
 
+
+        elif menu == "jana_surat":
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+                <h2 style="margin:0; color:white;">📄 Janaan Surat Lantikan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,'')}</h2>
+                <p style="margin:5px 0 0 0; color:#bbdefb;">Surat yang telah diluluskan PPD - PPD boleh lihat, jana semula & download PDF. Surat yang sama juga dihantar ke sekolah asal guru untuk SUP cetak.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            df_cad_all_surat = get_cadangan_df(kod_ppd=kod_ppd)
+            if df_cad_all_surat.empty:
+                st.warning("Belum ada cadangan di PPD ini")
+                st.stop()
+            
+            # Build pusat map
+            df_pusat_raw_surat = get_pusat_df()
+            pusat_map_surat = {}
+            try:
+                for _, r in df_pusat_raw_surat.iterrows():
+                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                    if isinstance(d, str):
+                        try: d = json.loads(d)
+                        except: d = {}
+                    no_p = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                    nama_p = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                    if no_p:
+                        pusat_map_surat[no_p] = nama_p
+            except:
+                pass
+            
+            # Filter yang ada no_surat / sudah LULUS
+            def has_surat_ppd(row):
+                ns = str(row.get("no_surat") or "").strip()
+                stt = str(row.get("status") or "").upper()
+                return (ns != "" and ns.lower() not in ("none","null","nan")) or ("LULUS" in stt)
+            
+            df_lulus_surat = df_cad_all_surat[df_cad_all_surat.apply(has_surat_ppd, axis=1)].copy() if not df_cad_all_surat.empty else pd.DataFrame()
+            df_belum_surat = df_cad_all_surat[~df_cad_all_surat.apply(has_surat_ppd, axis=1)].copy() if not df_cad_all_surat.empty else pd.DataFrame()
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Cadangan PPD", len(df_cad_all_surat))
+            c2.metric("✅ Sudah Lulus Ada Surat", len(df_lulus_surat))
+            c3.metric("⏳ Belum Ada Surat", len(df_belum_surat))
+            
+            if df_lulus_surat.empty:
+                st.warning("Belum ada surat yang diluluskan di PPD ini - sila luluskan di menu Kelulusan dahulu")
+                st.info("Pergi ke Kelulusan > Lulus Keseluruhan atau Lulus Mengikut Pusat untuk luluskan dan jana surat")
+                st.stop()
+            
+            # Tabs for view
+            tab_keseluruhan, tab_pusat_surat, tab_sekolah_asal = st.tabs(["📄 Semua Surat (Keseluruhan)", "🏫 Ikut Pusat", "🏫 Ikut Sekolah Asal (Untuk Hantar)"])
+            
+            with tab_keseluruhan:
+                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat")
+                
+                display_rows = []
+                for _, r in df_lulus_surat.iterrows():
+                    display_rows.append({
+                        "id": r.get("id",""),
+                        "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                        "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                        "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                        "NAMA SEKOLAH ASAL": str(r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""))[:30],
+                        "PUSAT TUGAS": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                        "NAMA PUSAT": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), "")[:30],
+                        "NO SURAT": r.get("no_surat","") or "",
+                        "STATUS": r.get("status","") or ""
+                    })
+                df_display_all = pd.DataFrame(display_rows)
+                st.dataframe(df_display_all, use_container_width=True, hide_index=True)
+                
+                # Generate PDF Keseluruhan
+                col_gen1, col_gen2 = st.columns(2)
+                with col_gen1:
+                    if st.button(f"📄 Jana & Preview Surat Keseluruhan {len(df_display_all)} PDF", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
+                        try:
+                            surat_list = []
+                            for _, r in df_display_all.iterrows():
+                                surat_list.append({
+                                    "nama": r["NAMA GURU"],
+                                    "ic": r["IC"],
+                                    "jawatan": r["JAWATAN"],
+                                    "sekolah_asal": r["SEKOLAH ASAL"],
+                                    "pusat": r["PUSAT TUGAS"],
+                                    "nama_pusat": r["NAMA PUSAT"],
+                                    "no_surat": r["NO SURAT"]
+                                })
+                            pdf_bytes = generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU")
+                            if pdf_bytes:
+                                st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_bytes
+                                st.success(f"✅ PDF Keseluruhan {len(surat_list)} surat berjaya dijana!")
+                            else:
+                                st.error("Gagal jana PDF - cuba HTML")
+                                # Fallback HTML
+                                full_html = f"<html><head><meta charset='UTF-8'></head><body><h1>Surat Keseluruhan PPD {kod_ppd}</h1>"
+                                for s in surat_list:
+                                    try:
+                                        h = generate_surat_html(s["nama"], s["ic"], s["jawatan"], s["sekolah_asal"], s["sekolah_asal"], s["pusat"], s["nama_pusat"], s["no_surat"], kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
+                                        full_html += h
+                                    except:
+                                        pass
+                                full_html += "</body></html>"
+                                st.session_state[f"html_keseluruhan_{kod_ppd}"] = full_html
+                        except Exception as e:
+                            st.error(f"Error jana PDF: {e}")
+                
+                with col_gen2:
+                    if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
+                        pdf_data = st.session_state[f"pdf_keseluruhan_{kod_ppd}"]
+                        st.download_button(f"📥 Download PDF Keseluruhan {len(df_display_all)} Surat (PPD)", data=pdf_data, file_name=f"Surat_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
+                    if f"html_keseluruhan_{kod_ppd}" in st.session_state:
+                        html_data = st.session_state[f"html_keseluruhan_{kod_ppd}"]
+                        st.download_button("📥 Download HTML Keseluruhan", data=html_data.encode('utf-8'), file_name=f"Surat_Keseluruhan_{kod_ppd}.html", mime="text/html", use_container_width=True, key="dl_html_keseluruhan_main")
+                
+                # Preview if exists
+                if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
+                    st.info("PDF Keseluruhan telah dijana - klik Download di atas untuk dapatkan PDF. Surat yang sama juga telah sampai ke sekolah asal guru untuk SUP cetak.")
+            
+            with tab_pusat_surat:
+                st.markdown("### 🏫 Janaan Surat Ikut Pusat")
+                # Group by pusat
+                pusat_groups_surat = {}
+                for _, r in df_lulus_surat.iterrows():
+                    kp = str(r.get("kod_pusat") or r.get("KOD_PUSAT") or "").upper().strip()
+                    if kp:
+                        if kp not in pusat_groups_surat:
+                            pusat_groups_surat[kp] = []
+                        pusat_groups_surat[kp].append(r)
+                
+                pilih_pusat_jana = st.selectbox(
+                    "Pilih Pusat Untuk Jana Surat PDF",
+                    sorted(pusat_groups_surat.keys()),
+                    format_func=lambda x: f"{x} - {pusat_map_surat.get(x,'')} ({len(pusat_groups_surat[x])} surat)",
+                    key="pilih_pusat_jana_surat"
+                )
+                
+                if pilih_pusat_jana:
+                    guru_pusat = pusat_groups_surat[pilih_pusat_jana]
+                    df_pusat_surat = pd.DataFrame([{
+                        "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                        "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                        "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                        "NO SURAT": r.get("no_surat",""),
+                        "STATUS": r.get("status","")
+                    } for r in guru_pusat])
+                    st.dataframe(df_pusat_surat, use_container_width=True, hide_index=True)
+                    
+                    if st.button(f"📄 Jana PDF Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
+                        try:
+                            surat_list_p = []
+                            for r in guru_pusat:
+                                surat_list_p.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_pusat = generate_surat_kolektif_pdf_bytes(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')}")
+                            if pdf_pusat:
+                                st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
+                                st.success(f"✅ PDF {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    
+                    if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
+                        pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
+                        st.download_button(f"📥 Download PDF Surat {pilih_pusat_jana} ({len(guru_pusat)} Surat)", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
+                        st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas")
+            
+            with tab_sekolah_asal:
+                st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak")
+                st.caption("Surat yang telah diluluskan akan sampai ke sekolah asal guru - SUP boleh cetak dan bagi pada guru berkenaan")
+                
+                # Group by sekolah asal
+                sekolah_groups_surat = {}
+                for _, r in df_lulus_surat.iterrows():
+                    ks = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or "").upper().strip()
+                    if ks:
+                        if ks not in sekolah_groups_surat:
+                            sekolah_groups_surat[ks] = []
+                        sekolah_groups_surat[ks].append(r)
+                
+                pilih_sekolah_surat = st.selectbox(
+                    "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai",
+                    sorted(sekolah_groups_surat.keys()),
+                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak)",
+                    key="pilih_sekolah_surat_jana"
+                )
+                
+                if pilih_sekolah_surat:
+                    guru_sekolah = sekolah_groups_surat[pilih_sekolah_surat]
+                    df_sek_surat = pd.DataFrame([{
+                        "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                        "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                        "PUSAT TUGAS": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                        "NAMA PUSAT": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), "")[:30],
+                        "NO SURAT": r.get("no_surat",""),
+                        "STATUS": r.get("status","")
+                    } for r in guru_sekolah])
+                    st.dataframe(df_sek_surat, use_container_width=True, hide_index=True)
+                    st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak dan bagi pada guru berkenaan di mana dia kena bertugas")
+                    
+                    if st.button(f"📄 Jana PDF Surat Untuk Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
+                        try:
+                            surat_list_s = []
+                            for r in guru_sekolah:
+                                surat_list_s.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_sek = generate_surat_kolektif_pdf_bytes(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK")
+                            if pdf_sek:
+                                st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
+                                st.success(f"✅ PDF Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    
+                    if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                        pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
+                        st.download_button(f"📥 Download PDF Surat Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat) - Untuk SUP Cetak & Bagi Pada Guru", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
+                        st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan di mana dia kena bertugas (pusat masing-masing)")
+
+
+
         elif menu == "export":
             st.header(f"Export Data PPD {kod_ppd}")
 
@@ -5914,6 +6348,241 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                     st.download_button("Export Semua Cadangan", to_excel(df), file_name=f"cadangan_negeri_{datetime.date.today()}.xlsx")
             except Exception as e:
                 st.error(str(e))
+
+
+        elif menu == "jana_surat":
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+                <h2 style="margin:0; color:white;">📄 Janaan Surat Lantikan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,'')}</h2>
+                <p style="margin:5px 0 0 0; color:#bbdefb;">Surat yang telah diluluskan PPD - PPD boleh lihat, jana semula & download PDF. Surat yang sama juga dihantar ke sekolah asal guru untuk SUP cetak.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            df_cad_all_surat = get_cadangan_df(kod_ppd=kod_ppd)
+            if df_cad_all_surat.empty:
+                st.warning("Belum ada cadangan di PPD ini")
+                st.stop()
+            
+            # Build pusat map
+            df_pusat_raw_surat = get_pusat_df()
+            pusat_map_surat = {}
+            try:
+                for _, r in df_pusat_raw_surat.iterrows():
+                    d = r.get("data") if isinstance(r.get("data"), dict) else {}
+                    if isinstance(d, str):
+                        try: d = json.loads(d)
+                        except: d = {}
+                    no_p = str(r.get("no_pusat") or r.get("kod_pusat") or d.get("NO_PUSAT") or "").upper().strip()
+                    nama_p = r.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
+                    if no_p:
+                        pusat_map_surat[no_p] = nama_p
+            except:
+                pass
+            
+            # Filter yang ada no_surat / sudah LULUS
+            def has_surat_ppd(row):
+                ns = str(row.get("no_surat") or "").strip()
+                stt = str(row.get("status") or "").upper()
+                return (ns != "" and ns.lower() not in ("none","null","nan")) or ("LULUS" in stt)
+            
+            df_lulus_surat = df_cad_all_surat[df_cad_all_surat.apply(has_surat_ppd, axis=1)].copy() if not df_cad_all_surat.empty else pd.DataFrame()
+            df_belum_surat = df_cad_all_surat[~df_cad_all_surat.apply(has_surat_ppd, axis=1)].copy() if not df_cad_all_surat.empty else pd.DataFrame()
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Cadangan PPD", len(df_cad_all_surat))
+            c2.metric("✅ Sudah Lulus Ada Surat", len(df_lulus_surat))
+            c3.metric("⏳ Belum Ada Surat", len(df_belum_surat))
+            
+            if df_lulus_surat.empty:
+                st.warning("Belum ada surat yang diluluskan di PPD ini - sila luluskan di menu Kelulusan dahulu")
+                st.info("Pergi ke Kelulusan > Lulus Keseluruhan atau Lulus Mengikut Pusat untuk luluskan dan jana surat")
+                st.stop()
+            
+            # Tabs for view
+            tab_keseluruhan, tab_pusat_surat, tab_sekolah_asal = st.tabs(["📄 Semua Surat (Keseluruhan)", "🏫 Ikut Pusat", "🏫 Ikut Sekolah Asal (Untuk Hantar)"])
+            
+            with tab_keseluruhan:
+                st.markdown(f"### 📄 Semua Surat Lantikan PPD {kod_ppd} - {len(df_lulus_surat)} Surat")
+                
+                display_rows = []
+                for _, r in df_lulus_surat.iterrows():
+                    display_rows.append({
+                        "id": r.get("id",""),
+                        "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                        "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                        "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                        "NAMA SEKOLAH ASAL": str(r.get("NAMA_SEKOLAH_ASAL","") or r.get("nama_sekolah_asal",""))[:30],
+                        "PUSAT TUGAS": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                        "NAMA PUSAT": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), "")[:30],
+                        "NO SURAT": r.get("no_surat","") or "",
+                        "STATUS": r.get("status","") or ""
+                    })
+                df_display_all = pd.DataFrame(display_rows)
+                st.dataframe(df_display_all, use_container_width=True, hide_index=True)
+                
+                # Generate PDF Keseluruhan
+                col_gen1, col_gen2 = st.columns(2)
+                with col_gen1:
+                    if st.button(f"📄 Jana & Preview Surat Keseluruhan {len(df_display_all)} PDF", type="primary", use_container_width=True, key="btn_jana_pdf_keseluruhan"):
+                        try:
+                            surat_list = []
+                            for _, r in df_display_all.iterrows():
+                                surat_list.append({
+                                    "nama": r["NAMA GURU"],
+                                    "ic": r["IC"],
+                                    "jawatan": r["JAWATAN"],
+                                    "sekolah_asal": r["SEKOLAH ASAL"],
+                                    "pusat": r["PUSAT TUGAS"],
+                                    "nama_pusat": r["NAMA PUSAT"],
+                                    "no_surat": r["NO SURAT"]
+                                })
+                            pdf_bytes = generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN KESELURUHAN PPD {kod_ppd} - {len(surat_list)} GURU")
+                            if pdf_bytes:
+                                st.session_state[f"pdf_keseluruhan_{kod_ppd}"] = pdf_bytes
+                                st.success(f"✅ PDF Keseluruhan {len(surat_list)} surat berjaya dijana!")
+                            else:
+                                st.error("Gagal jana PDF - cuba HTML")
+                                # Fallback HTML
+                                full_html = f"<html><head><meta charset='UTF-8'></head><body><h1>Surat Keseluruhan PPD {kod_ppd}</h1>"
+                                for s in surat_list:
+                                    try:
+                                        h = generate_surat_html(s["nama"], s["ic"], s["jawatan"], s["sekolah_asal"], s["sekolah_asal"], s["pusat"], s["nama_pusat"], s["no_surat"], kod_ppd, PPD_MAP.get(kod_ppd,""), datetime.date.today().strftime('%d %B %Y'))
+                                        full_html += h
+                                    except:
+                                        pass
+                                full_html += "</body></html>"
+                                st.session_state[f"html_keseluruhan_{kod_ppd}"] = full_html
+                        except Exception as e:
+                            st.error(f"Error jana PDF: {e}")
+                
+                with col_gen2:
+                    if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
+                        pdf_data = st.session_state[f"pdf_keseluruhan_{kod_ppd}"]
+                        st.download_button(f"📥 Download PDF Keseluruhan {len(df_display_all)} Surat (PPD)", data=pdf_data, file_name=f"Surat_Keseluruhan_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key="dl_pdf_keseluruhan_main")
+                    if f"html_keseluruhan_{kod_ppd}" in st.session_state:
+                        html_data = st.session_state[f"html_keseluruhan_{kod_ppd}"]
+                        st.download_button("📥 Download HTML Keseluruhan", data=html_data.encode('utf-8'), file_name=f"Surat_Keseluruhan_{kod_ppd}.html", mime="text/html", use_container_width=True, key="dl_html_keseluruhan_main")
+                
+                # Preview if exists
+                if f"pdf_keseluruhan_{kod_ppd}" in st.session_state:
+                    st.info("PDF Keseluruhan telah dijana - klik Download di atas untuk dapatkan PDF. Surat yang sama juga telah sampai ke sekolah asal guru untuk SUP cetak.")
+            
+            with tab_pusat_surat:
+                st.markdown("### 🏫 Janaan Surat Ikut Pusat")
+                # Group by pusat
+                pusat_groups_surat = {}
+                for _, r in df_lulus_surat.iterrows():
+                    kp = str(r.get("kod_pusat") or r.get("KOD_PUSAT") or "").upper().strip()
+                    if kp:
+                        if kp not in pusat_groups_surat:
+                            pusat_groups_surat[kp] = []
+                        pusat_groups_surat[kp].append(r)
+                
+                pilih_pusat_jana = st.selectbox(
+                    "Pilih Pusat Untuk Jana Surat PDF",
+                    sorted(pusat_groups_surat.keys()),
+                    format_func=lambda x: f"{x} - {pusat_map_surat.get(x,'')} ({len(pusat_groups_surat[x])} surat)",
+                    key="pilih_pusat_jana_surat"
+                )
+                
+                if pilih_pusat_jana:
+                    guru_pusat = pusat_groups_surat[pilih_pusat_jana]
+                    df_pusat_surat = pd.DataFrame([{
+                        "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                        "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                        "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                        "NO SURAT": r.get("no_surat",""),
+                        "STATUS": r.get("status","")
+                    } for r in guru_pusat])
+                    st.dataframe(df_pusat_surat, use_container_width=True, hide_index=True)
+                    
+                    if st.button(f"📄 Jana PDF Surat {pilih_pusat_jana} - {len(guru_pusat)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_pusat_{pilih_pusat_jana}"):
+                        try:
+                            surat_list_p = []
+                            for r in guru_pusat:
+                                surat_list_p.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_pusat = generate_surat_kolektif_pdf_bytes(surat_list_p, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN {pilih_pusat_jana} - {pusat_map_surat.get(pilih_pusat_jana,'')}")
+                            if pdf_pusat:
+                                st.session_state[f"pdf_pusat_{pilih_pusat_jana}"] = pdf_pusat
+                                st.success(f"✅ PDF {pilih_pusat_jana} {len(surat_list_p)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    
+                    if f"pdf_pusat_{pilih_pusat_jana}" in st.session_state:
+                        pdf_d = st.session_state[f"pdf_pusat_{pilih_pusat_jana}"]
+                        st.download_button(f"📥 Download PDF Surat {pilih_pusat_jana} ({len(guru_pusat)} Surat)", data=pdf_d, file_name=f"Surat_{pilih_pusat_jana}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_pusat_{pilih_pusat_jana}")
+                        st.info(f"Surat {pilih_pusat_jana} yang sama juga telah sampai ke sekolah asal guru masing-masing untuk SUP cetak & bagi pada guru di mana dia kena bertugas")
+            
+            with tab_sekolah_asal:
+                st.markdown("### 🏫 Surat Ikut Sekolah Asal - Untuk Hantar ke SUP Cetak")
+                st.caption("Surat yang telah diluluskan akan sampai ke sekolah asal guru - SUP boleh cetak dan bagi pada guru berkenaan")
+                
+                # Group by sekolah asal
+                sekolah_groups_surat = {}
+                for _, r in df_lulus_surat.iterrows():
+                    ks = str(r.get("KOD_SEKOLAH_ASAL") or r.get("kod_sekolah_asal") or "").upper().strip()
+                    if ks:
+                        if ks not in sekolah_groups_surat:
+                            sekolah_groups_surat[ks] = []
+                        sekolah_groups_surat[ks].append(r)
+                
+                pilih_sekolah_surat = st.selectbox(
+                    "Pilih Sekolah Asal Untuk Lihat Surat Yang Sampai",
+                    sorted(sekolah_groups_surat.keys()),
+                    format_func=lambda x: f"{x} - {len(sekolah_groups_surat[x])} surat sampai (untuk SUP cetak)",
+                    key="pilih_sekolah_surat_jana"
+                )
+                
+                if pilih_sekolah_surat:
+                    guru_sekolah = sekolah_groups_surat[pilih_sekolah_surat]
+                    df_sek_surat = pd.DataFrame([{
+                        "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                        "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                        "PUSAT TUGAS": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                        "NAMA PUSAT": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), "")[:30],
+                        "NO SURAT": r.get("no_surat",""),
+                        "STATUS": r.get("status","")
+                    } for r in guru_sekolah])
+                    st.dataframe(df_sek_surat, use_container_width=True, hide_index=True)
+                    st.success(f"✅ {len(guru_sekolah)} surat telah sampai ke sekolah asal {pilih_sekolah_surat} - SUP boleh cetak dan bagi pada guru berkenaan di mana dia kena bertugas")
+                    
+                    if st.button(f"📄 Jana PDF Surat Untuk Sekolah Asal {pilih_sekolah_surat} - {len(guru_sekolah)} Guru", type="primary", use_container_width=True, key=f"btn_jana_pdf_sekolah_{pilih_sekolah_surat}"):
+                        try:
+                            surat_list_s = []
+                            for r in guru_sekolah:
+                                surat_list_s.append({
+                                    "nama": r.get("NAMA_GURU","") or r.get("nama_guru",""),
+                                    "ic": r.get("IC_GURU","") or r.get("ic_guru",""),
+                                    "jawatan": r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan",""),
+                                    "sekolah_asal": r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal",""),
+                                    "pusat": r.get("kod_pusat","") or r.get("KOD_PUSAT",""),
+                                    "nama_pusat": pusat_map_surat.get(str(r.get("kod_pusat","") or "").upper().strip(), ""),
+                                    "no_surat": r.get("no_surat","")
+                                })
+                            pdf_sek = generate_surat_kolektif_pdf_bytes(surat_list_s, kod_ppd, PPD_MAP.get(kod_ppd,""), f"SURAT LANTIKAN SEKOLAH ASAL {pilih_sekolah_surat} - {len(surat_list_s)} GURU - UNTUK SUP CETAK")
+                            if pdf_sek:
+                                st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"] = pdf_sek
+                                st.success(f"✅ PDF Sekolah Asal {pilih_sekolah_surat} {len(surat_list_s)} surat berjaya dijana!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    
+                    if f"pdf_sekolah_{pilih_sekolah_surat}" in st.session_state:
+                        pdf_s = st.session_state[f"pdf_sekolah_{pilih_sekolah_surat}"]
+                        st.download_button(f"📥 Download PDF Surat Sekolah Asal {pilih_sekolah_surat} ({len(guru_sekolah)} Surat) - Untuk SUP Cetak & Bagi Pada Guru", data=pdf_s, file_name=f"Surat_SekolahAsal_{pilih_sekolah_surat}_{kod_ppd}_{datetime.date.today()}.pdf", mime="application/pdf", use_container_width=True, key=f"dl_pdf_sekolah_{pilih_sekolah_surat}")
+                        st.info(f"📄 Surat ini akan dicetak oleh SUP {pilih_sekolah_surat} dan diberi kepada guru berkenaan di mana dia kena bertugas (pusat masing-masing)")
+
+
 
         elif menu == "export":
             st.header("Export Laporan Negeri")
