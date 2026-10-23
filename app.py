@@ -269,7 +269,71 @@ def kira_sekolah_perlu_calonkan(jumlah_kelas):
     except: return 0
 
 
+def clean_nan(val):
+    """Bersihkan nan, None, 'nan', 'None' jadi string kosong"""
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if s.lower() in ("nan", "none", "null", "nat", ""):
+        return ""
+    return s
+
+def get_nama_sekolah_full(kod_sek, fallback=""):
+    """Dapatkan nama penuh sekolah dari kod"""
+    try:
+        ks = str(kod_sek).upper().strip()
+        if not ks:
+            return fallback
+        # Cari dalam supa sekolah_master
+        try:
+            res = supa.table("sekolah_master").select("nama_sekolah, kod_sekolah").eq("kod_sekolah", ks).limit(1).execute()
+            if res.data:
+                nm = res.data[0].get("nama_sekolah") or ""
+                if nm and str(nm).lower() not in ("nan","none",""):
+                    return str(nm).strip()
+        except:
+            pass
+        # Jika fallback ada nama, guna
+        if fallback and str(fallback).upper().strip() != ks:
+            if str(fallback).lower() not in ("nan","none",""):
+                return str(fallback).strip()
+        return ks
+    except:
+        return fallback or str(kod_sek)
+
 def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh):
+    # Bersihkan semua input dari nan
+    nama = clean_nan(nama) or "Nama Guru"
+    ic = clean_nan(ic)
+    jawatan = clean_nan(jawatan) or "Petugas Peperiksaan"
+    sek_asal = clean_nan(sek_asal)
+    nama_sek_asal = clean_nan(nama_sek_asal)
+    pusat = clean_nan(pusat)
+    nama_pusat = clean_nan(nama_pusat)
+    no_surat = clean_nan(no_surat) or clean_nan(tarikh) or "JPN.SPP.HHJH/0001"
+    kod_ppd = clean_nan(kod_ppd) or "BA"
+    ppd_name = clean_nan(ppd_name) or kod_ppd
+    
+    # Dapatkan nama penuh sekolah asal - bukan sekadar kod
+    if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper():
+        display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
+    else:
+        # Cuba lookup nama penuh
+        try:
+            full_nama = get_nama_sekolah_full(sek_asal, nama_sek_asal)
+            if full_nama.upper() != sek_asal.upper():
+                display_sek_asal = f"{sek_asal} - {full_nama}"
+            else:
+                display_sek_asal = sek_asal
+        except:
+            display_sek_asal = sek_asal or "Sekolah Asal"
+    
+    # Pusat display
+    if nama_pusat and nama_pusat.upper() != pusat.upper():
+        display_pusat = f"{pusat} - {nama_pusat}"
+    else:
+        display_pusat = pusat
+    
     html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan SPM 2026</title>'
     html += '<style>body{font-family:Times New Roman,serif;margin:40px;color:#000;}'
     html += '.surat{border:2px solid #000;padding:30px;margin-bottom:30px;page-break-after:always;background:white;}'
@@ -294,8 +358,8 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     html += f'<tr><td>Nama</td><td>: {nama}</td></tr>'
     html += f'<tr><td>No. IC</td><td>: {ic}</td></tr>'
     html += f'<tr><td>Jawatan</td><td>: {jawatan}</td></tr>'
-    html += f'<tr><td>Sekolah Asal</td><td>: {sek_asal} - {nama_sek_asal}</td></tr>'
-    html += f'<tr><td>Pusat Ditugaskan</td><td>: {pusat} - {nama_pusat}</td></tr>'
+    html += f'<tr><td>Sekolah Asal</td><td>: {display_sek_asal}</td></tr>'
+    html += f'<tr><td>Pusat Ditugaskan</td><td>: {display_pusat}</td></tr>'
     html += f'<tr><td>No Surat Lantikan</td><td>: {no_surat}</td></tr>'
     html += '</table>'
     html += '<p>3. Tuan/puan dikehendaki hadir bertugas di pusat peperiksaan yang telah ditetapkan mengikut jadual yang akan dimaklumkan kemudian.</p>'
@@ -309,7 +373,37 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     return html
 
 def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, no_rujukan=""):
-    """Generate surat lantikan as PDF bytes - untuk download PDF"""
+    """Generate surat lantikan as PDF bytes - untuk download PDF - FIX nan & sekolah asal"""
+    # Bersihkan
+    try:
+        nama = clean_nan(nama) or "Nama Guru"
+        ic = clean_nan(ic)
+        jawatan = clean_nan(jawatan) or "Petugas Peperiksaan"
+        sek_asal = clean_nan(sek_asal)
+        nama_sek_asal = clean_nan(nama_sek_asal)
+        pusat = clean_nan(pusat)
+        nama_pusat = clean_nan(nama_pusat)
+        no_surat = clean_nan(no_surat) or "JPN.SPP.HHJH/0001"
+        kod_ppd = clean_nan(kod_ppd) or "BA"
+        ppd_name = clean_nan(ppd_name) or kod_ppd
+        tarikh = clean_nan(tarikh) or str(datetime.date.today())
+        
+        # Nama penuh sekolah
+        if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper():
+            display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
+        else:
+            try:
+                full_nama = get_nama_sekolah_full(sek_asal, nama_sek_asal)
+                display_sek_asal = full_nama if full_nama.upper() != sek_asal.upper() else f"{sek_asal} - {full_nama}" if full_nama else sek_asal
+            except:
+                display_sek_asal = sek_asal
+        
+        display_pusat = f"{pusat} - {nama_pusat}" if nama_pusat and nama_pusat.upper() != pusat.upper() else pusat
+    except:
+        display_sek_asal = sek_asal
+        display_pusat = pusat
+    
+    # Cuba dengan reportlab
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -325,34 +419,27 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
         style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=6)
         style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=12, alignment=1, spaceAfter=4)
         style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=4)
-        style_small = ParagraphStyle('SmallCustom', parent=styles['Normal'], fontSize=9, leading=12)
         
         story = []
-        
-        # Header
         story.append(Paragraph("JABATAN PENDIDIKAN NEGERI SELANGOR", style_title))
         story.append(Paragraph(f"PEJABAT PENDIDIKAN DAERAH {ppd_name.upper() or kod_ppd}", style_heading))
         story.append(Spacer(1, 6))
         story.append(Paragraph(f"<b>SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026</b>", style_heading))
         story.append(Spacer(1, 8))
-        
-        # No Rujukan
-        no_ruj_display = no_rujukan or no_surat
         story.append(Paragraph(f"<b>No Rujukan: {no_surat}</b>", style_normal))
         story.append(Paragraph(f"Tarikh: {tarikh}", style_normal))
         story.append(Spacer(1, 8))
         
-        # Isi surat
         isi = f"""
         <b>Tuan/Puan {nama} ({ic})</b><br/>
         {jawatan}<br/>
-        {nama_sek_asal or sek_asal} ({sek_asal})<br/><br/>
+        {display_sek_asal}<br/><br/>
         Tuan/Puan,<br/><br/>
         <b>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM 2026</b><br/><br/>
         Dengan hormatnya dimaklumkan bahawa tuan/puan telah dilantik sebagai <b>{jawatan}</b> bagi Peperiksaan SPM Tahun 2026.<br/><br/>
         <b>Butiran Penempatan:</b><br/>
-        - Sekolah Asal: {nama_sek_asal or sek_asal} ({sek_asal})<br/>
-        - Pusat Peperiksaan Ditugaskan: {nama_pusat or pusat} ({pusat})<br/>
+        - Sekolah Asal: {display_sek_asal}<br/>
+        - Pusat Peperiksaan Ditugaskan: {display_pusat}<br/>
         - No Surat Lantikan: {no_surat}<br/>
         - Kod PPD: {kod_ppd} - {ppd_name}<br/><br/>
         Tuan/puan dikehendaki melapor diri di pusat peperiksaan yang ditetapkan pada tarikh dan masa yang akan dimaklumkan kelak.<br/><br/>
@@ -367,10 +454,9 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
         story.append(Paragraph(isi, style_normal))
         story.append(Spacer(1, 12))
         
-        # Footer table
         data_footer = [
-            [f"No Surat: {no_surat}", f"Pusat: {pusat}"],
-            [f"Sekolah Asal: {sek_asal}", f"Jawatan: {jawatan}"]
+            [f"No Surat: {no_surat}", f"Pusat: {display_pusat}"],
+            [f"Sekolah Asal: {display_sek_asal}", f"Jawatan: {jawatan}"]
         ]
         t = Table(data_footer, colWidths=[85*mm, 85*mm])
         t.setStyle(TableStyle([
@@ -378,9 +464,6 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
             ('FONTSIZE', (0,0), (-1,-1), 8),
             ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('LEFTPADDING', (0,0), (-1,-1), 4),
-            ('RIGHTPADDING', (0,0), (-1,-1), 4),
         ]))
         story.append(t)
         
@@ -389,7 +472,7 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
         buffer.close()
         return pdf_bytes
     except Exception as e:
-        # Fallback: create simple PDF with error info using reportlab basic
+        # Fallback simple canvas
         try:
             import io
             from reportlab.pdfgen import canvas
@@ -405,8 +488,8 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
                 f"Nama: {nama}",
                 f"IC: {ic}",
                 f"Jawatan: {jawatan}",
-                f"Sekolah Asal: {sek_asal} - {nama_sek_asal}",
-                f"Pusat Tugas: {pusat} - {nama_pusat}",
+                f"Sekolah Asal: {display_sek_asal}",
+                f"Pusat Tugas: {display_pusat}",
                 f"Tarikh: {tarikh}",
                 f"PPD: {kod_ppd} - {ppd_name}",
                 "",
@@ -414,7 +497,7 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
                 f"Sila lapor diri di pusat {pusat}.",
             ]
             for line in lines:
-                c.drawString(50, y, line)
+                c.drawString(50, y, line[:100])
                 y -= 20
                 if y < 50:
                     c.showPage()
@@ -422,7 +505,13 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
             c.save()
             return buffer.getvalue()
         except Exception as e2:
-            return None
+            # Ultimate fallback: return HTML as bytes with pdf mime (still downloadable)
+            try:
+                html_fallback = generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh)
+                return html_fallback.encode('utf-8')
+            except:
+                return None
+
 
 def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURAT LANTIKAN KESELURUHAN"):
     """Generate kolektif PDF untuk banyak surat"""
