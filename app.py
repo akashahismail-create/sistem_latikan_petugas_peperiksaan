@@ -4278,66 +4278,46 @@ elif st.session_state.role == "PPD":
             
 
             max_no_global = get_max_no_surat_ppd(kod_ppd)
-            st.info(f"ℹ️ No Surat terakhir untuk PPD {kod_ppd} (ikut daerah): {max_no_global} | No seterusnya akan jadi {max_no_global+1} - Berturutan, tak berulang, ikut daerah masing-masing. Siapa jana dulu, no dia dahulu.")
+            # BUANG PENYATAAN No Surat terakhir - tak perlu info panjang
             
 
-            # ===== RUANG SELENGGARA NO SURAT DI ATAS SELEPAS PILIHAN KELULUSAN - SIMPLIFIED: PPD TYPE NO RUJUKAN & NO SURAT SAHAJA, BUANG PENYATAAN =====
+
+            # ===== RUANG SELENGGARA NO SURAT DI ATAS - PPD TYPE NO RUJUKAN & BILANGAN SURAT SAHAJA - ADA COLUM UNTUK ISI =====
             st.markdown("### 🔐 Selenggara No Surat")
             
-            # Check if sudah selenggara
+            # Check max existing
             try:
-                res_check_surat = supa.table("pusat_master").select("*").eq("kod_ppd", kod_ppd).limit(10).execute()
-                sudah_selenggara_surat = False
-                info_selenggara_surat = None
-                if res_check_surat.data:
-                    for r in res_check_surat.data:
-                        d = r.get("data") or {}
-                        if isinstance(d, str):
-                            try: d = json.loads(d)
-                            except: d = {}
-                        if d.get("SELENGGARA_NO_SURAT_DONE"):
-                            sudah_selenggara_surat = True
-                            info_selenggara_surat = d
-                            break
-            except:
-                sudah_selenggara_surat = False
-                info_selenggara_surat = None
-            
-            try:
-                res_no_surat_exist = supa.table("cadangan_sup").select("no_surat").eq("kod_ppd", kod_ppd).not_.is_("no_surat", "null").limit(1).execute()
-                if res_no_surat_exist.data:
-                    sudah_selenggara_surat = True
-                    if not info_selenggara_surat:
-                        info_selenggara_surat = {"NOTE": "Ada No Surat sudah wujud"}
-            except:
-                pass
-            
-            if sudah_selenggara_surat:
                 max_exist = get_max_no_surat_ppd(kod_ppd)
-                st.markdown(f"**No Surat seterusnya: {get_next_no_surat_format(kod_ppd, max_exist+1)}**")
-            else:
-                st.markdown("**PPD Type No Rujukan & No Surat Sahaja:**")
-                col_ruj1, col_ruj2 = st.columns(2)
-                with col_ruj1:
-                    # PPD type contoh No Rujukan JPN.SPP.HHJH
-                    no_rujukan_input = st.text_input(
-                        "No Rujukan (Contoh: JPN.SPP.HHJH)",
-                        value=st.session_state.get("input_no_rujukan_ppd", f"JPN.SPP.HHJH/PPD.{kod_ppd}"),
-                        placeholder="Contoh: JPN.SPP.HHJH atau JPN.SEL/PPD.BA/SPM/2026/",
-                        key="input_no_rujukan_ppd"
-                    )
-                with col_ruj2:
-                    bil_surat_input = st.number_input(
-                        "Bilangan Surat / No Surat (Contoh: 1, 2, 3...)",
-                        min_value=1,
-                        value=int(st.session_state.get("input_bil_surat_ppd", 1)),
-                        step=1,
-                        key="input_bil_surat_ppd"
-                    )
-                
-                st.markdown(f"**Preview: {no_rujukan_input}/{bil_surat_input:04d}**")
-                
-                if st.button(f"🔐 Sahkan Selenggara No Surat PPD {kod_ppd}", type="primary", use_container_width=True, key="btn_selenggara_no_surat_top_simple"):
+            except:
+                max_exist = 0
+            
+            # ALWAYS SHOW COLUM UNTUK PPD TYPE NO RUJUKAN DAN NO SURAT - BUANG PENYATAAN
+            col_ruj1, col_ruj2 = st.columns(2)
+            with col_ruj1:
+                no_rujukan_input = st.text_input(
+                    "No Rujukan (Contoh: JPN.SPP.HHJH)",
+                    value=st.session_state.get("input_no_rujukan_ppd", f"JPN.SPP.HHJH/PPD.{kod_ppd}"),
+                    placeholder="Taip contoh: JPN.SPP.HHJH",
+                    key="input_no_rujukan_ppd_final"
+                )
+            with col_ruj2:
+                bil_surat_input = st.number_input(
+                    "Bilangan Surat / No Surat",
+                    min_value=1,
+                    value=int(st.session_state.get("input_bil_surat_ppd", max_exist+1 if max_exist>0 else 1)),
+                    step=1,
+                    key="input_bil_surat_ppd_final"
+                )
+            
+            st.markdown(f"**Preview No Surat: {no_rujukan_input}/{bil_surat_input:04d}**")
+            
+            # Save to session
+            st.session_state["selenggara_rujukan_format"] = no_rujukan_input
+            st.session_state["selenggara_bil_mula"] = bil_surat_input
+            
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button(f"🔐 Sahkan No Surat {no_rujukan_input}/{bil_surat_input:04d}", type="primary", use_container_width=True, key="btn_sahkan_no_surat_final"):
                     try:
                         df_pusat_all = get_pusat_df()
                         try:
@@ -4371,17 +4351,20 @@ elif st.session_state.role == "PPD":
                                 }
                                 supa.table("pusat_master").insert({"no_pusat": f"{kod_ppd}-LOG-SURAT", "kod_ppd": kod_ppd, "nama_pusat": f"LOG SELENGGARA NO SURAT PPD {kod_ppd}", "data": log_data}).execute()
                         except Exception as e_inner:
-                            st.warning(f"Log: {e_inner}")
-                        
-                        # Save to session for use in kelulusan
-                        st.session_state["selenggara_rujukan_format"] = no_rujukan_input
-                        st.session_state["selenggara_bil_mula"] = bil_surat_input
-                        
-                        st.success(f"✅ Selenggara No Surat: {no_rujukan_input}/{bil_surat_input:04d}")
-                        st.rerun()
+                            pass
+                        st.success(f"✅ No Surat Disahkan: {no_rujukan_input}/{bil_surat_input:04d} - Akan guna untuk jana surat")
+                        st.balloons()
                     except Exception as e:
                         st.error(f"Error: {e}")
+            with col_btn2:
+                if max_exist > 0:
+                    st.caption(f"Sedia ada max: {max_exist} | Seterusnya: {max_exist+1}")
+                else:
+                    st.caption("Belum ada No Surat - mula dari 1")
             
+            st.markdown("---")
+            
+            # ===== OPTION 1: KELULUSAN KESELURUHAN =====
             st.markdown("---")
             
             # ===== OPTION 1: KELULUSAN KESELURUHAN =====
