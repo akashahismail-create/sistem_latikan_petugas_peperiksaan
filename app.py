@@ -4426,10 +4426,11 @@ elif st.session_state.role == "PPD":
                     
                     col_lulus_all, col_jana_all = st.columns(2)
                     with col_lulus_all:
-                        if st.button(f"✅ LULUS KESELURUHAN {len(df_belum_lulus)} GURU - Jana No Surat Berturutan {max_no_global+1} hingga {max_no_global+len([r for r in preview_rows if 'JPN.SEL' in r['NO SURAT BARU']])}", type="primary", use_container_width=True, key="btn_lulus_keseluruhan"):
+                        if st.button(f"✅ LULUS KESELURUHAN {len(df_belum_lulus)} GURU - Jana No Surat {max_no_global+1} hingga {max_no_global+len(preview_rows)}", type="primary", use_container_width=True, key="btn_lulus_keseluruhan"):
                             try:
                                 berjaya = 0
                                 cur_no = max_no_global + 1
+                                surat_list_all = []
                                 for _, r in df_belum_lulus.iterrows():
                                     id_g = r.get("id","")
                                     existing_ns = str(r.get("no_surat") or "").strip()
@@ -4438,13 +4439,61 @@ elif st.session_state.role == "PPD":
                                     else:
                                         no_surat_baru = get_next_no_surat_format(kod_ppd, cur_no)
                                         cur_no += 1
+                                    
+                                    # Generate surat HTML untuk hantar ke sekolah asal
+                                    nama_g = r.get("NAMA_GURU","") or r.get("nama_guru","")
+                                    ic_g = r.get("IC_GURU","") or r.get("ic_guru","")
+                                    jaw_g = r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan","")
+                                    sek_asal = r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal","")
+                                    pusat_tugas = r.get("kod_pusat","") or r.get("KOD_PUSAT","")
+                                    nama_pusat_tugas = pusat_map.get(str(pusat_tugas).upper().strip(), "")
+                                    
+                                    # Simpan surat HTML dalam data json untuk hantar ke sekolah asal
+                                    try:
+                                        tarikh_surat = datetime.date.today().strftime('%d %B %Y')
+                                        html_surat_single = generate_surat_html(nama_g, ic_g, jaw_g, sek_asal, sek_asal, pusat_tugas, nama_pusat_tugas, no_surat_baru, kod_ppd, PPD_MAP.get(kod_ppd,""), tarikh_surat)
+                                    except:
+                                        html_surat_single = ""
+                                    
+                                    data_update = {}
+                                    if html_surat_single:
+                                        data_update = {"surat_html": html_surat_single, "surat_tarikh": str(datetime.date.today()), "surat_no": no_surat_baru}
+                                    
                                     if id_g:
-                                        supa.table("cadangan_sup").update({"status": "LULUS PPD", "no_surat": no_surat_baru}).eq("id", id_g).execute()
+                                        # Update dengan no_surat, status LULUS, dan data surat untuk sekolah asal
+                                        try:
+                                            existing_data = supa.table("cadangan_sup").select("data").eq("id", id_g).limit(1).execute()
+                                            old_data = {}
+                                            if existing_data.data:
+                                                old_data = existing_data.data[0].get("data") or {}
+                                                if isinstance(old_data, str):
+                                                    try: old_data = json.loads(old_data)
+                                                    except: old_data = {}
+                                            old_data.update(data_update)
+                                            old_data["SURAT_DIHANTAR_KE_SEKOLAH_ASAL"] = True
+                                            supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_surat_baru, "data": old_data}).eq("id", id_g).execute()
+                                        except:
+                                            supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_surat_baru}).eq("id", id_g).execute()
                                     else:
-                                        supa.table("cadangan_sup").update({"status": "LULUS PPD", "no_surat": no_surat_baru}).eq("ic_guru", r.get("IC_GURU","") or r.get("ic_guru","")).execute()
+                                        supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_surat_baru}).eq("ic_guru", r.get("IC_GURU","") or r.get("ic_guru","")).execute()
+                                    
+                                    surat_list_all.append({"nama": nama_g, "ic": ic_g, "sekolah_asal": sek_asal, "pusat": pusat_tugas, "no_surat": no_surat_baru, "html": html_surat_single})
                                     berjaya += 1
-                                st.success(f"✅ Berjaya LULUS KESELURUHAN {berjaya} guru! No Surat {max_no_global+1} hingga {cur_no-1} - Berturutan, tak berulang, ikut daerah {kod_ppd}")
+                                
+                                # Simpan surat kolektif untuk PPD download HTML
+                                full_html_all = f'<html><head><meta charset="UTF-8"><title>Surat Lantikan Keseluruhan PPD {kod_ppd}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:2px solid #000; padding:20px; margin:20px 0; page-break-after:always;}}</style></head><body>'
+                                full_html_all += f'<h1 style="text-align:center;">SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026 - KESELURUHAN PPD {kod_ppd}</h1><p style="text-align:center;">No Surat: {max_no_global+1} hingga {cur_no-1}</p><hr>'
+                                for s in surat_list_all:
+                                    full_html_all += s["html"]
+                                full_html_all += '</body></html>'
+                                st.session_state[f"surat_keseluruhan_html_{kod_ppd}"] = full_html_all
+                                st.session_state[f"surat_keseluruhan_list_{kod_ppd}"] = surat_list_all
+                                
+                                st.success(f"✅ Berjaya LULUS KESELURUHAN {berjaya} guru! No Surat {max_no_global+1} hingga {cur_no-1} - Surat HTML dijana & DIHANTAR KE SEKOLAH ASAL GURU untuk SUP cetak & bagi pada guru berkenaan")
                                 st.balloons()
+                                st.info(f"📄 Surat yang sama telah dihantar ke sekolah asal guru (SUP boleh lihat di menu Surat Lantikan Saya > ada surat - untuk SUP cetak dan bagi pada guru di mana dia kena bertugas)")
+                                st.components.v1.html(full_html_all[:15000], height=700, scrolling=True)
+                                st.download_button("📥 Download Surat Keseluruhan (HTML) - Untuk PPD", data=full_html_all.encode('utf-8'), file_name=f"Surat_Lantikan_Keseluruhan_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key="dl_surat_keseluruhan_after_lulus")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error lulus keseluruhan: {e}")
@@ -4548,10 +4597,11 @@ elif st.session_state.role == "PPD":
                         
                         col_lulus_pusat, col_jana_pusat = st.columns(2)
                         with col_lulus_pusat:
-                            if st.button(f"✅ Lulus {len(df_belum_pusat)} Guru di {pilihan_pusat_lulus} - No {max_no_global+1} hingga {cur_no-1}", type="primary", use_container_width=True, key=f"btn_lulus_pusat_{pilihan_pusat_lulus}"):
+                            if st.button(f"✅ Lulus {len(df_belum_pusat)} Guru di {pilihan_pusat_lulus} - No {max_no_global+1} hingga {cur_no-1} & Hantar ke Sekolah Asal", type="primary", use_container_width=True, key=f"btn_lulus_pusat_{pilihan_pusat_lulus}"):
                                 try:
                                     berjaya = 0
                                     cur_no2 = max_no_global + 1
+                                    surat_list_pusat = []
                                     for _, r in df_belum_pusat.iterrows():
                                         id_g = r.get("id","")
                                         existing_ns = str(r.get("no_surat") or "").strip()
@@ -4560,13 +4610,51 @@ elif st.session_state.role == "PPD":
                                         else:
                                             no_baru = get_next_no_surat_format(kod_ppd, cur_no2)
                                             cur_no2 += 1
-                                        if id_g:
-                                            supa.table("cadangan_sup").update({"status": "LULUS PPD", "no_surat": no_baru}).eq("id", id_g).execute()
-                                        else:
-                                            supa.table("cadangan_sup").update({"status": "LULUS PPD", "no_surat": no_baru}).eq("ic_guru", r.get("IC_GURU","") or r.get("ic_guru","")).execute()
+                                        
+                                        nama_g = r.get("NAMA_GURU","") or r.get("nama_guru","")
+                                        ic_g = r.get("IC_GURU","") or r.get("ic_guru","")
+                                        jaw_g = r.get("JAWATAN_CADANGAN","") or r.get("jawatan_cadangan","")
+                                        sek_asal = r.get("KOD_SEKOLAH_ASAL","") or r.get("kod_sekolah_asal","")
+                                        
+                                        try:
+                                            tarikh_surat = datetime.date.today().strftime('%d %B %Y')
+                                            html_single = generate_surat_html(nama_g, ic_g, jaw_g, sek_asal, sek_asal, pilihan_pusat_lulus, pusat_map.get(pilihan_pusat_lulus,""), no_baru, kod_ppd, PPD_MAP.get(kod_ppd,""), tarikh_surat)
+                                        except:
+                                            html_single = ""
+                                        
+                                        try:
+                                            existing_data = supa.table("cadangan_sup").select("data").eq("id", id_g).limit(1).execute() if id_g else None
+                                            old_data = {}
+                                            if existing_data and existing_data.data:
+                                                old_data = existing_data.data[0].get("data") or {}
+                                                if isinstance(old_data, str):
+                                                    try: old_data = json.loads(old_data)
+                                                    except: old_data = {}
+                                            old_data.update({"surat_html": html_single, "surat_tarikh": str(datetime.date.today()), "surat_no": no_baru, "SURAT_DIHANTAR_KE_SEKOLAH_ASAL": True})
+                                            if id_g:
+                                                supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_baru, "data": old_data}).eq("id", id_g).execute()
+                                            else:
+                                                supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_baru}).eq("ic_guru", r.get("IC_GURU","") or r.get("ic_guru","")).execute()
+                                        except:
+                                            if id_g:
+                                                supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_baru}).eq("id", id_g).execute()
+                                        
+                                        surat_list_pusat.append({"nama": nama_g, "ic": ic_g, "sekolah_asal": sek_asal, "pusat": pilihan_pusat_lulus, "no_surat": no_baru, "html": html_single})
                                         berjaya += 1
-                                    st.success(f"✅ Berjaya Lulus {berjaya} guru di {pilihan_pusat_lulus}! No Surat {max_no_global+1} hingga {cur_no2-1} - Berturutan ikut daerah {kod_ppd}, tak berulang")
+                                    
+                                    # Generate full HTML for this pusat
+                                    full_html_pusat = f'<html><head><meta charset="UTF-8"><title>Surat {pilihan_pusat_lulus}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:2px solid #000; padding:20px; margin:20px 0; page-break-after:always;}}</style></head><body>'
+                                    full_html_pusat += f'<h1 style="text-align:center;">SURAT LANTIKAN SPM 2026 - {pilihan_pusat_lulus} - {pusat_map.get(pilihan_pusat_lulus,"")}</h1><p style="text-align:center;">PPD {kod_ppd} - No Surat {max_no_global+1} hingga {cur_no2-1}</p><hr>'
+                                    for s in surat_list_pusat:
+                                        full_html_pusat += s["html"]
+                                    full_html_pusat += '</body></html>'
+                                    st.session_state[f"surat_pusat_{pilihan_pusat_lulus}_html"] = full_html_pusat
+                                    
+                                    st.success(f"✅ Berjaya Lulus {berjaya} guru di {pilihan_pusat_lulus}! No Surat {max_no_global+1} hingga {cur_no2-1} - Surat DIHANTAR KE SEKOLAH ASAL GURU untuk SUP cetak & bagi pada guru berkenaan")
                                     st.balloons()
+                                    st.info(f"📄 Surat yang sama telah sampai ke sekolah asal guru - SUP boleh lihat di Surat Lantikan Saya untuk cetak & bagi pada guru di mana dia kena bertugas ({pilihan_pusat_lulus})")
+                                    st.components.v1.html(full_html_pusat[:15000], height=700, scrolling=True)
+                                    st.download_button(f"📥 Download Surat {pilihan_pusat_lulus} (HTML) & Hantar ke Sekolah Asal", data=full_html_pusat.encode('utf-8'), file_name=f"Surat_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key=f"dl_surat_pusat_after_{pilihan_pusat_lulus}")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error lulus pusat: {e}")
