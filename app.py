@@ -1396,17 +1396,19 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=20*mm, leftMargin=20*mm, topMargin=15*mm, bottomMargin=15*mm)
             styles = getSampleStyleSheet()
+            style_header = ParagraphStyle('HeaderCustom', parent=styles['Normal'], fontSize=11, leading=13, alignment=0)
+            style_ruj = ParagraphStyle('RujCustom', parent=styles['Normal'], fontSize=10, leading=12, alignment=2)
             style_title = ParagraphStyle('TitleCustom', parent=styles['Heading1'], fontSize=14, alignment=1, spaceAfter=6)
             style_heading = ParagraphStyle('HeadingCustom', parent=styles['Heading2'], fontSize=12, alignment=1, spaceAfter=4)
             style_normal = ParagraphStyle('NormalCustom', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=4)
             story = []
-            story.append(Paragraph("JABATAN PENDIDIKAN NEGERI SELANGOR", style_title))
-            story.append(Paragraph(f"PEJABAT PENDIDIKAN DAERAH {ppd_name.upper() or kod_ppd}", style_heading))
+            story.append(Paragraph("<b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br/>JABATAN PENDIDIKAN NEGERI SELANGOR<br/><font size=8>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam</font>", style_header))
+            story.append(Paragraph("<hr/>", style_normal))
+            # Format baru - header dah ada
             story.append(Spacer(1,6))
             story.append(Paragraph(f"<b>SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026</b>", style_heading))
             story.append(Spacer(1,8))
-            story.append(Paragraph(f"<b>No Rujukan: {no_surat}</b>", style_normal))
-            story.append(Paragraph(f"Tarikh: {tarikh}", style_normal))
+            story.append(Paragraph(f"<font size=9>Ruj. Kami: {no_surat}<br/>Tarikh: {tarikh}</font>", style_ruj))
             story.append(Spacer(1,8))
             isi = f"""<b>Tuan/Puan {nama} ({ic})</b><br/>{jawatan}<br/>{display_sek_asal}<br/><br/>Tuan/Puan,<br/><br/><b>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM 2026</b><br/><br/>Dengan hormatnya dimaklumkan bahawa tuan/puan telah dilantik sebagai <b>{jawatan}</b> bagi Peperiksaan SPM Tahun 2026.<br/><br/><b>Butiran Penempatan:</b><br/>- Sekolah Asal: {display_sek_asal}<br/>- Pusat Peperiksaan Ditugaskan: {display_pusat}<br/>- No Surat Lantikan: {no_surat}<br/>- Kod PPD: {kod_ppd} - {ppd_name}<br/><br/>Tuan/puan dikehendaki melapor diri di pusat peperiksaan yang ditetapkan.<br/><br/>Kerjasama tuan/puan amatlah dihargai.<br/><br/>Sekian.<br/><br/><b>"BERKHIDMAT UNTUK NEGARA"</b><br/><br/>Saya yang menjalankan amanah,<br/><br/><br/><b>PEGAWAI PENDIDIKAN DAERAH</b><br/>{ppd_name}<br/>PPD {kod_ppd}<br/>"""
             story.append(Paragraph(isi, style_normal))
