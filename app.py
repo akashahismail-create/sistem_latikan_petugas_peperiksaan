@@ -1764,6 +1764,8 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
 
 
 
+
+
 def generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, ppd_name, title_prefix="SURAT LANTIKAN"):
     if len(surat_list) > MAX_PDF_KOLEKTIF:
         st.warning(f"PDF dihadkan {MAX_PDF_KOLEKTIF} surat (ada {len(surat_list)}).")
