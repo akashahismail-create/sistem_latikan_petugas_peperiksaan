@@ -3600,8 +3600,7 @@ elif st.session_state.role == "PPD":
                     with tab_semua:
                         st.markdown(f"**📋 Ringkasan Kumulatif Keseluruhan: {len(df_summary_kum)} guru telah dilantik manual - Lantikan pertama kekal bila tambah lantikan kedua:**")
                         st.dataframe(df_summary_kum, use_container_width=True, hide_index=True)
-                        st.download_button("📥 Export Ringkasan Kumulatif Manual (Ikut Jawatan)", __import__("io").BytesIO(__import__("pandas").ExcelWriter).__class__, file_name=f"ringkasan_manual_kumulatif_{kod_ppd}.xlsx", use_container_width=True, key="export_kum_manual")
-                        # Correct export
+                        # Export kumulatif
                         try:
                             import io
                             output = io.BytesIO()
