@@ -81,6 +81,14 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 def get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
+@st.cache_data(ttl=600, show_spinner=False)
+def get_jpn_templates_one():
+    try:
+        res = supa.table("surat_templates_jpn").select("jawatan, template_html").execute()
+        return {r["jawatan"].upper(): r["template_html"] for r in res.data} if res.data else {}
+    except:
+        return {}
+
 supa = get_supabase()
 
 # Clear cache helper - untuk refresh button cepat
@@ -3073,6 +3081,61 @@ elif st.session_state.role == "PPD":
                     c2.metric("Cadangan", cnt_cadang.count)
                 except Exception as e2:
                     st.error(f"Fallback error: {e2}")
+
+        elif menu == "jpn_template_surat":
+            st.header("📄 Template Surat JPN - 11 Jawatan (LAJU - 1 menu sahaja)")
+            st.success("✅ Version LAJU - PPD/SUP kekal laju, JPN tambah 1 menu surat sahaja")
+            st.warning("Surat lama PPD akan diganti dengan template JPN ini - PPD auto guna")
+            
+            JAWATAN_11 = ["KETUA PENGAWAS","TIMBALAN KETUA PENGAWAS","PENGAWAS PEPERIKSAAN","JURU TULIS","JURU BACA","KETUA PENGAWAS HOSPITAL","PENGAWAS HOSPITAL","PENGAWAS PENGIRING","PENGEMAS BILIK","PENYELIA KAWASAN","SELENGGARA BILIK KEBAL"]
+            
+            DEFAULT_11 = {
+                "KETUA PENGAWAS": "<div style='border:3px double #000; padding:20px; text-align:center;'><h3>KETUA PENGAWAS - {{NAMA}} - {{PUSAT}}</h3><p>No: {{NO_SURAT}} | PPD: {{PPD}}</p></div>",
+                "TIMBALAN KETUA PENGAWAS": "<div style='border:2px solid #e65100; padding:20px;'><h3>TKP - {{NAMA}} - {{PUSAT}}</h3><p>No: {{NO_SURAT}}</p></div>",
+                "PENGAWAS PEPERIKSAAN": "<div style='border:2px solid #1b5e20; padding:20px;'><h3>PENGAWAS - {{NAMA}} - {{PUSAT}}</h3></div>",
+                "JURU TULIS": "<div style='border:3px solid #4527a0; padding:20px;'><h3 style='color:#4527a0;'>JURU TULIS (Khas) - {{NAMA}} - {{PUSAT}} - {{PPD}}</h3><p>No: {{NO_SURAT}}</p></div>",
+                "JURU BACA": "<div style='border:2px solid #006064; padding:20px;'><h3>JURU BACA - {{NAMA}}</h3></div>",
+                "KETUA PENGAWAS HOSPITAL": "<div style='border:2px solid #b71c1c; padding:20px;'><h3>KP HOSPITAL - {{NAMA}}</h3></div>",
+                "PENGAWAS HOSPITAL": "<div style='border:2px solid #c62828; padding:20px;'><h3>PENGAWAS HOSPITAL - {{NAMA}}</h3></div>",
+                "PENGAWAS PENGIRING": "<div style='border:2px solid #2e7d32; padding:20px;'><h3>PENGAWAS PENGIRING - {{NAMA}}</h3></div>",
+                "PENGEMAS BILIK": "<div style='border:2px solid #e65100; padding:20px;'><h3>PENGEMAS BILIK - {{NAMA}}</h3></div>",
+                "PENYELIA KAWASAN": "<div style='border:2px solid #4a148c; padding:20px;'><h3>PENYELIA KAWASAN - {{NAMA}} - {{PPD}}</h3></div>",
+                "SELENGGARA BILIK KEBAL": "<div style='border:2px solid #000; padding:20px;'><h3>SELENGGARA BILIK KEBAL - {{NAMA}}</h3></div>"
+            }
+            
+            templates = get_jpn_templates_one()
+            pilih = st.selectbox("Pilih Jawatan (11 Jawatan)", JAWATAN_11, key="pilih_11_laju")
+            curr = templates.get(pilih.upper()) or DEFAULT_11.get(pilih, "")
+            st.markdown(f"### Template: {pilih}")
+            edited = st.text_area("HTML", value=curr, height=300, key=f"edit_{pilih}")
+            st.caption("Guna: {{NAMA}}, {{IC}}, {{PUSAT}}, {{NO_SURAT}}, {{PPD}}, {{SEKOLAH_ASAL}}")
+            
+            c1,c2,c3 = st.columns(3)
+            with c1:
+                if st.button(f"💾 Simpan {pilih}", type="primary", use_container_width=True, key=f"save_{pilih}"):
+                    try:
+                        ex = supa.table("surat_templates_jpn").select("id").eq("jawatan", pilih).execute()
+                        if ex.data:
+                            supa.table("surat_templates_jpn").update({"template_html": edited}).eq("jawatan", pilih).execute()
+                        else:
+                            supa.table("surat_templates_jpn").insert({"jawatan": pilih, "template_html": edited}).execute()
+                        st.cache_data.clear()
+                        st.success(f"✅ {pilih} disimpan - PPD akan guna template JPN ini")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            with c2:
+                if st.button(f"👁️ Preview {pilih}", use_container_width=True, key=f"prev_{pilih}"):
+                    dummy = edited.replace("{{NAMA}}","ALI BIN ABU").replace("{{PUSAT}}","BA001").replace("{{NO_SURAT}}","JPN/0001").replace("{{PPD}}","KLANG")
+                    st.markdown(dummy, unsafe_allow_html=True)
+            with c3:
+                if st.button("🔄 Clear Cache", use_container_width=True):
+                    st.cache_data.clear()
+                    st.rerun()
+            
+            st.markdown("---")
+            st.markdown("### Status 11 Template (PPD akan guna JPN)")
+            data = [{"JAWATAN": j, "STATUS": "✅ Ada" if (templates.get(j.upper()) or DEFAULT_11.get(j,"")) else "❌"} for j in JAWATAN_11]
+            st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
 
         elif menu == "sekolah":
             st.header(f"Senarai Sekolah PPD {kod_ppd}")
@@ -6732,7 +6795,7 @@ elif st.session_state.role == "JPN":
         st.markdown("### 🏛️ JPN Selangor")
         add_refresh_button()
         
-        MENU_JPN = [('dashboard', '📊 Dashboard JPN'), ('sekolah', '🏫 Semua Sekolah'), ('pusat', '🏫 Pusat Master'), 
+        MENU_JPN = [('dashboard', '📊 Dashboard JPN'), ('jpn_template_surat', '📄 Template Surat JPN (11 Jawatan)'), ('sekolah', '🏫 Semua Sekolah'), ('pusat', '🏫 Pusat Master'), 
                     ('guru', '👨\u200d🏫 Guru Master'), ('cadangan', '📋 Semua Cadangan'), ('export', '📥 Export Negeri'), 
                     ('admin', '⚙️ Admin'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu JPN", [k for k, _ in MENU_JPN], format_func=dict(MENU_JPN).get, label_visibility="collapsed", key="jpn_menu_radio")
