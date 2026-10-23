@@ -3290,8 +3290,35 @@ elif st.session_state.role == "PPD":
                 st.markdown("### 🌍 Jana Keseluruhan - Auto Poskod Terdekat")
                 st.info("Baca POSKOD RUMAH guru vs POSKOD PUSAT, pusat paling dekat dulu. Kalau penuh, auto ke pusat kedua terdekat. Kekal Max 3 & elak sekolah sendiri. Penyelia Kawasan TIDAK termasuk di sini - lantik di Selenggara Bilik Kebal.")
                 
+                # FIX FINAL: Jana Keseluruhan Auto HANYA untuk 3 jawatan biasa sahaja - Khas langsung tak masuk
+                # Hanya benarkan: Ketua Pengawas, Timbalan Ketua Pengawas, Pengawas Peperiksaan (exact)
+                # Semua Khas (Juru Tulis, Juru Baca, Hospital, Pengiring, Pengemas, Penyelia) dikeluarkan terus - hanya di Penempatan Manual sahaja
+                def is_auto_jawatan(r):
+                    j = str(r.get("JAWATAN_CADANGAN") or r.get("jawatan_cadangan") or r.get("JAWATAN") or "").upper().strip()
+                    # Hanya 3 ini sahaja yang boleh auto
+                    if "KETUA PENGAWAS" in j and "TIMBALAN" not in j and "HOSPITAL" not in j:
+                        return True
+                    if "TIMBALAN KETUA PENGAWAS" in j or ("TIMBALAN" in j and "KETUA" in j and "HOSPITAL" not in j):
+                        return True
+                    if j == "PENGAWAS PEPERIKSAAN" or (j.startswith("PENGAWAS") and "HOSPITAL" not in j and "PENGIRING" not in j and "KHAS" not in j):
+                        # Pengawas Peperiksaan biasa sahaja
+                        if "HOSPITAL" in j or "PENGIRING" in j or "JURU" in j or "PENGEMAS" in j or "PENYELIA" in j or "SELENGGARA" in j:
+                            return False
+                        return True
+                    # Semua lain (Juru Tulis, Juru Baca, Hospital, Pengiring, Pengemas, Penyelia, Selenggara) = False - tak masuk auto
+                    return False
+
+                df_cad_all_auto = df_cad_all[df_cad_all.apply(is_auto_jawatan, axis=1)].copy() if not df_cad_all.empty else df_cad_all.copy()
+                # Info
+                try:
+                    khas_count = len(df_cad_all) - len(df_cad_all_auto)
+                    if khas_count > 0:
+                        st.info(f"ℹ️ Jana Keseluruhan Auto: {len(df_cad_all_auto)} petugas biasa (KP/TKP/Pengawas) akan dijana auto. {khas_count} Pengawas Khas (JT/JB/Hospital/Pengiring/Pengemas/Penyelia) TIDAK termasuk auto - sila guna Jana Ikut Jawatan atau Penempatan Manual")
+                except:
+                    pass
+
                 cad_per_sekolah = {}
-                for _, c in df_cad_all.iterrows():
+                for _, c in df_cad_all_auto.iterrows():
                     k_sek = str(c.get("KOD_SEKOLAH") or c.get("KOD_SEKOLAH_ASAL") or "").upper().strip()
                     if k_sek: cad_per_sekolah[k_sek] = cad_per_sekolah.get(k_sek, 0) + 1
                 c1,c2,c3,c4 = st.columns(4)
@@ -3379,8 +3406,17 @@ elif st.session_state.role == "PPD":
                             pusat_sekolah_count[(chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper())] = pusat_sekolah_count.get((chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper()),0)+1
                             pusat_total[chosen] +=1
                             pusat_tkp[chosen] +=1
-                        # Pengawas - SKIP Penyelia Kawasan (lantik di Selenggara Bilik Kebal)
-                        for _, guru_row in df_pool_shuffled.iterrows():
+                        # Pengawas - HANYA Pengawas Peperiksaan biasa sahaja - Khas (JT/JB/Hospital/Pengiring/Pengemas/Penyelia) langsung tak masuk auto, hanya Penempatan Manual
+                        def is_pengawas_biasa_only(row):
+                            j = str(row.get("JAWATAN_CADANGAN") or row.get("jawatan_cadangan") or "").upper().strip()
+                            # Hanya Pengawas Peperiksaan exact sahaja
+                            if "PENGAWAS PEPERIKSAAN" not in j:
+                                return False
+                            if any(k in j for k in ["PENYELIA", "JURU", "HOSPITAL", "PENGIRING", "PENGEMAS", "SELENGGARA", "BILIK KEBAL"]):
+                                return False
+                            return True
+                        df_pool_biasa = [r for _, r in df_pool_shuffled.iterrows() if is_pengawas_biasa_only(r)]
+                        for guru_row in df_pool_biasa:
                             ic = str(guru_row.get("IC_GURU") or "")
                             if ic in used_ic: continue
                             jaw = str(guru_row.get("JAWATAN_CADANGAN") or "").upper()
