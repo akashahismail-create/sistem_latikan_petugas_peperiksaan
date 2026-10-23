@@ -2605,7 +2605,7 @@ elif st.session_state.role == "PPD":
             # ===== TAB 1: JANA KESELURUHAN AUTO POSKOD =====
             if "Jana Keseluruhan" in sub_jana:
                 st.markdown("### 🌍 Jana Keseluruhan - Auto Poskod Terdekat")
-                st.info("Baca POSKOD RUMAH guru vs POSKOD PUSAT, pusat paling dekat dulu. Kalau penuh, auto ke pusat kedua terdekat. Kekal Max 3 & elak sekolah sendiri.")
+                st.info("Baca POSKOD RUMAH guru vs POSKOD PUSAT, pusat paling dekat dulu. Kalau penuh, auto ke pusat kedua terdekat. Kekal Max 3 & elak sekolah sendiri. Penyelia Kawasan TIDAK termasuk di sini - lantik di Selenggara Bilik Kebal.")
                 
                 cad_per_sekolah = {}
                 for _, c in df_cad_all.iterrows():
@@ -2696,13 +2696,14 @@ elif st.session_state.role == "PPD":
                             pusat_sekolah_count[(chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper())] = pusat_sekolah_count.get((chosen, str(guru_row.get("KOD_SEKOLAH_ASAL") or "").upper()),0)+1
                             pusat_total[chosen] +=1
                             pusat_tkp[chosen] +=1
-                        # Pengawas
+                        # Pengawas - SKIP Penyelia Kawasan (lantik di Selenggara Bilik Kebal)
                         for _, guru_row in df_pool_shuffled.iterrows():
                             ic = str(guru_row.get("IC_GURU") or "")
                             if ic in used_ic: continue
                             jaw = str(guru_row.get("JAWATAN_CADANGAN") or "").upper()
                             if "KETUA PENGAWAS" in jaw: continue
                             if "TIMBALAN" in jaw: continue
+                            if "PENYELIA" in jaw: continue
                             cands = cari_pusat_terdekat(guru_row)
                             if not cands: continue
                             chosen = cands[0]
@@ -2739,17 +2740,15 @@ elif st.session_state.role == "PPD":
                 st.markdown("### 👑 Jana Mengikut Jawatan")
                 st.info("Klik jawatan di bawah, sistem akan paparkan semua guru jawatan tersebut yang BELUM ditempatkan lagi. Kemudian pilih pusat & jana.")
                 
-                # Pilihan jawatan - BUTTON style supaya nampak terus bila klik
-                st.markdown("#### Pilih Jawatan (Klik untuk papar):")
-                col_j1, col_j2, col_j3, col_j4 = st.columns(4)
+                # Pilihan jawatan - BUTTON style - TANPA Penyelia Kawasan (sebab lantik di Selenggara Bilik Kebal)
+                st.markdown("#### Pilih Jawatan (Klik untuk papar - Penyelia Kawasan tidak perlu di sini, lantik di Selenggara Bilik Kebal):")
+                col_j1, col_j2, col_j3 = st.columns(3)
                 with col_j1:
                     btn_kp = st.button("👑 Ketua Pengawas", use_container_width=True, key="btn_jawatan_kp_main", type="primary" if st.session_state.get("pilih_jawatan_jana_main")=="Ketua Pengawas" else "secondary")
                 with col_j2:
                     btn_tkp = st.button("👑 Timbalan KP", use_container_width=True, key="btn_jawatan_tkp_main", type="primary" if st.session_state.get("pilih_jawatan_jana_main")=="Timbalan Ketua Pengawas" else "secondary")
                 with col_j3:
                     btn_peng = st.button("👨‍🏫 Pengawas Peperiksaan", use_container_width=True, key="btn_jawatan_peng_main", type="primary" if st.session_state.get("pilih_jawatan_jana_main")=="Pengawas Peperiksaan" else "secondary")
-                with col_j4:
-                    btn_penyelia = st.button("🔐 Penyelia Kawasan", use_container_width=True, key="btn_jawatan_penyelia_main", type="primary" if st.session_state.get("pilih_jawatan_jana_main")=="Penyelia Kawasan" else "secondary")
                 
                 # Set session based on button click
                 if btn_kp:
@@ -2758,8 +2757,6 @@ elif st.session_state.role == "PPD":
                     st.session_state["pilih_jawatan_jana_main"] = "Timbalan Ketua Pengawas"
                 if btn_peng:
                     st.session_state["pilih_jawatan_jana_main"] = "Pengawas Peperiksaan"
-                if btn_penyelia:
-                    st.session_state["pilih_jawatan_jana_main"] = "Penyelia Kawasan"
                 
                 # Default
                 if "pilih_jawatan_jana_main" not in st.session_state:
