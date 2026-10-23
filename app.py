@@ -4241,11 +4241,11 @@ elif st.session_state.role == "PPD":
                     return 0
             
             def get_next_no_surat_format(kod_ppd_filter, seq_no):
-                # Format ikut daerah masing-masing: JPN.SEL/PPD.BA/SPM/2026/0001 atau SPM/PPD-BA/2026/0001
-                # Ikut daerah masing-masing
-                tahun = datetime.date.today().year
-                # Guna format: PPD.{kod_ppd}/SPM/{tahun}/{seq:04d} - ikut daerah
-                return f"JPN.SEL/PPD.{kod_ppd_filter}/SPM/{tahun}/{seq_no:04d}"
+                # Guna rujukan yang PPD type: contoh JPN.SPP.HHJH + bilangan surat
+                rujukan = st.session_state.get("selenggara_rujukan_format") or st.session_state.get("input_no_rujukan_ppd") or f"JPN.SEL/PPD.{kod_ppd_filter}/SPM/{datetime.date.today().year}"
+                # Jika rujukan sudah ada / di hujung, tambah bilangan sahaja
+                rujukan_clean = rujukan.rstrip('/')
+                return f"{rujukan_clean}/{seq_no:04d}"
             
             # Get all data for PPD
             df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
@@ -4280,12 +4280,11 @@ elif st.session_state.role == "PPD":
             max_no_global = get_max_no_surat_ppd(kod_ppd)
             st.info(f"ℹ️ No Surat terakhir untuk PPD {kod_ppd} (ikut daerah): {max_no_global} | No seterusnya akan jadi {max_no_global+1} - Berturutan, tak berulang, ikut daerah masing-masing. Siapa jana dulu, no dia dahulu.")
             
-            # ===== RUANG SELENGGARA NO SURAT DI ATAS SELEPAS PILIHAN KELULUSAN =====
-            st.markdown("---")
-            st.markdown("### 🔐 Selenggara No Surat - PPD Boleh Buat Sekali Sahaja - No Surat Auto Berturutan Ikut Daerah")
-            st.info("Ruang selenggara di ATAS selepas pilihan kelulusan - PPD hanya boleh selenggara No Surat sekali sahaja. No Surat auto berturutan ikut daerah masing-masing (BA: 0001,0002... BB: 0001,0002...), tak berulang.")
+
+            # ===== RUANG SELENGGARA NO SURAT DI ATAS SELEPAS PILIHAN KELULUSAN - SIMPLIFIED: PPD TYPE NO RUJUKAN & NO SURAT SAHAJA, BUANG PENYATAAN =====
+            st.markdown("### 🔐 Selenggara No Surat")
             
-            # Check if sudah selenggara No Surat untuk PPD ini
+            # Check if sudah selenggara
             try:
                 res_check_surat = supa.table("pusat_master").select("*").eq("kod_ppd", kod_ppd).limit(10).execute()
                 sudah_selenggara_surat = False
@@ -4296,7 +4295,7 @@ elif st.session_state.role == "PPD":
                         if isinstance(d, str):
                             try: d = json.loads(d)
                             except: d = {}
-                        if d.get("SELENGGARA_NO_SURAT_DONE") or d.get("selenggara_no_surat_done"):
+                        if d.get("SELENGGARA_NO_SURAT_DONE"):
                             sudah_selenggara_surat = True
                             info_selenggara_surat = d
                             break
@@ -4309,31 +4308,38 @@ elif st.session_state.role == "PPD":
                 if res_no_surat_exist.data:
                     sudah_selenggara_surat = True
                     if not info_selenggara_surat:
-                        info_selenggara_surat = {"NOTE": "Ada No Surat sudah wujud dalam DB"}
+                        info_selenggara_surat = {"NOTE": "Ada No Surat sudah wujud"}
             except:
                 pass
             
             if sudah_selenggara_surat:
                 max_exist = get_max_no_surat_ppd(kod_ppd)
-                st.warning(f"⚠️ No Surat untuk PPD {kod_ppd} sudah diselenggara sebelum ini (Max No Surat sedia ada: {max_exist}) - PPD hanya boleh selenggara No Surat sekali sahaja. No Surat akan auto berturutan dari {max_exist+1}. Info: {info_selenggara_surat}")
-                st.markdown(f"**No Surat seterusnya untuk PPD {kod_ppd}: {get_next_no_surat_format(kod_ppd, max_exist+1)} (auto berturutan, tak berulang)**")
+                st.markdown(f"**No Surat seterusnya: {get_next_no_surat_format(kod_ppd, max_exist+1)}**")
             else:
-                st.markdown("#### ⚙️ Selenggara No Surat - Set Sekali Sahaja Untuk PPD Ini")
-                st.caption(f"PPD {kod_ppd} belum pernah selenggara No Surat. Set no permulaan sekali sahaja, lepas tu auto berturutan ikut daerah.")
+                st.markdown("**PPD Type No Rujukan & No Surat Sahaja:**")
+                col_ruj1, col_ruj2 = st.columns(2)
+                with col_ruj1:
+                    # PPD type contoh No Rujukan JPN.SPP.HHJH
+                    no_rujukan_input = st.text_input(
+                        "No Rujukan (Contoh: JPN.SPP.HHJH)",
+                        value=st.session_state.get("input_no_rujukan_ppd", f"JPN.SPP.HHJH/PPD.{kod_ppd}"),
+                        placeholder="Contoh: JPN.SPP.HHJH atau JPN.SEL/PPD.BA/SPM/2026/",
+                        key="input_no_rujukan_ppd"
+                    )
+                with col_ruj2:
+                    bil_surat_input = st.number_input(
+                        "Bilangan Surat / No Surat (Contoh: 1, 2, 3...)",
+                        min_value=1,
+                        value=int(st.session_state.get("input_bil_surat_ppd", 1)),
+                        step=1,
+                        key="input_bil_surat_ppd"
+                    )
                 
-                col_s1, col_s2 = st.columns(2)
-                with col_s1:
-                    no_mula_selenggara = st.number_input("No Permulaan Surat Untuk Daerah Ini", min_value=1, value=1, step=1, key="no_mula_selenggara_surat_top")
-                    st.caption(f"Akan jadi: {get_next_no_surat_format(kod_ppd, no_mula_selenggara)}")
-                with col_s2:
-                    prefix_selenggara = st.text_input("Prefix No Surat (Ikut Daerah)", value=f"JPN.SEL/PPD.{kod_ppd}/SPM/{datetime.date.today().year}/", key="prefix_selenggara_surat_top")
+                st.markdown(f"**Preview: {no_rujukan_input}/{bil_surat_input:04d}**")
                 
-                st.error("⚠️ Peringatan: Selenggara No Surat hanya boleh dibuat SEKALI SAHAJA oleh PPD. Pastikan no permulaan betul sebelum sahkan.")
-                
-                if st.button(f"🔐 Sahkan Selenggara No Surat PPD {kod_ppd} Sekali Sahaja - Mula {no_mula_selenggara:04d} Auto Berturutan", type="primary", use_container_width=True, key="btn_selenggara_no_surat_top"):
+                if st.button(f"🔐 Sahkan Selenggara No Surat PPD {kod_ppd}", type="primary", use_container_width=True, key="btn_selenggara_no_surat_top_simple"):
                     try:
                         df_pusat_all = get_pusat_df()
-                        berjaya_surat = 0
                         try:
                             marker_found = False
                             for _, r in df_pusat_all.iterrows():
@@ -4347,34 +4353,38 @@ elif st.session_state.role == "PPD":
                                     d["SELENGGARA_NO_SURAT_DONE"] = True
                                     d["SELENGGARA_NO_SURAT_TARIKH"] = str(datetime.date.today())
                                     d["SELENGGARA_NO_SURAT_OLEH"] = kod_ppd
-                                    d["SELENGGARA_NO_SURAT_MULA"] = no_mula_selenggara
-                                    d["SELENGGARA_NO_SURAT_PREFIX"] = prefix_selenggara
-                                    d["SELENGGARA_NO_SURAT_FORMAT"] = get_next_no_surat_format(kod_ppd, no_mula_selenggara)
+                                    d["SELENGGARA_NO_SURAT_RUJUKAN"] = no_rujukan_input
+                                    d["SELENGGARA_NO_SURAT_MULA"] = bil_surat_input
+                                    d["SELENGGARA_NO_SURAT_FORMAT"] = f"{no_rujukan_input}/{bil_surat_input:04d}"
                                     supa.table("pusat_master").update({"data": d}).eq("id", rec_id).execute()
                                     marker_found = True
-                                    berjaya_surat = 1
                                     break
                             if not marker_found:
                                 log_data = {
                                     "SELENGGARA_NO_SURAT_DONE": True,
                                     "SELENGGARA_NO_SURAT_TARIKH": str(datetime.date.today()),
                                     "SELENGGARA_NO_SURAT_OLEH": kod_ppd,
-                                    "SELENGGARA_NO_SURAT_MULA": no_mula_selenggara,
-                                    "SELENGGARA_NO_SURAT_PREFIX": prefix_selenggara,
+                                    "SELENGGARA_NO_SURAT_RUJUKAN": no_rujukan_input,
+                                    "SELENGGARA_NO_SURAT_MULA": bil_surat_input,
                                     "NO_PUSAT": f"{kod_ppd}-LOG-SURAT",
                                     "NAMA_PUSAT": f"LOG SELENGGARA NO SURAT PPD {kod_ppd}"
                                 }
                                 supa.table("pusat_master").insert({"no_pusat": f"{kod_ppd}-LOG-SURAT", "kod_ppd": kod_ppd, "nama_pusat": f"LOG SELENGGARA NO SURAT PPD {kod_ppd}", "data": log_data}).execute()
-                                berjaya_surat = 1
                         except Exception as e_inner:
-                            st.warning(f"Marker log: {e_inner}")
+                            st.warning(f"Log: {e_inner}")
                         
-                        st.success(f"✅ Berjaya selenggara No Surat PPD {kod_ppd} sekali sahaja! No mula: {no_mula_selenggara:04d} = {get_next_no_surat_format(kod_ppd, no_mula_selenggara)} - Selepas ini auto berturutan {no_mula_selenggara:04d}, {no_mula_selenggara+1:04d}... Tak berulang.")
-                        st.balloons()
+                        # Save to session for use in kelulusan
+                        st.session_state["selenggara_rujukan_format"] = no_rujukan_input
+                        st.session_state["selenggara_bil_mula"] = bil_surat_input
+                        
+                        st.success(f"✅ Selenggara No Surat: {no_rujukan_input}/{bil_surat_input:04d}")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error selenggara No Surat: {e}")
+                        st.error(f"Error: {e}")
             
+            st.markdown("---")
+            
+            # ===== OPTION 1: KELULUSAN KESELURUHAN =====
             st.markdown("---")
             
             # ===== OPTION 1: KELULUSAN KESELURUHAN =====
