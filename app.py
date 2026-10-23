@@ -1555,6 +1555,7 @@ def generate_surat_html_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat,
 
 
 
+
 def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, no_rujukan="", bilik_kebal="", kod_bilik_kebal=""):
     try:
         nama = clean_nan(nama) or "Nama Guru"
@@ -1568,54 +1569,38 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         kod_ppd = clean_nan(kod_ppd) or "BA"
         ppd_name = clean_nan(ppd_name) or kod_ppd
         tarikh = clean_nan(tarikh) or "23 Jun 2026"
-        bilik_kebal = clean_nan(bilik_kebal) or clean_nan(kod_bilik_kebal) or "CB12 - SMK TELOK PANGLIMA GARANG"
+        bilik_kebal = clean_nan(bilik_kebal) or clean_nan(kod_bilik_kebal) or ""
         
         if nama_sek_asal and nama_sek_asal.upper() != sek_asal.upper() and sek_asal not in nama_sek_asal:
             display_sek_asal = f"{sek_asal} - {nama_sek_asal}"
         else:
             display_sek_asal = nama_sek_asal if nama_sek_asal else sek_asal
-        # ===== FIX NAMA PUSAT - AMBIL DARI PUSAT_MASTER SUPABASE (140 SEKOLAH) =====
-        # No Pusat = kod pusat tempat bertugas (BB017)
-        # Nama Pusat = nama sekolah dari pusat_master.nama_pusat
         
-        # Cuba dapatkan nama pusat dari pusat_master jika nama_pusat kosong atau sama dengan kod
+        # NAMA PUSAT - dari pusat_master (140 sekolah)
         nama_pusat_from_master = ""
         try:
-            # Kalau supa ada, query pusat_master
-            if 'supa' in globals() or 'supa' in locals():
-                try:
-                    # Query by no_pusat or kod_pusat
-                    for col_cari in ["no_pusat", "kod_pusat", "NO_PUSAT", "KOD_PUSAT"]:
-                        try:
-                            res_pusat = supa.table("pusat_master").select("*").eq(col_cari, pusat.upper().strip()).limit(1).execute()
-                            if res_pusat.data:
-                                row_p = res_pusat.data[0]
-                                nama_pusat_from_master = row_p.get("nama_pusat") or row_p.get("NAMA_PUSAT") or row_p.get("nama") or ""
-                                if nama_pusat_from_master:
-                                    break
-                        except:
-                            continue
-                except:
-                    pass
+            if 'supa' in globals():
+                for col_cari in ["no_pusat", "kod_pusat", "NO_PUSAT"]:
+                    try:
+                        res_pusat = supa.table("pusat_master").select("*").eq(col_cari, pusat.upper().strip()).limit(1).execute()
+                        if res_pusat.data:
+                            row_p = res_pusat.data[0]
+                            nama_pusat_from_master = row_p.get("nama_pusat") or row_p.get("NAMA_PUSAT") or ""
+                            if nama_pusat_from_master:
+                                break
+                    except:
+                        continue
         except:
             pass
         
-        # Tentukan display_pusat - keutamaan: dari pusat_master > nama_pusat yang diberi > kod pusat
-        if nama_pusat_from_master and str(nama_pusat_from_master).lower() not in ("nan","none",""):
-            display_pusat = f"{nama_pusat_from_master}".upper().strip()
-            nama_pusat_final = display_pusat
-        elif nama_pusat and str(nama_pusat).lower() not in ("nan","none","") and nama_pusat.upper() != pusat.upper():
-            display_pusat = f"{nama_pusat}".upper().strip()
-            nama_pusat_final = display_pusat
+        if nama_pusat_from_master:
+            display_pusat = nama_pusat_from_master.upper().strip()
+        elif nama_pusat and nama_pusat.upper() != pusat.upper():
+            display_pusat = nama_pusat.upper().strip()
         else:
-            display_pusat = f"{pusat}".upper().strip()
-            nama_pusat_final = display_pusat
+            display_pusat = pusat.upper().strip()
         
-        # No pusat untuk display - ambil dari pusat (tempat bertugas, bukan sekolah asal)
-        no_pusat_display = pusat.split("-")[0].strip() if "-" in pusat else pusat
-        if len(no_pusat_display) < 3:
-            no_pusat_display = pusat
-        no_pusat_display = no_pusat_display.upper().strip()
+        no_pusat_display = pusat.upper().strip()
         
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
@@ -1624,20 +1609,22 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         from reportlab.lib import colors
         import io, os
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15*mm, leftMargin=18*mm, topMargin=10*mm, bottomMargin=12*mm)
+        # COMPACT MARGINS FOR 1 PAGE
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=12*mm, leftMargin=12*mm, topMargin=8*mm, bottomMargin=8*mm)
         styles = getSampleStyleSheet()
         
-        style_header_mid = ParagraphStyle('HeaderMid', parent=styles['Normal'], fontSize=10.5, leading=13, alignment=0, fontName='Helvetica')
-        style_header_right = ParagraphStyle('HeaderRight', parent=styles['Normal'], fontSize=8.5, leading=11, alignment=0, fontName='Helvetica')
-        style_normal = ParagraphStyle('NormalJPN', parent=styles['Normal'], fontSize=10, leading=15, spaceAfter=3, alignment=4, fontName='Helvetica')
-        style_normal_left = ParagraphStyle('NormalLeft', parent=styles['Normal'], fontSize=10, leading=15, spaceAfter=3, alignment=0, fontName='Helvetica')
-        style_bold = ParagraphStyle('BoldJPN', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=4, alignment=0, fontName='Helvetica-Bold')
-        style_tajuk = ParagraphStyle('TajukJPN', parent=styles['Normal'], fontSize=10.5, leading=15, spaceAfter=6, alignment=0, fontName='Helvetica-Bold')
-        style_small = ParagraphStyle('Small', parent=styles['Normal'], fontSize=9.5, leading=13, alignment=0, fontName='Helvetica')
+        # SMALLER FONTS FOR 1 PAGE
+        style_header_mid = ParagraphStyle('HeaderMid', parent=styles['Normal'], fontSize=9, leading=10, alignment=0, fontName='Helvetica')
+        style_header_right = ParagraphStyle('HeaderRight', parent=styles['Normal'], fontSize=7, leading=9, alignment=0, fontName='Helvetica')
+        style_normal = ParagraphStyle('NormalJPN', parent=styles['Normal'], fontSize=8.5, leading=11, spaceAfter=2, alignment=4, fontName='Helvetica')
+        style_normal_left = ParagraphStyle('NormalLeft', parent=styles['Normal'], fontSize=8.5, leading=11, spaceAfter=1.5, alignment=0, fontName='Helvetica')
+        style_bold = ParagraphStyle('BoldJPN', parent=styles['Normal'], fontSize=8.5, leading=11, spaceAfter=2, alignment=0, fontName='Helvetica-Bold')
+        style_tajuk = ParagraphStyle('TajukJPN', parent=styles['Normal'], fontSize=9, leading=11, spaceAfter=3, alignment=0, fontName='Helvetica-Bold')
+        style_small = ParagraphStyle('Small', parent=styles['Normal'], fontSize=8, leading=10, alignment=0, fontName='Helvetica')
         
         story = []
         
-        # ===== HEADER - IKUT GAMBAR =====
+        # HEADER COMPACT
         logo_path = None
         for cand in ["/mnt/data/jata_cropped.png", "/mnt/data/65b0dade-7a33-4312-b19b-9d5b24dd57ce.jpg", "jata_negara_hd.png","./jata_negara_hd.png","jata_negara.png","./jata_negara.png","/mnt/data/jata_negara_hd.png"]:
             if os.path.exists(cand):
@@ -1649,148 +1636,118 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         
         if logo_path:
             try:
-                logo_img = RLImage(logo_path, width=24*mm, height=20*mm, kind='proportional')
+                logo_img = RLImage(logo_path, width=18*mm, height=15*mm, kind='proportional')
                 header_data = [[logo_img, Paragraph(middle_html, style_header_mid), Paragraph(right_html, style_header_right)]]
-                t = Table(header_data, colWidths=[26*mm, 82*mm, 60*mm])
-                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 0.8, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6), ('TOPPADDING', (0,0), (-1,-1), 2), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
+                t = Table(header_data, colWidths=[20*mm, 85*mm, 63*mm])
+                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 0.8, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 3), ('TOPPADDING', (0,0), (-1,-1), 1), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
                 story.append(t)
             except:
                 header_data = [[Paragraph("", style_header_mid), Paragraph(middle_html, style_header_mid), Paragraph(right_html, style_header_right)]]
-                t = Table(header_data, colWidths=[26*mm, 82*mm, 60*mm])
-                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 0.8, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
+                t = Table(header_data, colWidths=[20*mm, 85*mm, 63*mm])
+                t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 0.8, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 3)]))
                 story.append(t)
         else:
             header_data = [[Paragraph("", style_header_mid), Paragraph(middle_html, style_header_mid), Paragraph(right_html, style_header_right)]]
-            t = Table(header_data, colWidths=[26*mm, 82*mm, 60*mm])
-            t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 0.8, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
+            t = Table(header_data, colWidths=[20*mm, 85*mm, 63*mm])
+            t.setStyle(TableStyle([('LINEBELOW', (0,0), (-1,-1), 0.8, colors.black), ('BOTTOMPADDING', (0,0), (-1,-1), 3)]))
             story.append(t)
         
-        story.append(Spacer(1,8))
+        story.append(Spacer(1,4))
         
-        # ===== RUJ KAMI & TARIKH - KANAN, TABLE KEMAS =====
-        style_ruj_label = ParagraphStyle('RujLabel', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, fontName='Helvetica')
-        style_ruj_value = ParagraphStyle('RujValue', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, fontName='Helvetica')
-        style_ruj_colon = ParagraphStyle('RujColon', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, fontName='Helvetica')
+        # RUJ KAMI & TARIKH - KANAN COMPACT
+        style_ruj_label = ParagraphStyle('RujLabel', parent=styles['Normal'], fontSize=8, leading=10, alignment=0, fontName='Helvetica')
+        style_ruj_value = ParagraphStyle('RujValue', parent=styles['Normal'], fontSize=8, leading=10, alignment=0, fontName='Helvetica')
+        style_ruj_colon = ParagraphStyle('RujColon', parent=styles['Normal'], fontSize=8, leading=10, alignment=0, fontName='Helvetica')
         
         ruj_inner_data = [
             [Paragraph("Ruj. Kami", style_ruj_label), Paragraph(":", style_ruj_colon), Paragraph(no_surat, style_ruj_value)],
             [Paragraph("Tarikh", style_ruj_label), Paragraph(":", style_ruj_colon), Paragraph(tarikh, style_ruj_value)]
         ]
-        t_ruj_inner = Table(ruj_inner_data, colWidths=[22*mm, 4*mm, 62*mm])
-        t_ruj_inner.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 1), ('RIGHTPADDING', (0,0), (-1,-1), 1), ('TOPPADDING', (0,0), (-1,-1), 1), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
+        t_ruj_inner = Table(ruj_inner_data, colWidths=[18*mm, 3*mm, 55*mm])
+        t_ruj_inner.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 1), ('RIGHTPADDING', (0,0), (-1,-1), 1), ('TOPPADDING', (0,0), (-1,-1), 1), ('BOTTOMPADDING', (0,0), (-1,-1), 1)]))
         wrapper_data = [[Paragraph("", style_ruj_label), t_ruj_inner]]
-        t_wrapper = Table(wrapper_data, colWidths=[80*mm, 88*mm])
+        t_wrapper = Table(wrapper_data, colWidths=[92*mm, 76*mm])
         t_wrapper.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0), ('RIGHTPADDING', (0,0), (-1,-1), 0)]))
         story.append(t_wrapper)
-        story.append(Spacer(1,10))
-        
-        # ===== NAMA & MELALUI =====
-        story.append(Paragraph(f"<b>{nama.upper()}</b>", style_bold))
-        story.append(Spacer(1,6))
-        story.append(Paragraph("Melalui:", style_normal_left))
-        story.append(Spacer(1,2))
-        story.append(Paragraph("Pengetua/Guru Besar,", style_normal_left))
-        # Sekolah asal dari data
-        story.append(Paragraph(f"{display_sek_asal.upper()},", style_normal_left))
-        # PPD untuk GOMBAK etc - ambil dari ppd_name
-        story.append(Paragraph(f"<b>{ppd_name.upper()}.</b>", style_normal_left))
-        story.append(Spacer(1,12))
-        story.append(Paragraph("Tuan,", style_normal_left))
-        story.append(Spacer(1,8))
-        
-        # ===== TAJUK - IKUT GAMBAR =====
-        tajuk_jawatan = jawatan.upper()
-        if "PENYELIA KAWASAN" in tajuk_jawatan:
-            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ULANGAN ( SPMU ) TAHUN 2026 :<br/>PELANTIKAN SEBAGAI PENYELIA KAWASAN BERTULIS ( TATAKIRA/PEMEGANG KUNCI )"
-        elif "KETUA PENGAWAS" in tajuk_jawatan:
-            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ( SPM ) TAHUN 2026 :<br/>PELANTIKAN SEBAGAI {tajuk_jawatan}"
-        else:
-            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ( SPM ) TAHUN 2026 :<br/>PELANTIKAN SEBAGAI {tajuk_jawatan} - {display_pusat}"
-        
-        story.append(Paragraph(f"<b>{tajuk_full}</b>", style_tajuk))
-        story.append(Spacer(1,8))
-        story.append(Paragraph("Dengan segala hormatnya perkara di atas dirujuk.", style_normal))
-        story.append(Spacer(1,8))
-        
-        # ===== PARA 2 - IKUT GAMBAR 100% - FIX NO PUSAT & BILIK KEBAL =====
-        # LOGIK BARU: No Pusat = No Pusat sebenar (BB017), Bilik Kebal kosong dulu kalau belum set di selenggara
-        # Kalau Penyelia Kawasan, bilik_kebal datang dari selenggara bilik kebal -> kod_bilik_kebal
-        # No Pusat datang dari kod_pusat (pusat jagaan)
-        
-        # Tentukan jenis jawatan
-        is_penyelia_kawasan = "PENYELIA KAWASAN" in jawatan.upper()
-        
-        if is_penyelia_kawasan:
-            para2_text = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan bahawa, tuan dilantik sebagai <b>{jawatan}</b> bagi peperiksaan di atas dari tempoh <b>14 Julai hingga 16 Julai 2026</b>. Pelantikan ini merupakan sebahagian daripada tugas rasmi. Maklumat pusat peperiksaan di bawah pengawasan tuan adalah seperti berikut:"
-        else:
-            para2_text = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan tuan dilantik sebagai <b>{jawatan} bagi peperiksaan di atas. Berikut adalah pusat peperiksaan di bawah pengawasan tuan:</b>"
-        
-        story.append(Paragraph(para2_text, style_normal))
-        story.append(Spacer(1,6))
-        
-        # 2.1, 2.2, 2.3 - TABLE KEMAS - FIX: No Pusat betul, Bilik Kebal ikut selenggara
-        style_sub_label = ParagraphStyle('SubLabel', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, leftIndent=15*mm, fontName='Helvetica')
-        style_sub_value = ParagraphStyle('SubValue', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, fontName='Helvetica-Bold')
-        style_sub_value_empty = ParagraphStyle('SubValueEmpty', parent=styles['Normal'], fontSize=10, leading=14, alignment=0, fontName='Helvetica', textColor=colors.HexColor('#999999'))
-        
-        # LOGIK: No Pusat = kod pusat sebenar, BUKAN bilik kebal
-        # Kalau bilik_kebal kosong, paparkan - atau kosong untuk isi kemudian
-        if not bilik_kebal or bilik_kebal.strip() == "" or bilik_kebal.lower() in ("nan","none","null","-"):
-            bilik_kebal_display = ""  # Kosongkan dulu seperti request
-            bilik_kebal_para = Paragraph(f": <i>(Akan dikemaskini melalui Selenggara Bilik Kebal)</i>", style_sub_value_empty)
-        else:
-            bilik_kebal_display = bilik_kebal.upper()
-            bilik_kebal_para = Paragraph(f": {bilik_kebal_display}", style_sub_value)
-        
-        # No Pusat - pastikan bukan bilik kebal code (CB, BK)
-        # Jika no_pusat_display mengandungi CB/BK dan kita ada pusat sebenar, guna pusat sebenar
-        if no_pusat_display.upper().startswith(("CB","BK")) and pusat:
-            # no_pusat_display ni sebenarnya bilik kebal, tukar guna pusat sebenar
-            no_pusat_final = pusat.split(",")[0].strip() if "," in pusat else pusat
-        else:
-            no_pusat_final = no_pusat_display
-        
-        sub_data = [
-            [Paragraph("2.1", style_small), Paragraph("No. Pusat", style_small), Paragraph(f": {no_pusat_final}", style_sub_value)],
-            [Paragraph("2.2", style_small), Paragraph("Nama Pusat", style_small), Paragraph(f": {display_pusat.upper()}", style_sub_value)],
-            [Paragraph("2.3", style_small), Paragraph("Bilik Kebal", style_small), bilik_kebal_para],
-        ]
-        t_sub = Table(sub_data, colWidths=[10*mm, 30*mm, 110*mm])
-        t_sub.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 2), ('RIGHTPADDING', (0,0), (-1,-1), 2), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
-        story.append(t_sub)
-        story.append(Spacer(1,10))
-        
-        # ===== PARA 3 - ELAUN =====
-        story.append(Paragraph("3. &nbsp;&nbsp;&nbsp;&nbsp;Tuan akan dibayar dengan kadar elaun berikut:", style_normal))
         story.append(Spacer(1,4))
         
-        elaun_data = [
-            [Paragraph("3.1", style_small), Paragraph("Elaun Ikhtisas", style_small), Paragraph(f": <b>RM 281.25 + S (S = Bil. Sesi)</b>", style_small)],
-            [Paragraph("3.2", style_small), Paragraph("Elaun Perjalanan", style_small), Paragraph(": Tuan layak membuat tuntutan perjalanan<br/>&nbsp;&nbsp;&nbsp;&nbsp;menggunakan kenderaan sendiri/ awam berdasarkan<br/>&nbsp;&nbsp;&nbsp;&nbsp;kepada Arahan Perbendaharaan yang sedang<br/>&nbsp;&nbsp;&nbsp;&nbsp;berkuatkuasa.", style_small)],
+        # NAMA & MELALUI - COMPACT
+        story.append(Paragraph(f"<b>{nama.upper()}</b>", style_bold))
+        story.append(Spacer(1,2))
+        story.append(Paragraph("Melalui:", style_normal_left))
+        story.append(Paragraph("Pengetua/Guru Besar,", style_normal_left))
+        story.append(Paragraph(f"{display_sek_asal.upper()},", style_normal_left))
+        story.append(Paragraph(f"<b>{ppd_name.upper()}.</b>", style_normal_left))
+        story.append(Spacer(1,4))
+        story.append(Paragraph("Tuan,", style_normal_left))
+        story.append(Spacer(1,3))
+        
+        # TAJUK COMPACT
+        tajuk_jawatan = jawatan.upper()
+        if "PENYELIA KAWASAN" in tajuk_jawatan:
+            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ULANGAN (SPMU) TAHUN 2026 : PELANTIKAN SEBAGAI PENYELIA KAWASAN BERTULIS (TATAKIRA/PEMEGANG KUNCI)"
+        else:
+            tajuk_full = f"SIJIL PELAJARAN MALAYSIA (SPM) TAHUN 2026 : PELANTIKAN SEBAGAI {tajuk_jawatan}"
+        
+        story.append(Paragraph(f"<b>{tajuk_full}</b>", style_tajuk))
+        story.append(Spacer(1,3))
+        story.append(Paragraph("Dengan segala hormatnya perkara di atas dirujuk.", style_normal))
+        story.append(Spacer(1,3))
+        
+        # PARA 2 - COMPACT
+        if "PENYELIA KAWASAN" in tajuk_jawatan:
+            para2_text = f"2. &nbsp;Sukacita dimaklumkan bahawa, tuan dilantik sebagai <b>{jawatan}</b> bagi peperiksaan di atas dari tempoh <b>14 Julai hingga 16 Julai 2026</b>. Maklumat pusat peperiksaan di bawah pengawasan tuan adalah seperti berikut:"
+        else:
+            para2_text = f"2. &nbsp;Sukacita dimaklumkan tuan dilantik sebagai <b>{jawatan} bagi peperiksaan di atas. Berikut adalah pusat peperiksaan di bawah pengawasan tuan:</b>"
+        
+        story.append(Paragraph(para2_text, style_normal))
+        story.append(Spacer(1,2))
+        
+        # 2.1, 2.2, 2.3
+        if not bilik_kebal or bilik_kebal.strip() == "" or bilik_kebal.lower() in ("nan","none","null","-"):
+            bilik_kebal_para = Paragraph(f": -", style_small)
+        else:
+            bilik_kebal_para = Paragraph(f": {bilik_kebal.upper()}", style_small)
+        
+        sub_data = [
+            [Paragraph("2.1", style_small), Paragraph("No. Pusat", style_small), Paragraph(f": {no_pusat_display}", style_small)],
+            [Paragraph("2.2", style_small), Paragraph("Nama Pusat", style_small), Paragraph(f": {display_pusat}", style_small)],
+            [Paragraph("2.3", style_small), Paragraph("Bilik Kebal", style_small), bilik_kebal_para],
         ]
-        t_elaun = Table(elaun_data, colWidths=[10*mm, 35*mm, 105*mm])
-        t_elaun.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 2), ('RIGHTPADDING', (0,0), (-1,-1), 2), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
+        t_sub = Table(sub_data, colWidths=[8*mm, 25*mm, 115*mm])
+        t_sub.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 1), ('RIGHTPADDING', (0,0), (-1,-1), 1), ('TOPPADDING', (0,0), (-1,-1), 1), ('BOTTOMPADDING', (0,0), (-1,-1), 1)]))
+        story.append(t_sub)
+        story.append(Spacer(1,3))
+        
+        # PARA 3 - ELAUN COMPACT
+        story.append(Paragraph("3. &nbsp;Tuan akan dibayar dengan kadar elaun berikut:", style_normal))
+        story.append(Spacer(1,1))
+        
+        elaun_data = [
+            [Paragraph("3.1", style_small), Paragraph("Elaun Ikhtisas", style_small), Paragraph(f": RM 281.25 + S (S = Bil. Sesi)", style_small)],
+            [Paragraph("3.2", style_small), Paragraph("Elaun Perjalanan", style_small), Paragraph(": Tuan layak membuat tuntutan perjalanan menggunakan kenderaan sendiri/ awam berdasarkan Arahan Perbendaharaan yang sedang berkuatkuasa.", style_small)],
+        ]
+        t_elaun = Table(elaun_data, colWidths=[8*mm, 30*mm, 110*mm])
+        t_elaun.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 1), ('RIGHTPADDING', (0,0), (-1,-1), 1), ('TOPPADDING', (0,0), (-1,-1), 1), ('BOTTOMPADDING', (0,0), (-1,-1), 1)]))
         story.append(t_elaun)
-        story.append(Spacer(1,10))
+        story.append(Spacer(1,3))
         
-        # ===== PARA 4 =====
-        para4 = """4. &nbsp;&nbsp;&nbsp;&nbsp;Pelantikan ini adalah sebahagian daripada tugas rasmi. Sehubungan dengan itu, tuan dikehendaki melaksanakan tugasan seperti yang tersenarai di <b>Lampiran A</b>. Tuan boleh dilantik oleh Ketua Pengawas sebagai <b>Pengawas Pengiring</b> mengikut keperluan ke bilik kebal. Pelantikan tuan adalah <b>Sulit</b> dan tertakluk kepada <b>Akta Rahsia Rasmi 1972</b> dan lain-lain peraturan keselamatan yang sedang berkuatkuasa."""
+        # PARA 4 & 5 COMPACT
+        para4 = """4. &nbsp;Pelantikan ini adalah sebahagian daripada tugas rasmi. Sehubungan dengan itu, tuan dikehendaki melaksanakan tugasan seperti yang tersenarai di <b>Lampiran A</b>. Tuan boleh dilantik oleh Ketua Pengawas sebagai <b>Pengawas Pengiring</b> mengikut keperluan ke bilik kebal. Pelantikan tuan adalah <b>Sulit</b> dan tertakluk kepada <b>Akta Rahsia Rasmi 1972</b>."""
         story.append(Paragraph(para4, style_normal))
-        story.append(Spacer(1,8))
-        
-        # ===== PARA 5 =====
-        para5 = "5. &nbsp;&nbsp;&nbsp;&nbsp;Semoga tuan dapat melaksanakan tugas ini dengan penuh dedikasi dan berintegriti dalam menyempurnakan amanah yang dipertanggungjawabkan."
+        story.append(Spacer(1,2))
+        para5 = "5. &nbsp;Semoga tuan dapat melaksanakan tugas ini dengan penuh dedikasi dan berintegriti dalam menyempurnakan amanah yang dipertanggungjawabkan."
         story.append(Paragraph(para5, style_normal))
-        story.append(Spacer(1,8))
+        story.append(Spacer(1,2))
         story.append(Paragraph("Sekian, terima kasih.", style_normal_left))
-        story.append(Spacer(1,12))
+        story.append(Spacer(1,4))
         story.append(Paragraph("\"MALAYSIA MADANI\"", style_bold))
         story.append(Paragraph("\"BERKHIDMAT UNTUK NEGARA\"", style_bold))
-        story.append(Spacer(1,12))
+        story.append(Spacer(1,4))
         
-        # Tandatangan
+        # Tandatangan - PASTI MUAT 1 MUKA SURAT
         story.append(Paragraph("Saya yang menjalankan amanah,", style_normal_left))
-        story.append(Spacer(1,30))
+        story.append(Spacer(1,12))
         story.append(Paragraph("<b>(DATIN WAN NOR ASHIKIN BINTI ABU KASSIM)</b><br/>Pengarah Pendidikan,<br/>Jabatan Pendidikan Negeri Selangor.", style_normal_left))
         
         doc.build(story)
