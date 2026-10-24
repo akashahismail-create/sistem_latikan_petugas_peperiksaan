@@ -2059,6 +2059,45 @@ if "role" not in st.session_state:
 
 # ================= LOGIN PAGE =================
 
+
+# ===== FIX: BUILD PUSAT MAP ROBUST - IKUT NO PUSAT COLUMN REFER PUSAT_MASTER =====
+def build_pusat_map_from_master():
+    """Map NO_PUSAT/KOD_PUSAT -> NAMA_PUSAT dari pusat_master"""
+    pmap = {}
+    try:
+        df_p = get_pusat_df()
+        for _, pr in df_p.iterrows():
+            d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
+            if isinstance(d, str):
+                try:
+                    import json as _js
+                    d = _js.loads(d)
+                except:
+                    d = {}
+            # Ambil semua kemungkinan key untuk NO PUSAT
+            no_p = str(pr.get("no_pusat") or pr.get("kod_pusat") or pr.get("NO_PUSAT") or pr.get("KOD_PUSAT") or d.get("NO_PUSAT") or d.get("NO PUSAT") or d.get("KOD_PUSAT") or d.get("KOD PUSAT") or "").upper().strip()
+            nama_p = str(pr.get("nama_pusat") or pr.get("NAMA_PUSAT") or d.get("NAMA_PUSAT") or d.get("NAMA PUSAT") or "").strip()
+            if no_p:
+                pmap[no_p] = nama_p
+                # juga map tanpa prefix? simpan kedua-dua
+                # contoh BA140 tetap BA140
+        # Fallback: cuba direct dari supabase pusat_master jika get_pusat_df kosong
+        if not pmap:
+            try:
+                _supa = get_supabase()
+                res = _supa.table("pusat_master").select("*").limit(1000).execute()
+                for r in (res.data or []):
+                    no_p = str(r.get("no_pusat") or r.get("kod_pusat") or r.get("NO_PUSAT") or "").upper().strip()
+                    nama_p = str(r.get("nama_pusat") or r.get("NAMA_PUSAT") or "").strip()
+                    if no_p:
+                        pmap[no_p] = nama_p
+            except:
+                pass
+    except Exception as _e:
+        pass
+    return pmap
+
+
 # ================= LOGIN POPUP BARU - IKUT HTML (SUP/PPD/JPN POPUP) =================
 if st.session_state.role is None:
     show_hero_header()
@@ -3155,21 +3194,14 @@ if st.session_state.role == "SUP":
                                         "nama_pusat": "",
                                         "no_surat": r.get("no_surat","") or r.get("NO_SURAT","")
                                     })
-                                # Try get pusat names
+                                # FIX: guna build_pusat_map_from_master() ikut NO PUSAT column refer pusat_master
                                 try:
-                                    df_pusat_tmp = get_pusat_df()
-                                    pusat_map_tmp = {}
-                                    for _, pr in df_pusat_tmp.iterrows():
-                                        d = pr.get("data") if isinstance(pr.get("data"), dict) else {}
-                                        if isinstance(d, str):
-                                            try: d = json.loads(d)
-                                            except: d = {}
-                                        no_p = str(pr.get("no_pusat") or d.get("NO_PUSAT") or "").upper().strip()
-                                        nama_p = pr.get("nama_pusat") or d.get("NAMA_PUSAT") or ""
-                                        if no_p:
-                                            pusat_map_tmp[no_p] = nama_p
+                                    pusat_map_tmp = build_pusat_map_from_master()
                                     for s in surat_list_sup:
                                         s["nama_pusat"] = pusat_map_tmp.get(str(s["pusat"]).upper().strip(), "")
+                                        # Jika masih kosong, cuba cari tanpa strip
+                                        if not s["nama_pusat"]:
+                                            s["nama_pusat"] = pusat_map_tmp.get(str(s["pusat"]).strip(), "")
                                 except:
                                     pass
                                 zip_bytes = create_zip_of_individual_pdfs(surat_list_sup, info.get('kod_ppd',''), PPD_MAP.get(info.get('kod_ppd',''), ''))
@@ -3204,13 +3236,21 @@ if st.session_state.role == "SUP":
                         if df_ada.empty:
                             st.info(f"Belum ada surat untuk {tajuk}")
                         else:
+                            # FIX: papar NAMA PUSAT ikut pusat_master
+                            try:
+                                _pmap_disp = build_pusat_map_from_master()
+                            except:
+                                _pmap_disp = {}
                             display_rows = []
                             for _, r in df_ada.iterrows():
+                                kod_pusat_raw = r.get("KOD_PUSAT") or r.get("kod_pusat") or r.get("PUSAT") or ""
+                                nama_pusat_disp = _pmap_disp.get(str(kod_pusat_raw).upper().strip(), "")
                                 display_rows.append({
                                     "NAMA GURU": r.get("NAMA_GURU","") or r.get("nama_guru",""),
                                     "IC": r.get("IC_GURU","") or r.get("ic_guru",""),
                                     "JAWATAN": r.get("JAWATAN_NORM",""),
-                                    "PUSAT": r.get("KOD_PUSAT") or r.get("kod_pusat") or "",
+                                    "PUSAT": kod_pusat_raw,
+                                    "NAMA PUSAT": nama_pusat_disp,
                                     "NO SURAT": r.get("no_surat") or r.get("NO_SURAT") or "",
                                     "STATUS": r.get("STATUS_NORM",""),
                                 })
