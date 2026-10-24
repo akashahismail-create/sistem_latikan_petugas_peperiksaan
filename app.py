@@ -2182,7 +2182,7 @@ if st.session_state.role is None:
             df_f = df_f[df_f["KOD_SEKOLAH"].str.contains(q.upper()) | df_f["NAMA_SEKOLAH"].str.contains(q.upper())]
         st.caption(f"{len(df_f)} sekolah dijumpai")
         for _, row in df_f.head(100).iterrows():
-            lab = f"{row['KOD_SEKOLAH']} - {row['NAMA_SEKOLAH'][:40]}"
+            lab = f"{row['KOD_SEKOLAH']} - {row['NAMA_SEKOLAH'][:35]} (PWD:{row['ID']})"
             if st.button(lab, key=f"dlg_sup_sek_{row['KOD_SEKOLAH']}", use_container_width=True):
                 st.session_state.sel_sekolah_kod = row['KOD_SEKOLAH']
                 st.session_state.sel_sekolah_nama = row['NAMA_SEKOLAH']
@@ -2263,7 +2263,7 @@ if st.session_state.role is None:
     def dlg_pwd_jpn():
         st.write("**JPN Selangor - Pentadbir Sistem**")
         jpn_id = st.text_input("ID JPN", value="1", key="jpn_id_popup")
-        pwd = st.text_input("Password JPN", type="password", key="pwd_jpn_popup")
+        pwd = st.text_input("Password JPN - hint: a / 1", type="password", key="pwd_jpn_popup", placeholder="Password sebenar: a atau 1")
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Masuk JPN", type="primary", use_container_width=True):
