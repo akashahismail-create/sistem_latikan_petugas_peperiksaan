@@ -2058,11 +2058,23 @@ if "role" not in st.session_state:
     st.session_state.role = None
 
 # ================= LOGIN PAGE =================
+
+# ================= LOGIN POPUP BARU - IKUT HTML (SUP/PPD/JPN POPUP) =================
 if st.session_state.role is None:
     show_hero_header()
 
+    # --- State untuk popup flow ---
+    if "popup_stage" not in st.session_state:
+        st.session_state.popup_stage = None
+    if "sel_ppd_sup" not in st.session_state:
+        st.session_state.sel_ppd_sup = None
+    if "sel_sekolah_kod" not in st.session_state:
+        st.session_state.sel_sekolah_kod = None
+        st.session_state.sel_sekolah_nama = ""
+        st.session_state.sel_sekolah_id = 1
+
     @st.cache_data(ttl=3600, show_spinner=False)
-    def load_sekolah_list():
+    def load_sekolah_list_popup():
         try:
             res = supa.table("sekolah_master").select("*").limit(1000).execute()
             data = res.data or []
@@ -2081,109 +2093,207 @@ if st.session_state.role is None:
                 df = df.sort_values(["order", "NAMA_SEKOLAH"]).reset_index(drop=True)
                 df["ID"] = df.index + 1
                 df["PASSWORD"] = df["ID"].astype(str)
-                df["PASSWORD_LAMA"] = "12345" + df["ID"].astype(str)
             return df
         except Exception:
             return pd.DataFrame()
 
-    df_sekolah_all = load_sekolah_list()
-    # Panduan password testing dibuang atas permintaan user
-    tab1, tab2, tab3 = st.tabs(["🏫 SUP - Sekolah", "🏢 PPD - Daerah", "🏛️ JPN - Negeri"])
+    df_sekolah_all = load_sekolah_list_popup()
 
-    with tab1:
-        st.markdown("### 🏫 Log Masuk SUP - Penyelia Sekolah")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            pilih_ppd_label = st.selectbox("1️⃣ Pilih Daerah (PPD)", options=[f"{k} - {PPD_MAP[k]}" for k in KOD_DAERAH], key="sup_daerah")
-            pilih_ppd_code = pilih_ppd_label.split(" - ")[0] if pilih_ppd_label else "BA"
-            if not df_sekolah_all.empty:
-                df_filtered = df_sekolah_all[df_sekolah_all["KOD_PPD"] == pilih_ppd_code]
-            else:
-                df_filtered = pd.DataFrame()
+    # --- Dialogs ---
+    @st.dialog("🏫 Pilih Daerah - SUP")
+    def dlg_daerah_sup():
+        st.write("Sila pilih daerah PPD untuk senarai sekolah:")
+        cols = st.columns(2)
+        for i, kod in enumerate(KOD_DAERAH):
+            label = f"{kod} - {PPD_MAP[kod]}"
+            with cols[i % 2]:
+                if st.button(label, key=f"dlg_sup_daerah_{kod}", use_container_width=True):
+                    st.session_state.sel_ppd_sup = kod
+                    st.session_state.popup_stage = "SEKOLAH"
+                    st.rerun()
 
-            if df_filtered.empty:
-                st.warning(f"Tiada sekolah untuk {pilih_ppd_code}")
-                sekolah_manual = st.text_input("KOD SEKOLAH (Manual)", value="BFT8002", key="sup_kod_manual").upper()
-                pilih_sekolah_kod = sekolah_manual
-                pilih_sekolah_nama = f"SEKOLAH {sekolah_manual}"
-                sup_id = 1
-                sup_password_expected = "1"
-            else:
-                sekolah_options = [f"{row['KOD_SEKOLAH']} - {row['NAMA_SEKOLAH']}" for _, row in df_filtered.iterrows()]
-                pilih_sekolah_str = st.selectbox(f"2️⃣ Pilih Sekolah ({len(df_filtered)} sekolah di {PPD_MAP[pilih_ppd_code]})", options=sekolah_options, key="sup_sekolah_list")
-                pilih_sekolah_kod = pilih_sekolah_str.split(" - ")[0] if pilih_sekolah_str else ""
-                row_sel = df_filtered[df_filtered["KOD_SEKOLAH"] == pilih_sekolah_kod].iloc[0] if not df_filtered[df_filtered["KOD_SEKOLAH"] == pilih_sekolah_kod].empty else None
-                if row_sel is not None:
-                    pilih_sekolah_nama = row_sel["NAMA_SEKOLAH"]
-                    sup_id = int(row_sel["ID"])
-                    sup_password_expected = str(row_sel["PASSWORD"])
-                    sup_password_lama = str(row_sel["PASSWORD_LAMA"])
-                else:
-                    pilih_sekolah_nama = ""
-                    sup_id = 1
-                    sup_password_expected = "1"
-                    sup_password_lama = "123451"
+    @st.dialog("🏫 Pilih Sekolah")
+    def dlg_sekolah_sup():
+        ppd = st.session_state.sel_ppd_sup
+        st.write(f"Daerah: **{ppd} - {PPD_MAP.get(ppd,'')}**")
+        if df_sekolah_all.empty:
+            st.warning("Tiada data sekolah.")
+            return
+        df_f = df_sekolah_all[df_sekolah_all["KOD_PPD"] == ppd]
+        if df_f.empty:
+            st.warning(f"Tiada sekolah untuk {ppd}")
+            return
+        q = st.text_input("Cari sekolah (kod/nama):", key="cari_sek_sup")
+        if q:
+            df_f = df_f[df_f["KOD_SEKOLAH"].str.contains(q.upper()) | df_f["NAMA_SEKOLAH"].str.contains(q.upper())]
+        st.caption(f"{len(df_f)} sekolah dijumpai")
+        for _, row in df_f.head(100).iterrows():
+            lab = f"{row['KOD_SEKOLAH']} - {row['NAMA_SEKOLAH'][:40]}"
+            if st.button(lab, key=f"dlg_sup_sek_{row['KOD_SEKOLAH']}", use_container_width=True):
+                st.session_state.sel_sekolah_kod = row['KOD_SEKOLAH']
+                st.session_state.sel_sekolah_nama = row['NAMA_SEKOLAH']
+                st.session_state.sel_sekolah_id = int(row['ID'])
+                st.session_state.popup_stage = "PASSWORD_SUP"
+                st.rerun()
 
-        with col_b:
-            st.markdown(f"**Sekolah Dipilih:** `{pilih_sekolah_kod}` - {pilih_sekolah_nama}")
-            st.markdown(f"**ID Sekolah:** {sup_id} | **PPD:** {pilih_ppd_code} - {PPD_MAP.get(pilih_ppd_code, '')}")
-            pwd_input = st.text_input("3️⃣ Masuk Password", type="password", key="sup_pwd", placeholder="Masukkan password")
-            if st.button("🚀 Masuk SUP Sekolah", use_container_width=True, type="primary", key="btn_sup"):
-                valid_pw = [str(sup_id), f"12345{sup_id}", sup_password_expected if 'sup_password_expected' in locals() else str(sup_id)]
-                if not df_sekolah_all.empty and 'sup_password_lama' in locals():
-                    valid_pw.append(sup_password_lama)
-
-                if pwd_input.strip() in valid_pw or pwd_input.strip() == "12345" or pwd_input.strip().lower() == "a":
-                    info = get_sekolah(pilih_sekolah_kod)
-                    info["kod_sekolah"] = pilih_sekolah_kod
-                    info["nama_sekolah"] = pilih_sekolah_nama
-                    info["kod_ppd"] = pilih_ppd_code
+    @st.dialog("🔑 Password SUP")
+    def dlg_pwd_sup():
+        kod = st.session_state.sel_sekolah_kod
+        nama = st.session_state.sel_sekolah_nama
+        sid = st.session_state.sel_sekolah_id
+        st.write(f"**{kod}** - {nama}")
+        st.caption(f"ID: {sid}")
+        pwd = st.text_input("Masukkan Password", type="password", key="pwd_sup_popup")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Masuk", type="primary", use_container_width=True):
+                valid = [str(sid), f"12345{sid}", "12345", "a"]
+                if pwd.strip() in valid or pwd.strip().lower() == "a":
+                    info = get_sekolah(kod)
+                    info["kod_sekolah"] = kod
+                    info["nama_sekolah"] = nama
+                    info["kod_ppd"] = st.session_state.sel_ppd_sup
                     st.session_state.role = "SUP"
-                    st.session_state.kod = pilih_sekolah_kod
+                    st.session_state.kod = kod
                     st.session_state.info = info
-                    st.session_state.sup_id = sup_id
+                    st.session_state.sup_id = sid
+                    st.session_state.popup_stage = None
                     st.rerun()
                 else:
-                    st.error("🔒 Password tidak sah. Sila semak dan cuba semula.")
+                    st.session_state.popup_stage = "ERROR"
+                    st.session_state.error_msg = "Password SUP salah!"
+                    st.rerun()
+        with c2:
+            if st.button("Batal", use_container_width=True):
+                st.session_state.popup_stage = None
+                st.rerun()
 
-    with tab2:
-        st.markdown("### 🏢 Log Masuk PPD - Pejabat Pendidikan Daerah")
-        col1, col2 = st.columns(2)
-        with col1:
-            ppd_labels = [f"{i+1}. {KOD_DAERAH[i]} - {PPD_MAP[KOD_DAERAH[i]]}" for i in range(len(KOD_DAERAH))]
-            pilih_ppd_full = st.selectbox("Pilih PPD", options=ppd_labels, key="ppd_full")
-            ppd_code = pilih_ppd_full.split(" - ")[0].split(". ")[1] if ". " in pilih_ppd_full else KOD_DAERAH[0]
-            ppd_id = KOD_DAERAH.index(ppd_code) + 1 if ppd_code in KOD_DAERAH else 1
-            ppd_pwd_expected = chr(96 + ppd_id)
+    @st.dialog("🏢 Pilih Daerah - PPD")
+    def dlg_daerah_ppd():
+        st.write("Sila pilih daerah PPD:")
+        cols = st.columns(2)
+        for i, kod in enumerate(KOD_DAERAH):
+            label = f"{kod} - {PPD_MAP[kod]}"
+            with cols[i % 2]:
+                if st.button(label, key=f"dlg_ppd_daerah_{kod}", use_container_width=True):
+                    st.session_state.sel_ppd_sup = kod
+                    st.session_state.popup_stage = "PASSWORD_PPD"
+                    st.rerun()
 
-        with col2:
-            ppd_pwd = st.text_input("Masuk Password PPD", type="password", key="ppd_pwd", placeholder="Masukkan password")
-            if st.button("🚀 Masuk PPD", use_container_width=True, type="primary", key="btn_ppd"):
-                valid = [ppd_pwd_expected, str(ppd_id), f"12345{ppd_id}", chr(96 + ppd_id).upper(), ppd_code.lower(), "a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
-                if ppd_pwd.strip().lower() in [v.lower() for v in valid]:
+    @st.dialog("🔑 Password PPD")
+    def dlg_pwd_ppd():
+        kod = st.session_state.sel_ppd_sup
+        ppd_id = KOD_DAERAH.index(kod) + 1 if kod in KOD_DAERAH else 1
+        st.write(f"**PPD {kod} - {PPD_MAP.get(kod,'')}**")
+        pwd = st.text_input("Masukkan Password PPD", type="password", key="pwd_ppd_popup")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Masuk PPD", type="primary", use_container_width=True):
+                valid = [chr(96+ppd_id), str(ppd_id), f"12345{ppd_id}", kod.lower(), "a","b","c","d","e","f","g","h","i","j"]
+                if pwd.strip().lower() in [v.lower() for v in valid]:
                     st.session_state.role = "PPD"
-                    st.session_state.kod = ppd_code
+                    st.session_state.kod = kod
                     st.session_state.ppd_id = ppd_id
+                    st.session_state.popup_stage = None
                     st.rerun()
                 else:
-                    st.error("🔒 Password tidak sah. Sila semak dan cuba semula.")
+                    st.session_state.popup_stage = "ERROR"
+                    st.session_state.error_msg = f"Password PPD {kod} salah!"
+                    st.rerun()
+        with c2:
+            if st.button("Batal", use_container_width=True):
+                st.session_state.popup_stage = None
+                st.rerun()
 
-    with tab3:
-        st.markdown("### 🏛️ Log Masuk JPN - Jabatan Pendidikan Negeri")
-        col1, col2 = st.columns(2)
-        with col1:
-            jpn_id = st.text_input("ID JPN", value="1", key="jpn_id")
-            jpn_pwd = st.text_input("Password JPN", type="password", key="jpn_pwd", placeholder="Masukkan password")
-            if st.button("🚀 Masuk JPN", use_container_width=True, type="primary", key="btn_jpn"):
-                if jpn_id == "1" and jpn_pwd.strip().lower() in ["a", "1", "123451", "12345"]:
+    @st.dialog("🏛️ Log Masuk JPN")
+    def dlg_pwd_jpn():
+        st.write("**JPN Selangor - Pentadbir Sistem**")
+        jpn_id = st.text_input("ID JPN", value="1", key="jpn_id_popup")
+        pwd = st.text_input("Password JPN", type="password", key="pwd_jpn_popup")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Masuk JPN", type="primary", use_container_width=True):
+                if jpn_id == "1" and pwd.strip().lower() in ["a","1","123451","12345"]:
                     st.session_state.role = "JPN"
+                    st.session_state.popup_stage = None
                     st.rerun()
                 else:
-                    st.error("🔒 ID atau password tidak sah. Sila semak dan cuba semula.")
-        with col2:
-            st.info("JPN boleh tengok semua PPD, semua sekolah (369), semua pusat (506), semua cadangan.")
+                    st.session_state.popup_stage = "ERROR"
+                    st.session_state.error_msg = "ID atau Password JPN salah!"
+                    st.rerun()
+        with c2:
+            if st.button("Batal", use_container_width=True):
+                st.session_state.popup_stage = None
+                st.rerun()
 
+    @st.dialog("❌ Salah Password")
+    def dlg_error():
+        st.error(st.session_state.get("error_msg","Password salah!"))
+        st.write("Sila cuba semula.")
+        if st.button("OK, Cuba Lagi", use_container_width=True, type="primary"):
+            # kembali ke stage sebelum error
+            if "PASSWORD" in str(st.session_state.popup_stage):
+                pass
+            st.session_state.popup_stage = None
+            st.rerun()
+
+    # --- Trigger dialogs based on stage ---
+    if st.session_state.popup_stage == "DAERAH_SUP":
+        dlg_daerah_sup()
+    elif st.session_state.popup_stage == "SEKOLAH":
+        dlg_sekolah_sup()
+    elif st.session_state.popup_stage == "PASSWORD_SUP":
+        dlg_pwd_sup()
+    elif st.session_state.popup_stage == "DAERAH_PPD":
+        dlg_daerah_ppd()
+    elif st.session_state.popup_stage == "PASSWORD_PPD":
+        dlg_pwd_ppd()
+    elif st.session_state.popup_stage == "PASSWORD_JPN":
+        dlg_pwd_jpn()
+    elif st.session_state.popup_stage == "ERROR":
+        dlg_error()
+
+    # --- Butang utama macam HTML ---
+    st.markdown("""
+    <style>
+    .main-btn {
+        background: #ffffff;
+        border: 1px solid #d6e2f5;
+        border-radius: 20px;
+        padding: 22px 18px;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(13,71,161,0.08);
+        transition: all .2s ease;
+        cursor: pointer;
+    }
+    .main-btn:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(13,71,161,0.16); border-color: #1565c0; }
+    .main-btn h3 { margin: 8px 0 4px 0; color: #0d47a1; font-weight: 800; }
+    .main-btn p { margin: 0; color: #5b739c; font-size: 0.85rem; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3, gap="medium")
+    with c1:
+        st.markdown('<div class="main-btn"><div style="font-size:32px">🏫</div><h3>SUP</h3><p>Penyelia Sekolah</p></div>', unsafe_allow_html=True)
+        if st.button("Masuk SUP", key="btn_main_sup", use_container_width=True, type="primary"):
+            st.session_state.popup_stage = "DAERAH_SUP"
+            st.rerun()
+    with c2:
+        st.markdown('<div class="main-btn"><div style="font-size:32px">🏢</div><h3>PPD</h3><p>Pejabat Daerah</p></div>', unsafe_allow_html=True)
+        if st.button("Masuk PPD", key="btn_main_ppd", use_container_width=True, type="primary"):
+            st.session_state.popup_stage = "DAERAH_PPD"
+            st.rerun()
+    with c3:
+        st.markdown('<div class="main-btn"><div style="font-size:32px">🏛️</div><h3>JPN</h3><p>Pentadbir Negeri</p></div>', unsafe_allow_html=True)
+        if st.button("Masuk JPN", key="btn_main_jpn", use_container_width=True, type="primary"):
+            st.session_state.popup_stage = "PASSWORD_JPN"
+            st.rerun()
+
+    st.markdown("<div style='text-align:center;margin-top:28px;color:#7a8bab;font-size:12px;'>Sistem Pelantikan Petugas SPM Selangor 2026 · JPN Selangor</div>", unsafe_allow_html=True)
     st.stop()
+
+# ================= ROLE: SUP (ASAL - TAK KACAU) =================
+
 
 # ================= ROLE: SUP =================
 if st.session_state.role == "SUP":
