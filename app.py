@@ -575,6 +575,14 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     nama_sek_asal = clean_nan(nama_sek_asal)
     pusat = clean_nan(pusat)
     nama_pusat = clean_nan(nama_pusat)
+    # FIX: jika nama_pusat kosong, cari dari pusat_master ikut NO PUSAT
+    if not nama_pusat or nama_pusat.upper() == pusat.upper():
+        try:
+            _pmap = build_pusat_map_from_master()
+            if pusat and str(pusat).upper().strip() in _pmap and _pmap[str(pusat).upper().strip()]:
+                nama_pusat = _pmap[str(pusat).upper().strip()]
+        except:
+            pass
     no_surat = clean_nan(no_surat) or clean_nan(tarikh) or "JPN.SPP.HHJH/0001"
     kod_ppd = clean_nan(kod_ppd) or "BA"
     ppd_name = clean_nan(ppd_name) or kod_ppd
@@ -1528,6 +1536,13 @@ def generate_surat_html_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat,
     nama_sek_asal = clean_nan(nama_sek_asal)
     pusat = clean_nan(pusat)
     nama_pusat = clean_nan(nama_pusat)
+    if not nama_pusat or nama_pusat.upper() == pusat.upper():
+        try:
+            _pmap = build_pusat_map_from_master()
+            if pusat and str(pusat).upper().strip() in _pmap and _pmap[str(pusat).upper().strip()]:
+                nama_pusat = _pmap[str(pusat).upper().strip()]
+        except:
+            pass
     no_surat = clean_nan(no_surat) or "JPN.SPP.HHJH/0001"
     kod_ppd = clean_nan(kod_ppd) or "BA"
     ppd_name = clean_nan(ppd_name) or kod_ppd
