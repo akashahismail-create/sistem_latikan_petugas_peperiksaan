@@ -288,31 +288,12 @@ PPD_MAP = {
 }
 
 # ===== PANDUAN PASSWORD UNTUK TESTING 300 USER =====
-ENABLE_TESTING_GUIDE = True
+ENABLE_TESTING_GUIDE = False
 MAX_PDF_KOLEKTIF = 150
 MAX_ZIP_FILES = 200
 
 def show_testing_password_guide(df_sekolah_all):
-    if not ENABLE_TESTING_GUIDE:
-        return
-    with st.expander("🔑 KLIK SINI - PANDUAN PASSWORD TESTING UNTUK 300 USER", expanded=True):
-        st.warning("MODE TESTING - Password 'a' boleh masuk semua role. Hapus panel ni bila live!")
-        c1,c2,c3 = st.columns(3)
-        with c1:
-            st.markdown("**SUP - 369 Sekolah**")
-            st.code("ID = Password\n1->1, 2->2\nBackup: 12345+ID\nUniversal: 12345 / a")
-            if df_sekolah_all is not None and not df_sekolah_all.empty:
-                try:
-                    st.dataframe(df_sekolah_all[["ID","KOD_SEKOLAH","PASSWORD"]].head(10), hide_index=True, use_container_width=True)
-                except:
-                    pass
-        with c2:
-            st.markdown("**PPD - 10 Daerah**")
-            st.code("BA=a/1/ba\nBB=b/2/bb\nBC=c/3/bc\nBD=d/4/bd\nBE=e/5/be\nBF=f/6/bf\nBG=g/7/bg\nBH=h/8/bh\nBJ=i/9/bj\nBK=j/10/bk")
-        with c3:
-            st.markdown("**JPN**")
-            st.code("ID=1\nPWD: a / 1 / 12345 / 123451")
-            st.success("Tip: Guna 'a' untuk test 300 user")
+    return
 
 
 # ===== HELPER: WARNA HIJAU UNTUK GURU SUDAH HANTAR KE PPD =====
@@ -2106,11 +2087,7 @@ if st.session_state.role is None:
             return pd.DataFrame()
 
     df_sekolah_all = load_sekolah_list()
-    st.markdown("<div style=\"background:linear-gradient(135deg,#1565c0,#0d47a1);padding:10px 16px;border-radius:10px;color:white;margin:10px 0;\">⚡ VERSI RINGAN UNTUK 300 USER - Cache 1 jam | PDF max 150 | ZIP max 200 | Testing PWD: a</div>", unsafe_allow_html=True)
-    try:
-        show_testing_password_guide(df_sekolah_all)
-    except Exception as e:
-        st.caption(f"Guide error: {e}")
+    # Panduan password testing dibuang atas permintaan user
     tab1, tab2, tab3 = st.tabs(["🏫 SUP - Sekolah", "🏢 PPD - Daerah", "🏛️ JPN - Negeri"])
 
     with tab1:
