@@ -7595,10 +7595,42 @@ elif st.session_state.role == "PPD":
             df_lulus_surat = df_cad_all_surat[df_cad_all_surat.apply(has_surat_ppd, axis=1)].copy() if not df_cad_all_surat.empty else pd.DataFrame()
             df_belum_surat = df_cad_all_surat[~df_cad_all_surat.apply(has_surat_ppd, axis=1)].copy() if not df_cad_all_surat.empty else pd.DataFrame()
 
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Cadangan PPD", len(df_cad_all_surat))
-            c2.metric("✅ Sudah Lulus Ada Surat", len(df_lulus_surat))
-            c3.metric("⏳ Belum Ada Surat", len(df_belum_surat))
+            def papar_belum_surat_ppd(df_belum, pusat_map):
+                """Senarai nama guru yang belum ada surat. Hanya dipanggil jika ada yang belum."""
+                st.markdown(f"#### ⏳ Senarai Guru Belum Ada Surat ({len(df_belum)} orang)")
+                rows_b = []
+                for i_b, (_, r) in enumerate(df_belum.iterrows(), start=1):
+                    kp = str(r.get("kod_pusat", "") or r.get("KOD_PUSAT", "") or "").strip()
+                    if kp.lower() in ("none", "null", "nan"):
+                        kp = ""
+                    rows_b.append({
+                        "BIL": i_b,
+                        "NAMA GURU": r.get("NAMA_GURU", "") or r.get("nama_guru", ""),
+                        "IC": r.get("IC_GURU", "") or r.get("ic_guru", ""),
+                        "JAWATAN": r.get("JAWATAN_CADANGAN", "") or r.get("jawatan_cadangan", ""),
+                        "SEKOLAH ASAL": r.get("KOD_SEKOLAH_ASAL", "") or r.get("kod_sekolah_asal", ""),
+                        "PUSAT TUGAS": kp or "-",
+                        "NAMA PUSAT": str(pusat_map.get(kp.upper(), ""))[:30] if kp else "",
+                        "STATUS": r.get("status", "") or r.get("STATUS", ""),
+                        "SEBAB": "Belum ditempatkan ke pusat" if not kp else "Belum diluluskan (menu Kelulusan)",
+                    })
+                df_b_show = pd.DataFrame(rows_b)
+                st.dataframe(df_b_show, use_container_width=True, hide_index=True, height=min(420, 38 + 35 * len(df_b_show)))
+                st.download_button("📥 Export Senarai Belum Ada Surat (Excel)", to_excel(df_b_show),
+                                   file_name=f"belum_ada_surat_{kod_ppd}_{datetime.date.today()}.xlsx",
+                                   key="dl_belum_ada_surat_ppd")
+
+            if df_belum_surat.empty:
+                # Tiada yang belum ada surat -> kotak "Belum Ada Surat" tidak dipaparkan
+                c1, c2 = st.columns(2)
+                c1.metric("Total Cadangan PPD", len(df_cad_all_surat))
+                c2.metric("✅ Sudah Lulus Ada Surat", len(df_lulus_surat))
+            else:
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Cadangan PPD", len(df_cad_all_surat))
+                c2.metric("✅ Sudah Lulus Ada Surat", len(df_lulus_surat))
+                c3.metric("⏳ Belum Ada Surat", len(df_belum_surat))
+                papar_belum_surat_ppd(df_belum_surat, pusat_map_surat)
 
             if df_lulus_surat.empty:
                 st.warning("Belum ada surat yang diluluskan di PPD ini - sila luluskan di menu Kelulusan dahulu")
