@@ -2496,39 +2496,61 @@ if st.session_state.role == "SUP":
             st.markdown("<div style='background:#fff3e0; padding:8px; border-radius:6px; font-size:11px;'>Error load pusat: " + str(e) + "</div>", unsafe_allow_html=True)
         add_refresh_button()
 
-        if "sup_dash_sub" not in st.session_state:
-            st.session_state.sup_dash_sub = "utama"
+        # ===== SUB MENU STATE UNTUK SEMUA MENU - TAK ADA UTAMA =====
+        if "sup_sub_menus" not in st.session_state:
+            st.session_state.sup_sub_menus = {}
 
         MENU_SUP = [('dashboard', '📊 Dashboard'), ('senarai', '📋 Senarai Guru'), ('tambah', '➕ Tambah Guru'),
                     ('import', '📤 Import Excel'), ('buang', '🗑️ Buang Guru'), ('cadangan', '📝 Cadangan Lantikan'),
                     ('hantar', '📤 Hantar ke PPD'), ('petugas', '👥 Petugas Hadir di Sekolah Saya'), ('surat', '📄 Surat Lantikan Saya'), ('keluar', '🚪 Log Keluar')]
 
+        # Definisi sub-menu untuk setiap menu utama (tanpa Utama)
+        SUB_MENU_DEF = {
+            'dashboard': [('pusat', '📍 Senarai Pusat'), ('guru', '👥 Guru Terkini')],
+            'senarai': [('filter', '🔍 Filter Jawatan'), ('edit', '✏️ Edit Guru')],
+            'tambah': [('form', '📝 Borang Tambah'), ('panduan', '📖 Panduan')],
+            'import': [('upload', '📤 Upload Excel'), ('template', '📋 Template')],
+            'buang': [('pilih', '☑️ Pilih Buang'), ('confirm', '🗑️ Sahkan')],
+            'cadangan': [('pilih_guru', '👨‍🏫 Pilih Guru'), ('pilih_jawatan', '💼 Pilih Jawatan')],
+            'hantar': [('semak', '🔍 Semak'), ('hantar_ppd', '📤 Hantar')],
+            'petugas': [('hadir', '✅ Hadir'), ('senarai', '📋 Senarai')],
+            'surat': [('paparan', '📄 Paparan Surat'), ('cetak', '🖨️ Cetak')],
+        }
+
         col_menu_kiri, col_menu_kanan = st.columns([1.4, 1], gap="small")
 
         with col_menu_kiri:
             menu = st.radio("Menu SUP", [k for k, _ in MENU_SUP], format_func=dict(MENU_SUP).get, label_visibility="collapsed", key="sup_menu_radio")
+            # Reset sub-menu bila tukar menu utama
+            if "last_main_menu" not in st.session_state:
+                st.session_state.last_main_menu = menu
+            if st.session_state.last_main_menu != menu:
+                st.session_state.last_main_menu = menu
+                # set default sub untuk menu baru
+                if menu in SUB_MENU_DEF and SUB_MENU_DEF[menu]:
+                    st.session_state.sup_sub_menus[menu] = SUB_MENU_DEF[menu][0][0]
+                else:
+                    st.session_state.sup_sub_menus[menu] = "utama"
 
         with col_menu_kanan:
-            if menu == "dashboard":
-                sub_aktif = st.session_state.sup_dash_sub
+            # Flyout sebelah untuk SEMUA menu (kecuali keluar)
+            if menu != "keluar" and menu in SUB_MENU_DEF:
+                subs = SUB_MENU_DEF[menu]
+                curr_sub = st.session_state.sup_sub_menus.get(menu, subs[0][0] if subs else "utama")
                 st.markdown("""
                 <div style="background:white; border:2.5px solid #0D47A1; border-radius:12px; padding:10px 8px; box-shadow:6px 6px 18px rgba(13,71,161,0.18); position:relative; margin-top:2px;">
                     <div style="position:absolute; left:-10px; top:20px; width:0; height:0; border-top:10px solid transparent; border-bottom:10px solid transparent; border-right:10px solid #0D47A1;"></div>
-                    <div style="font-weight:900; color:#0D47A1; font-size:0.75rem; text-align:center; border-bottom:1.5px solid #CFDBF0; padding-bottom:5px; margin-bottom:8px;">➡️ SUB MENU</div>
+                    <div style="font-weight:900; color:#0D47A1; font-size:0.7rem; text-align:center; border-bottom:1.5px solid #CFDBF0; padding-bottom:5px; margin-bottom:8px;">➡️ SUB MENU</div>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("📍 Senarai Pusat", use_container_width=True, key="flyout_pusat_v3", type="primary" if sub_aktif == "pusat" else "secondary"):
-                    st.session_state.sup_dash_sub = "pusat"
-                    st.rerun()
-                if st.button("👥 Guru Terkini", use_container_width=True, key="flyout_guru_v3", type="primary" if sub_aktif == "guru" else "secondary"):
-                    st.session_state.sup_dash_sub = "guru"
-                    st.rerun()
-                if st.button("🏠 Utama", use_container_width=True, key="flyout_utama_v3"):
-                    st.session_state.sup_dash_sub = "utama"
-                    st.rerun()
-                st.markdown(f'<div style="margin-top:6px; padding:4px; background:#E3F2FD; border-radius:5px; font-size:0.65rem; font-weight:800; color:#0D47A1; text-align:center;">{sub_aktif.upper()}</div>', unsafe_allow_html=True)
+                for sub_key, sub_label in subs:
+                    is_active = (curr_sub == sub_key)
+                    if st.button(sub_label, use_container_width=True, key=f"flyout_{menu}_{sub_key}", type="primary" if is_active else "secondary"):
+                        st.session_state.sup_sub_menus[menu] = sub_key
+                        st.rerun()
+                st.markdown(f'<div style="margin-top:6px; padding:4px; background:#E3F2FD; border-radius:5px; font-size:0.6rem; font-weight:800; color:#0D47A1; text-align:center;">{curr_sub.upper()}</div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div style="height:100px; border:1px dashed #CFDBF0; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#4A5C7A; font-size:0.65rem; text-align:center; padding:6px;">Sub-menu hanya untuk Dashboard</div>', unsafe_allow_html=True)
+                st.markdown('<div style="height:80px; border:1px dashed #CFDBF0; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#4A5C7A; font-size:0.6rem; text-align:center; padding:6px;">Tiada sub-menu</div>', unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
     with col_main:
@@ -2575,17 +2597,33 @@ if st.session_state.role == "SUP":
             else:
                 total_calon = 0; total_kelas = 0; total_petugas = 0; total_perlu = 0; no_pusat_list = "-"
 
-            sub = st.session_state.get("sup_dash_sub", "utama")
-
-            if sub == "utama":
+            sub = st.session_state.sup_sub_menus.get("dashboard", "pusat")
+            # Jika tiada pusat/guru selected, default papar dashboard ringkas + sub akan tukar
+            if sub == "pusat":
+                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>📍 Senarai Pusat Sekolah Anda - {kod}</div></div>", unsafe_allow_html=True)
+                if pusat_sekolah:
+                    df_pusat_display = pd.DataFrame(pusat_sekolah)
+                    cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
+                    df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
+                    st.dataframe(df_pusat_display, use_container_width=True, hide_index=True)
+                    st.success(f"Ada {len(pusat_sekolah)} pusat | {total_calon} calon | {total_kelas} kelas")
+                else:
+                    st.warning("Tiada pusat dijumpai")
+            elif sub == "guru":
+                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>👥 Guru Terkini - {kod}</div></div>", unsafe_allow_html=True)
+                if not df_guru.empty:
+                    cols_show = [c for c in ["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN", "POSKOD_RUMAH"] if c in df_guru.columns]
+                    st.dataframe(df_guru[cols_show] if cols_show else df_guru, use_container_width=True, hide_index=True)
+                    st.info(f"Jumlah: {len(df_guru)} guru")
+                else:
+                    st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
+            else:
+                # Default - papar kad ringkas jika sub tidak match
                 if pusat_sekolah:
                     try:
                         st.markdown(jpn_kad_pusat(no_pusat_list, total_kelas, total_petugas, total_perlu, kod), unsafe_allow_html=True)
                     except:
                         st.markdown(f"<div style='background:white; padding:20px; border-radius:12px; border:3px solid #1565c0; margin-bottom:20px;'><h3>🏫 KEPERLUAN PENGAWAS - {kod}</h3><div>NO PUSAT: <b>{no_pusat_list}</b> | Kelas: {total_kelas} | Petugas: {total_petugas} | Perlu: {total_perlu}</div></div>", unsafe_allow_html=True)
-                else:
-                    st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
-                st.markdown("<div style='background:#E3F2FD; border:1px dashed #CFDBF0; border-radius:8px; padding:8px 12px; font-size:0.8rem; color:#4A5C7A; text-align:center; margin-bottom:12px;'>📌 Sub-menu ada di sebelah kiri (popup) - pilih di kotak sebelah kanan Dashboard</div>", unsafe_allow_html=True)
                 c1, c2, c3, c4 = st.columns(4)
                 with c1: st.metric("Jumlah Guru", len(df_guru))
                 with c2:
@@ -2599,33 +2637,6 @@ if st.session_state.role == "SUP":
                         cad = get_cadangan_df(kod_sekolah=kod)
                         st.metric("Cadangan Dihantar", len(cad))
                     except: st.metric("Cadangan", "0")
-                st.markdown("---")
-                st.subheader("Guru Terkini (Ringkasan 5 Terbaru)")
-                if not df_guru.empty:
-                    st.dataframe(df_guru[["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN"]].head(5), use_container_width=True, hide_index=True)
-                else:
-                    st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
-
-            elif sub == "pusat":
-                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>📍 Senarai Pusat Sekolah Anda - {kod}</div><div style='font-size:0.85rem; color:#4A5C7A; margin-top:4px;'>Paparan dashboard utama disembunyikan. Klik Utama di popup sebelah untuk kembali.</div></div>", unsafe_allow_html=True)
-                if pusat_sekolah:
-                    df_pusat_display = pd.DataFrame(pusat_sekolah)
-                    cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
-                    df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
-                    st.dataframe(df_pusat_display, use_container_width=True, hide_index=True)
-                    st.success(f"Ada {len(pusat_sekolah)} pusat | {total_calon} calon | {total_kelas} kelas")
-                else:
-                    st.warning("Tiada pusat dijumpai")
-
-            elif sub == "guru":
-                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>👥 Guru Terkini - {kod}</div><div style='font-size:0.85rem; color:#4A5C7A; margin-top:4px;'>Paparan dashboard utama disembunyikan. Klik Utama di popup sebelah untuk kembali.</div></div>", unsafe_allow_html=True)
-                if not df_guru.empty:
-                    cols_show = [c for c in ["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN", "POSKOD_RUMAH"] if c in df_guru.columns]
-                    st.dataframe(df_guru[cols_show] if cols_show else df_guru, use_container_width=True, hide_index=True)
-                    st.info(f"Jumlah: {len(df_guru)} guru")
-                else:
-                    st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
-
         elif menu == "senarai":
             st.header(f"Senarai Guru - {kod} - Lengkap")
             if df_guru.empty:
