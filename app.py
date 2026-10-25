@@ -2499,6 +2499,14 @@ st.markdown("""
     border-color: #0b2f7a !important;
     box-shadow: inset 5px 0 0 #ffca28 !important;
 }
+/* Flyout terapung sebaris dengan menu terpilih (tidak tolak menu lain ke bawah) */
+[data-testid="stColumn"]:has(.fly-anchor),
+[data-testid="column"]:has(.fly-anchor) { position: relative; }
+.st-key-flywrap {
+    position: absolute !important; top: 0; left: 0; right: 0;
+    width: 100% !important; z-index: 999;
+}
+.fly-anchor { display: block; height: 0; }
 /* Panel flyout */
 .fly-panel {
     background: #ffffff;
@@ -2539,7 +2547,7 @@ def render_menu_buttons(skey, items):
 
 
 def render_flyout(menu, fly_map, dash_key, prefix):
-    """Flyout sub menu di sebelah menu. Pulangkan kunci sub aktif (atau None jika menu tiada sub)."""
+    """Flyout sub menu (terapung, sebaris dengan menu terpilih). Pulangkan kunci sub aktif (atau None)."""
     subs = fly_map.get(menu)
     if not subs:
         return None
@@ -2548,14 +2556,37 @@ def render_flyout(menu, fly_map, dash_key, prefix):
     if st.session_state.get(skey) not in keys:
         st.session_state[skey] = keys[0]
     cur = st.session_state[skey]
-    st.markdown('<div class="fly-panel"><div class="fly-title">SUB MENU</div></div>', unsafe_allow_html=True)
-    for k, label in subs:
-        if st.button(label, key=f"flysub_{skey}_{k}", use_container_width=True,
-                     type="primary" if k == cur else "secondary"):
-            if k != cur:
-                st.session_state[skey] = k
-                st.rerun()
+    st.markdown('<span class="fly-anchor"></span>', unsafe_allow_html=True)
+    with st.container(key="flywrap"):
+        st.markdown('<div class="fly-panel"><div class="fly-title">SUB MENU</div></div>', unsafe_allow_html=True)
+        for k, label in subs:
+            if st.button(label, key=f"flysub_{skey}_{k}", use_container_width=True,
+                         type="primary" if k == cur else "secondary"):
+                if k != cur:
+                    st.session_state[skey] = k
+                    st.rerun()
     return st.session_state[skey]
+
+
+def render_menu_flyout(skey, items, fly_map, dash_key, prefix):
+    """Menu utama (butang biru). Flyout keluar di baris menu yang dipilih. Pulangkan (menu, sub_aktif)."""
+    keys = [k for k, _ in items]
+    if st.session_state.get(skey) not in keys:
+        st.session_state[skey] = keys[0]
+    cur = st.session_state[skey]
+    fly_cur = None
+    for k, label in items:
+        c_menu, c_fly = st.columns([1, 1], gap="small")
+        with c_menu:
+            if st.button(label, key=f"flymenu_{skey}_{k}", use_container_width=True,
+                         type="primary" if k == cur else "secondary"):
+                if k != cur:
+                    st.session_state[skey] = k
+                    st.rerun()
+        if k == cur:
+            with c_fly:
+                fly_cur = render_flyout(k, fly_map, dash_key, prefix)
+    return cur, fly_cur
 
 
 FLY_SUP = {
@@ -2629,11 +2660,7 @@ if st.session_state.role == "SUP":
                     ('import', '📤 Import Excel'), ('buang', '🗑️ Buang Guru'), ('cadangan', '📝 Cadangan Lantikan'),
                     ('hantar', '📤 Hantar ke PPD'), ('petugas', '👥 Petugas Hadir di Sekolah Saya'), ('surat', '📄 Surat Lantikan Saya'), ('keluar', '🚪 Log Keluar')]
 
-        col_menu_kiri, col_menu_kanan = st.columns([1, 1], gap="small")
-        with col_menu_kiri:
-            menu = render_menu_buttons("sup_menu_sel", MENU_SUP)
-        with col_menu_kanan:
-            fly_cur = render_flyout(menu, FLY_SUP, "sup_dash_sub", "fly_sup")
+        menu, fly_cur = render_menu_flyout("sup_menu_sel", MENU_SUP, FLY_SUP, "sup_dash_sub", "fly_sup")
 
         st.markdown('</div>', unsafe_allow_html=True)
     with col_main:
@@ -3707,11 +3734,7 @@ elif st.session_state.role == "PPD":
         MENU_PPD = [('dashboard', '📊 Dashboard PPD'), ('sekolah', '🏫 Sekolah dalam PPD'), ('pusat', '🏫 Pusat di PPD'),
                     ('cadangan', '📋 Cadangan SUP'), ('jana', '🚀 Jana Keseluruhan'), ('hasil', '📋 Hasil Janaan'), ('manual', '📌 Penempatan Manual'), ('selenggara', '🔐 Selenggara Bilik Kebal'), ('semakan', '🔍 Semakan Lantikan'), ('kelulusan', '✅ Kelulusan'), ('jana_surat', '📄 Janaan Surat Lantikan'),
                     ('export', '📥 Export'), ('keluar', '🚪 Log Keluar')]
-        col_menu_kiri, col_menu_kanan = st.columns([1, 1], gap="small")
-        with col_menu_kiri:
-            menu = render_menu_buttons("ppd_menu_sel", MENU_PPD)
-        with col_menu_kanan:
-            fly_cur = render_flyout(menu, FLY_PPD, None, "fly_ppd")
+        menu, fly_cur = render_menu_flyout("ppd_menu_sel", MENU_PPD, FLY_PPD, None, "fly_ppd")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_main:
@@ -7740,11 +7763,7 @@ elif st.session_state.role == "JPN":
         MENU_JPN = [('dashboard', '📊 Dashboard JPN'), ('jpn_template_surat', '📄 Template Surat JPN (11 Jawatan)'), ('sekolah', '🏫 Semua Sekolah'), ('pusat', '🏫 Pusat Master'),
                     ('guru', '👨\u200d🏫 Guru Master'), ('cadangan', '📋 Semua Cadangan'), ('export', '📥 Export Negeri'),
                     ('admin', '⚙️ Admin'), ('keluar', '🚪 Log Keluar')]
-        col_menu_kiri, col_menu_kanan = st.columns([1, 1], gap="small")
-        with col_menu_kiri:
-            menu = render_menu_buttons("jpn_menu_sel", MENU_JPN)
-        with col_menu_kanan:
-            fly_cur = render_flyout(menu, FLY_JPN, None, "fly_jpn")
+        menu, fly_cur = render_menu_flyout("jpn_menu_sel", MENU_JPN, FLY_JPN, None, "fly_jpn")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_main:
