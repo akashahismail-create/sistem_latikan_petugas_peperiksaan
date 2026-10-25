@@ -35,35 +35,8 @@ import logging
 
 _log = logging.getLogger("spm2026")
 
-# ================= V38 - PILIHAN TAHUN (2026 - 2030) =================
-TAHUN_PILIHAN = [2026, 2027, 2028, 2029, 2030]
-# Jadual yang datanya berasingan ikut tahun (lajur `tahun` perlu wujud - lihat SQL di JPN > Admin > Urus Tahun)
-TAHUN_TABLES = {"cadangan_sup", "guru_master", "pusat_master", "bilik_kebal_master", "surat_hantar_sekolah_asal"}
-
-def default_tahun():
-    y = datetime.date.today().year
-    if y in TAHUN_PILIHAN:
-        return y
-    return TAHUN_PILIHAN[0] if y < TAHUN_PILIHAN[0] else TAHUN_PILIHAN[-1]
-
-def tahun_aktif():
-    """Tahun peperiksaan yang sedang dipilih pengguna (default: tahun semasa dalam julat pilihan)."""
-    try:
-        t = int(st.session_state.get("_tahun", default_tahun()))
-        return t if t in TAHUN_PILIHAN else default_tahun()
-    except Exception:
-        return default_tahun()
-
-def reset_sesi_kekal_tahun():
-    """Log keluar: kosongkan sesi tetapi kekalkan pilihan tahun."""
-    t = st.session_state.get("_tahun")
-    st.session_state.clear()
-    if t:
-        st.session_state["_tahun"] = t
-# ================= END V38 CORE =================
-
 # ================= CONFIGURATION =================
-st.set_page_config(page_title="Pelantikan SPM Selangor", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Pelantikan SPM Selangor 2026", layout="wide", page_icon="📚", initial_sidebar_state="collapsed")
 
 
 # ===== HIDE FORK & GITHUB CAT BUTTON (PPD MINTA BUANG) =====
@@ -235,7 +208,7 @@ def jpn_kad_pusat(no_pusat_list_str, total_kelas, total_petugas, total_perlu, ko
     <div class="jpn-kad-biru">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="font-weight:900; color:{JPN_COLORS["biru_tua"]}; font-size:1.1rem;">🏫 KEPERLUAN PENGAWAS - {kod_sekolah}</div>
-            <span class="jpn-badge jpn-badge-biru">JPN SELANGOR {tahun_aktif()}</span>
+            <span class="jpn-badge jpn-badge-biru">JPN SELANGOR 2026</span>
         </div>
         <div class="jpn-no-pusat-box">
             <div class="jpn-no-pusat-label">📍 NO PUSAT SEKOLAH ANDA</div>
@@ -297,18 +270,17 @@ def get_jata_img_html(width=88):
     return f'<img src="data:image/png;base64,{JATA_B64}" width="{width}" style="display:block;margin:0 auto 12px auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));" />'
 
 def show_hero_header():
-    _stat = statistik_hero(tahun_aktif())
     st.markdown(f"""
     <div style="background:linear-gradient(180deg,#ffffff 0%,#eef4ff 100%);border:1px solid #d6e2f5;border-radius:24px;padding:28px 20px 22px 20px;text-align:center;box-shadow:0 10px 30px rgba(13,71,161,0.08);margin-bottom:22px;">
         {get_jata_img_html(88)}
-        <div style="font-family:Poppins,Inter,sans-serif;font-weight:800;font-size:1.45rem;color:#0d47a1;line-height:1.3;">SISTEM PELANTIKAN PETUGAS<br/>PEPERIKSAAN SPM TAHUN {tahun_aktif()}</div>
+        <div style="font-family:Poppins,Inter,sans-serif;font-weight:800;font-size:1.45rem;color:#0d47a1;line-height:1.3;">SISTEM PELANTIKAN PETUGAS<br/>PEPERIKSAAN SPM TAHUN 2026</div>
         <div style="width:88px;height:4px;background:linear-gradient(90deg,#0d47a1,#1565c0);margin:14px auto 0 auto;border-radius:999px;"></div>
         <div style="font-weight:700;color:#0d47a1;font-size:0.98rem;margin-top:8px;">Jabatan Pendidikan Negeri Selangor</div>
-        <div style="color:#0d47a1;font-size:0.86rem;margin-top:10px;max-width:620px;margin-left:auto;margin-right:auto;line-height:1.5;">Selamat Datang ke Portal Pelantikan — Sila pilih kategori petugas untuk log masuk. Sistem ini untuk urusan pelantikan petugas peperiksaan SPM Selangor {tahun_aktif()}.</div>
+        <div style="color:#0d47a1;font-size:0.86rem;margin-top:10px;max-width:620px;margin-left:auto;margin-right:auto;line-height:1.5;">Selamat Datang ke Portal Pelantikan — Sila pilih kategori petugas untuk log masuk. Sistem ini untuk urusan pelantikan petugas peperiksaan SPM Selangor 2026.</div>
         <div style="margin-top:16px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
-            <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">🏫 {_stat["sekolah"]:,} Sekolah</span>
-            <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">📍 {_stat["pusat"]:,} Pusat</span>
-            <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">🎓 {_stat["calon"]:,} Calon</span>
+            <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">🏫 369 Sekolah</span>
+            <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">📍 506 Pusat</span>
+            <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">🎓 71,064 Calon</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -390,9 +362,6 @@ def render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, 
             "TARIKH": tarikh,
         }
         html = tmpl
-        if tahun_aktif() != 2026:
-            html = html.replace("2026", str(tahun_aktif()))   # templat lama bertulis 2026 -> ikut tahun dipilih
-        replacements["TAHUN"] = str(tahun_aktif())
         for k, v in replacements.items():
             v = str(v)
             esc = re.escape(k)
@@ -435,203 +404,7 @@ def html_to_pdf_bytes(html):
         _log.debug(f"html_to_pdf error: {e}")
         return None
 
-# ================= V38 - PROKSI SUPABASE IKUT TAHUN =================
-@st.cache_data(ttl=60, show_spinner=False)
-def lajur_tahun_sedia(nama_jadual):
-    """True jika jadual sudah ada lajur `tahun` (migrasi SQL sudah dijalankan)."""
-    try:
-        get_supabase().table(nama_jadual).select("tahun").limit(1).execute()
-        return True
-    except Exception:
-        return False
-
-def status_migrasi_tahun():
-    return {t: lajur_tahun_sedia(t) for t in sorted(TAHUN_TABLES)}
-
-def _tambah_tahun_payload(data, tahun):
-    if isinstance(data, list):
-        return [dict(d, tahun=d.get("tahun", tahun)) if isinstance(d, dict) else d for d in data]
-    if isinstance(data, dict):
-        return dict(data, tahun=data.get("tahun", tahun))
-    return data
-
-class _JadualTahun:
-    """Bungkus jadual: setiap select/update/delete ditapis ikut tahun, setiap insert ditambah tahun."""
-    def __init__(self, jadual, tahun):
-        self._t = jadual
-        self._y = tahun
-    def select(self, *a, **k):
-        return self._t.select(*a, **k).eq("tahun", self._y)
-    def update(self, *a, **k):
-        return self._t.update(*a, **k).eq("tahun", self._y)
-    def delete(self, *a, **k):
-        return self._t.delete(*a, **k).eq("tahun", self._y)
-    def insert(self, data, *a, **k):
-        return self._t.insert(_tambah_tahun_payload(data, self._y), *a, **k)
-    def upsert(self, data, *a, **k):
-        return self._t.upsert(_tambah_tahun_payload(data, self._y), *a, **k)
-    def __getattr__(self, n):
-        return getattr(self._t, n)
-
-class TahunClient:
-    def __init__(self, raw):
-        self._raw = raw
-    def table(self, nama):
-        t = self._raw.table(nama)
-        if nama in TAHUN_TABLES and lajur_tahun_sedia(nama):
-            return _JadualTahun(t, tahun_aktif())
-        return t
-    def __getattr__(self, n):
-        return getattr(self._raw, n)
-# ================= END PROKSI =================
-
-
-# ================= V38 - PEMILIH TAHUN, RINGKASAN, SALIN DATA, SQL MIGRASI =================
-SQL_MIGRASI_TAHUN = """-- JALANKAN SEKALI di Supabase > SQL Editor (data sedia ada automatik jadi tahun 2026)
-""" + "\n".join(
-    f"DO $$ BEGIN IF to_regclass('public.{t}') IS NOT NULL THEN\n"
-    f"  EXECUTE 'ALTER TABLE public.{t} ADD COLUMN IF NOT EXISTS tahun integer NOT NULL DEFAULT 2026';\n"
-    f"  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_{t}_tahun ON public.{t}(tahun)';\n"
-    f"END IF; END $$;"
-    for t in sorted(TAHUN_TABLES)
-) + """
-
--- Buang syarat UNIQUE lama (cth. unik pada IC / kod sahaja) supaya data yang sama boleh wujud pada tahun berbeza
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN
-    SELECT con.conname, rel.relname
-    FROM pg_constraint con
-    JOIN pg_class rel ON rel.oid = con.conrelid
-    JOIN pg_namespace n ON n.oid = rel.relnamespace
-    WHERE n.nspname = 'public' AND con.contype = 'u'
-      AND rel.relname IN (""" + ", ".join(f"'{t}'" for t in sorted(TAHUN_TABLES)) + """)
-  LOOP
-    EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I', r.relname, r.conname);
-  END LOOP;
-  FOR r IN
-    SELECT ic.relname AS idxname
-    FROM pg_index ix
-    JOIN pg_class ic ON ic.oid = ix.indexrelid
-    JOIN pg_class t ON t.oid = ix.indrelid
-    JOIN pg_namespace n ON n.oid = t.relnamespace
-    WHERE n.nspname = 'public' AND ix.indisunique AND NOT ix.indisprimary
-      AND t.relname IN (""" + ", ".join(f"'{t}'" for t in sorted(TAHUN_TABLES)) + """)
-      AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = ix.indexrelid)
-  LOOP
-    EXECUTE format('DROP INDEX public.%I', r.idxname);
-  END LOOP;
-END $$;
-"""
-
-@st.cache_data(ttl=60, show_spinner=False)
-def ringkasan_tahun(tahun):
-    """Bilangan rekod guru / pusat / cadangan bagi tahun tertentu (None = jadual belum dimigrasi)."""
-    out = {}
-    for t in ("guru_master", "pusat_master", "cadangan_sup"):
-        try:
-            if not lajur_tahun_sedia(t):
-                out[t] = None
-                continue
-            r = get_supabase().table(t).select("id", count="exact").eq("tahun", tahun).limit(1).execute()
-            out[t] = r.count or 0
-        except Exception:
-            out[t] = None
-    return out
-
-@st.cache_data(ttl=600, show_spinner=False)
-def statistik_hero(tahun):
-    """Statistik kepala portal ikut tahun (sekolah, pusat, calon)."""
-    sek = pus = cal = 0
-    try:
-        sek = get_supabase().table("sekolah_master").select("kod_sekolah", count="exact").limit(1).execute().count or 0
-    except Exception:
-        pass
-    try:
-        q = get_supabase().table("pusat_master").select("*", count="exact")
-        if lajur_tahun_sedia("pusat_master"):
-            q = q.eq("tahun", tahun)
-        r = q.limit(2000).execute()
-        pus = r.count or 0
-        for x in (r.data or []):
-            try:
-                cal += int(float(x.get("jumlah_calon") or x.get("calon") or 0))
-            except Exception:
-                pass
-    except Exception:
-        pass
-    if tahun == 2026:
-        sek = sek or 369; pus = pus or 506; cal = cal or 71064
-    return {"sekolah": sek, "pusat": pus, "calon": cal}
-
-def _on_tahun_change(key):
-    try:
-        st.session_state["_tahun"] = int(st.session_state[key])
-    except Exception:
-        pass
-
-def render_bar_tahun(ctx="main"):
-    """Butang pilih tahun (2026-2030) - dipaparkan di atas setiap page. Semua data, cadangan dan surat ikut tahun ini."""
-    key = f"tahun_sel_{ctx}"
-    t = tahun_aktif()
-    c1, c2 = st.columns([2.4, 3.6])
-    with c1:
-        st.radio("📅 Tahun Peperiksaan", TAHUN_PILIHAN, index=TAHUN_PILIHAN.index(t), horizontal=True,
-                 key=key, on_change=_on_tahun_change, args=(key,))
-    with c2:
-        stat = ringkasan_tahun(t)
-        if any(v is None for v in stat.values()):
-            st.warning("⚠️ Pangkalan data belum disediakan untuk pilihan tahun - semua data masih dibaca sebagai tahun 2026. "
-                       "JPN: buka Admin → Urus Tahun dan jalankan SQL migrasi sekali sahaja.")
-        else:
-            st.caption(f"📊 Data tahun {t}: Guru **{stat['guru_master']}** · Pusat **{stat['pusat_master']}** · Cadangan SUP **{stat['cadangan_sup']}**")
-            if stat["guru_master"] == 0 and stat["pusat_master"] == 0:
-                st.info(f"Belum ada data tahun {t}. JPN boleh salin data guru/pusat dari tahun lain (JPN → Admin → Urus Tahun); SUP juga boleh Tambah/Import guru.")
-            elif stat["cadangan_sup"] == 0:
-                st.info(f"Belum ada cadangan SUP bagi tahun {t} (senarai cadangan kosong).")
-
-def salin_data_tahun(jadual, tahun_asal, tahun_tuju, timpa=False):
-    """Salin rekod satu jadual dari tahun asal ke tahun tuju (cadangan_sup TIDAK disalin - mesti kosong setiap tahun)."""
-    if jadual not in ("guru_master", "pusat_master", "bilik_kebal_master"):
-        return False, "Jadual tidak dibenarkan disalin."
-    if tahun_asal == tahun_tuju:
-        return False, "Tahun asal dan tahun tuju sama."
-    raw = get_supabase()
-    if not lajur_tahun_sedia(jadual):
-        return False, f"{jadual}: lajur tahun belum wujud (jalankan SQL migrasi)."
-    ada = raw.table(jadual).select("id", count="exact").eq("tahun", tahun_tuju).limit(1).execute().count or 0
-    if ada > 0 and not timpa:
-        return False, f"{jadual}: tahun {tahun_tuju} sudah ada {ada} rekod. Tandakan 'Ganti data tahun tuju' jika mahu ganti."
-    if ada > 0 and timpa:
-        raw.table(jadual).delete().eq("tahun", tahun_tuju).execute()
-    rows, start = [], 0
-    while True:
-        try:
-            r = raw.table(jadual).select("*").eq("tahun", tahun_asal).order("id").range(start, start + 999).execute()
-        except Exception:
-            r = raw.table(jadual).select("*").eq("tahun", tahun_asal).range(start, start + 999).execute()
-        d = r.data or []
-        rows += d
-        if len(d) < 1000:
-            break
-        start += 1000
-    out = []
-    for x in rows:
-        x = dict(x)
-        x.pop("id", None); x.pop("created_at", None)
-        if jadual == "pusat_master" and "LOG-SURAT" in str(x.get("no_pusat", "")).upper():
-            continue   # nombor surat bermula semula setiap tahun
-        x["tahun"] = tahun_tuju
-        out.append(x)
-    for i in range(0, len(out), 500):
-        raw.table(jadual).insert(out[i:i + 500]).execute()
-    st.cache_data.clear()
-    return True, f"{jadual}: {len(out)} rekod disalin dari {tahun_asal} ke {tahun_tuju}."
-# ================= END V38 UI =================
-
-
-supa = TahunClient(get_supabase())
+supa = get_supabase()
 
 # Clear cache helper - untuk refresh button cepat
 def clear_all_cache():
@@ -1092,7 +865,7 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     else:
         display_pusat = pusat
 
-    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan SPM 2026</title>'.replace("2026", str(tahun_aktif()))
+    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan SPM 2026</title>'
     html += '<style>body{font-family:Times New Roman,serif;margin:40px;color:#000;}'
     html += '.surat{border:2px solid #000;padding:30px;margin-bottom:30px;page-break-after:always;background:white;}'
     html += '.header{text-align:center;border-bottom:3px double #000;padding-bottom:15px;margin-bottom:20px;}'
@@ -1109,9 +882,9 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     html += '<div class="kandungan">'
     html += f'<p>Tarikh: {tarikh}</p>'
     html += '<p><strong>Tuan/Puan,</strong></p>'
-    html += f'<p><strong>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM TAHUN {tahun_aktif()}</strong></p>'
+    html += f'<p><strong>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM TAHUN 2026</strong></p>'
     html += '<p>Dengan hormatnya saya merujuk kepada perkara di atas.</p>'
-    html += '<p>2. Sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai petugas peperiksaan SPM 2026 seperti butiran berikut:</p>'.replace("2026", str(tahun_aktif()))
+    html += '<p>2. Sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai petugas peperiksaan SPM 2026 seperti butiran berikut:</p>'
     html += '<table class="info">'
     html += f'<tr><td>Nama</td><td>: {nama}</td></tr>'
     html += f'<tr><td>No. IC</td><td>: {ic}</td></tr>'
@@ -1121,7 +894,7 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     html += f'<tr><td>No Surat Lantikan</td><td>: {no_surat}</td></tr>'
     html += '</table>'
     html += '<p>3. Tuan/puan dikehendaki hadir bertugas di pusat peperiksaan yang telah ditetapkan mengikut jadual yang akan dimaklumkan kemudian.</p>'
-    html += '<p>4. Kerjasama dan komitmen tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai dan didahului dengan ucapan terima kasih.</p>'.replace("2026", str(tahun_aktif()))
+    html += '<p>4. Kerjasama dan komitmen tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai dan didahului dengan ucapan terima kasih.</p>'
     html += '<p>Sekian.</p>'
     html += '<div class="footer"><p><strong>MALAYSIA MADANI</strong><br><strong>BERKHIDMAT UNTUK NEGARA</strong></p>'
     html += '<div class="tandatangan"><div><p>Yang benar,</p><br><br><br>'
@@ -1194,7 +967,7 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
         story.append(Paragraph("JABATAN PENDIDIKAN NEGERI SELANGOR", style_title))
         story.append(Paragraph(f"PEJABAT PENDIDIKAN DAERAH {ppd_name.upper() or kod_ppd}", style_heading))
         story.append(Spacer(1, 6))
-        story.append(Paragraph(f"<b>SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM {tahun_aktif()}</b>", style_heading))
+        story.append(Paragraph(f"<b>SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026</b>", style_heading))
         story.append(Spacer(1, 8))
         story.append(Paragraph(f"<b>No Rujukan: {no_surat}</b>", style_normal))
         story.append(Paragraph(f"Tarikh: {tarikh}", style_normal))
@@ -1205,8 +978,8 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
         {jawatan}<br/>
         {display_sek_asal}<br/><br/>
         Tuan/Puan,<br/><br/>
-        <b>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM {tahun_aktif()}</b><br/><br/>
-        Dengan hormatnya dimaklumkan bahawa tuan/puan telah dilantik sebagai <b>{jawatan}</b> bagi Peperiksaan SPM Tahun {tahun_aktif()}.<br/><br/>
+        <b>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM 2026</b><br/><br/>
+        Dengan hormatnya dimaklumkan bahawa tuan/puan telah dilantik sebagai <b>{jawatan}</b> bagi Peperiksaan SPM Tahun 2026.<br/><br/>
         <b>Butiran Penempatan:</b><br/>
         - Sekolah Asal: {display_sek_asal}<br/>
         - Pusat Peperiksaan Ditugaskan: {display_pusat}<br/>
@@ -1250,7 +1023,7 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
             buffer = io.BytesIO()
             c = canvas.Canvas(buffer, pagesize=A4)
             c.setFont("Helvetica-Bold", 14)
-            c.drawString(50, 800, f"SURAT LANTIKAN SPM {tahun_aktif()} - {kod_ppd}")
+            c.drawString(50, 800, f"SURAT LANTIKAN SPM 2026 - {kod_ppd}")
             c.setFont("Helvetica", 10)
             y = 780
             lines = [
@@ -1263,7 +1036,7 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
                 f"Tarikh: {tarikh}",
                 f"PPD: {kod_ppd} - {ppd_name}",
                 "",
-                "Tuan/Puan telah dilantik sebagai petugas peperiksaan SPM 2026.".replace("2026", str(tahun_aktif())),
+                "Tuan/Puan telah dilantik sebagai petugas peperiksaan SPM 2026.",
                 f"Sila lapor diri di pusat {pusat}.",
             ]
             for line in lines:
@@ -1344,7 +1117,7 @@ def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURA
             <font size=8>
             No Surat: <b>{no_surat}</b> | Sekolah Asal: {sekolah_asal_full}<br/>
             Pusat: {pusat} - {nama_pusat} | Bilik Kebal: {bilik_kebal}<br/>
-            Tuan/Puan telah dilantik sebagai <b>{jawatan}</b> SPM {tahun_aktif()} di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
+            Tuan/Puan telah dilantik sebagai <b>{jawatan}</b> SPM 2026 di pusat {pusat}. Sila lapor diri mengikut arahan.<br/>
             </font>
             """
             story.append(Paragraph(isi, style_normal))
@@ -1388,7 +1161,7 @@ def generate_surat_penyelia_kawasan_html(nama, ic, sek_asal, nama_sek_asal, tele
     else:
         pusat_jagaan_table = f"<tr><td>1</td><td>{pusat_jagaan_str}</td></tr>"
 
-    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan Penyelia Kawasan SPM 2026</title>'.replace("2026", str(tahun_aktif()))
+    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan Penyelia Kawasan SPM 2026</title>'
     html += '<style>body{font-family:Times New Roman,serif;margin:40px;color:#000;}'
     html += '.surat{border:3px double #0d47a1;padding:30px;margin-bottom:30px;background:white;page-break-after:always;}'
     html += '.header{text-align:center;border-bottom:3px double #0d47a1;padding-bottom:15px;margin-bottom:20px;}'
@@ -1406,12 +1179,12 @@ def generate_surat_penyelia_kawasan_html(nama, ic, sek_asal, nama_sek_asal, tele
     html += '<div class="surat"><div class="header">'
     html += '<h2>JABATAN PENDIDIKAN NEGERI SELANGOR</h2>'
     html += f'<h3>PEJABAT PENDIDIKAN DAERAH {kod_ppd} - {ppd_name}</h3>'
-    html += '<h3 style="color:#0d47a1;">SURAT LANTIKAN PENYELIA KAWASAN SPM 2026</h3>'.replace("2026", str(tahun_aktif()))
+    html += '<h3 style="color:#0d47a1;">SURAT LANTIKAN PENYELIA KAWASAN SPM 2026</h3>'
     html += f'<p><strong>No Rujukan: {no_surat}</strong> | Tarikh: {tarikh}</p></div>'
     html += '<div class="kandungan">'
     html += '<p><strong>Tuan/Puan,</strong></p>'
-    html += '<p><strong>PELANTIKAN SEBAGAI PENYELIA KAWASAN PEPERIKSAAN SPM TAHUN 2026 - PENEMPATAN DI BILIK KEBAL</strong></p>'.replace("2026", str(tahun_aktif()))
-    html += '<p>Dengan hormatnya saya merujuk kepada perkara di atas dan sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai <strong>Penyelia Kawasan SPM 2026</strong> dengan butiran seperti berikut:</p>'.replace("2026", str(tahun_aktif()))
+    html += '<p><strong>PELANTIKAN SEBAGAI PENYELIA KAWASAN PEPERIKSAAN SPM TAHUN 2026 - PENEMPATAN DI BILIK KEBAL</strong></p>'
+    html += '<p>Dengan hormatnya saya merujuk kepada perkara di atas dan sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai <strong>Penyelia Kawasan SPM 2026</strong> dengan butiran seperti berikut:</p>'
     html += '<table class="info">'
     html += f'<tr><td>Nama Penyelia Kawasan</td><td>{nama}</td></tr>'
     html += f'<tr><td>No. Kad Pengenalan</td><td>{ic}</td></tr>'
@@ -1445,7 +1218,7 @@ def generate_surat_penyelia_kawasan_html(nama, ic, sek_asal, nama_sek_asal, tele
     html += '</ul>'
 
     html += '<p>4. Tuan/puan dikehendaki hadir taklimat Penyelia Kawasan yang akan dimaklumkan kemudian oleh PPD.</p>'
-    html += '<p>5. Kerjasama, komitmen dan integriti tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai.</p>'.replace("2026", str(tahun_aktif()))
+    html += '<p>5. Kerjasama, komitmen dan integriti tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai.</p>'
     html += '<p>Sekian, terima kasih.</p>'
 
     html += '<div class="footer"><p><strong>MALAYSIA MADANI</strong><br><strong>BERKHIDMAT UNTUK NEGARA</strong></p>'
@@ -1460,7 +1233,7 @@ def generate_surat_kolektif_html(guru_list, kod_ppd, ppd_name, tarikh, prefix):
     # guru_list is list of dicts with NAMA, IC, etc
     html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan Kolektif</title>'
     html += '<style>body{font-family:Arial,sans-serif;margin:20px;} .surat{border:1px solid #ccc;padding:20px;margin:10px 0;} h2{text-align:center;}</style></head><body>'
-    html += f'<h2>SURAT LANTIKAN PETUGAS SPM {tahun_aktif()} - PPD {kod_ppd}</h2>'
+    html += f'<h2>SURAT LANTIKAN PETUGAS SPM 2026 - PPD {kod_ppd}</h2>'
     html += f'<p>Tarikh: {tarikh} | Jumlah: {len(guru_list)} guru</p><hr>'
     for g in guru_list:
         html += generate_surat_html(g["NAMA GURU"], g["IC"], g["JAWATAN"], g["SEKOLAH ASAL"], g["NAMA SEKOLAH ASAL"], g["PUSAT DITEMPATKAN"], g["NAMA PUSAT DITEMPATKAN"], g["NO SURAT"], kod_ppd, ppd_name, tarikh)
@@ -1493,20 +1266,8 @@ def get_sekolah(kod):
         except: continue
     return {"kod_sekolah": kod, "nama_sekolah": f"SEKOLAH {kod}", "kod_ppd": "BH", "ppd": "Petaling Perdana"}
 
-def get_guru_df(kod_sekolah):
-    return _get_guru_df_cached(kod_sekolah, tahun_aktif())
-get_guru_df.clear = _get_guru_df_cached.clear
-
-def get_pusat_df():
-    return _get_pusat_df_cached(tahun_aktif())
-get_pusat_df.clear = _get_pusat_df_cached.clear
-
-def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
-    return _get_cadangan_df_cached(kod_ppd, kod_sekolah, tahun_aktif())
-get_cadangan_df.clear = _get_cadangan_df_cached.clear
-
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_guru_df_cached(kod_sekolah, tahun=2026):
+def get_guru_df(kod_sekolah):
     try:
         res = None
         for col in ["kod_sekolah", "KOD_SEKOLAH", "kod_sekolah_tuan_rumah"]:
@@ -1595,7 +1356,7 @@ def _get_guru_df_cached(kod_sekolah, tahun=2026):
         return pd.DataFrame()
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_pusat_df_cached(tahun=2026):
+def get_pusat_df():
     try:
         res = supa.table("pusat_master").select("*").limit(2000).execute()
         df = pd.DataFrame(res.data or [])
@@ -1615,7 +1376,7 @@ def _get_pusat_df_cached(tahun=2026):
     return pd.DataFrame()
 
 @st.cache_data(ttl=120, show_spinner=False)
-def _get_cadangan_df_cached(kod_ppd=None, kod_sekolah=None, tahun=2026):
+def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
     try:
         # Fetch with larger limit and without strict eq first to avoid missing data due to case issues
         try:
@@ -2037,17 +1798,17 @@ def generate_surat_html_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat,
         except:
             display_sek_asal = sek_asal
     display_pusat = f"{pusat} - {nama_pusat}" if nama_pusat and nama_pusat.upper() != pusat.upper() else pusat
-    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan SPM 2026</title>'.replace("2026", str(tahun_aktif()))
+    html = '<html><head><meta charset="UTF-8"><title>Surat Lantikan SPM 2026</title>'
     html += '<style>body{font-family:Times New Roman,serif;margin:40px;color:#000;}.surat{border:2px solid #000;padding:30px;margin-bottom:30px;page-break-after:always;background:white;}.header{text-align:center;border-bottom:3px double #000;padding-bottom:15px;margin-bottom:20px;}.kandungan{line-height:1.6;}table.info{width:100%;border-collapse:collapse;margin:15px 0;}table.info td{padding:5px 10px;}table.info td:first-child{width:180px;font-weight:bold;}.tandatangan{margin-top:60px;display:flex;justify-content:space-between;}</style></head><body>'
     html += '<div class="surat"><div class="header">'
     html += '<h2>JABATAN PENDIDIKAN NEGERI SELANGOR</h2>'
     html += f'<h3>PEJABAT PENDIDIKAN DAERAH {kod_ppd} - {ppd_name}</h3>'
     html += f'<p>No Surat: {no_surat}</p></div>'
     html += '<div class="kandungan">'
-    html += f'<p>Tarikh: {tarikh}</p><p><strong>Tuan/Puan,</strong></p><p><strong>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM TAHUN {tahun_aktif()}</strong></p>'
-    html += '<p>Dengan hormatnya saya merujuk kepada perkara di atas.</p><p>2. Sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai petugas peperiksaan SPM 2026 seperti butiran berikut:</p><table class="info">'.replace("2026", str(tahun_aktif()))
+    html += f'<p>Tarikh: {tarikh}</p><p><strong>Tuan/Puan,</strong></p><p><strong>PELANTIKAN SEBAGAI {jawatan.upper()} PEPERIKSAAN SPM TAHUN 2026</strong></p>'
+    html += '<p>Dengan hormatnya saya merujuk kepada perkara di atas.</p><p>2. Sukacita dimaklumkan bahawa tuan/puan telah dilantik sebagai petugas peperiksaan SPM 2026 seperti butiran berikut:</p><table class="info">'
     html += f'<tr><td>Nama</td><td>: {nama}</td></tr><tr><td>No. IC</td><td>: {ic}</td></tr><tr><td>Jawatan</td><td>: {jawatan}</td></tr><tr><td>Sekolah Asal</td><td>: {display_sek_asal}</td></tr><tr><td>Pusat Ditugaskan</td><td>: {display_pusat}</td></tr><tr><td>No Surat Lantikan</td><td>: {no_surat}</td></tr></table>'
-    html += '<p>3. Tuan/puan dikehendaki hadir bertugas di pusat peperiksaan yang telah ditetapkan mengikut jadual yang akan dimaklumkan kemudian.</p><p>4. Kerjasama dan komitmen tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai dan didahului dengan ucapan terima kasih.</p><p>Sekian.</p>'.replace("2026", str(tahun_aktif()))
+    html += '<p>3. Tuan/puan dikehendaki hadir bertugas di pusat peperiksaan yang telah ditetapkan mengikut jadual yang akan dimaklumkan kemudian.</p><p>4. Kerjasama dan komitmen tuan/puan dalam menjayakan peperiksaan SPM 2026 amatlah dihargai dan didahului dengan ucapan terima kasih.</p><p>Sekian.</p>'
     html += '<div class="footer"><p><strong>MALAYSIA MADANI</strong><br><strong>BERKHIDMAT UNTUK NEGARA</strong></p><div class="tandatangan"><div><p>Yang benar,</p><br><br><br>'
     html += f'<p>_________________________<br><strong>Pegawai Pendidikan Daerah<br>PPD {kod_ppd} - {ppd_name}</strong></p></div><div style="text-align:right;"><p>b.p Pengarah Pendidikan<br>Jabatan Pendidikan Negeri Selangor</p></div></div></div></div></div></body></html>'
     return html
@@ -2176,11 +1937,11 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         # ===== TAJUK - IKUT GAMBAR =====
         tajuk_jawatan = jawatan.upper()
         if "PENYELIA KAWASAN" in tajuk_jawatan:
-            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ULANGAN ( SPMU ) TAHUN {tahun_aktif()} :<br/>PELANTIKAN SEBAGAI PENYELIA KAWASAN BERTULIS ( TATAKIRA/PEMEGANG KUNCI )"
+            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ULANGAN ( SPMU ) TAHUN 2026 :<br/>PELANTIKAN SEBAGAI PENYELIA KAWASAN BERTULIS ( TATAKIRA/PEMEGANG KUNCI )"
         elif "KETUA PENGAWAS" in tajuk_jawatan:
-            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ( SPM ) TAHUN {tahun_aktif()} :<br/>PELANTIKAN SEBAGAI {tajuk_jawatan}"
+            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ( SPM ) TAHUN 2026 :<br/>PELANTIKAN SEBAGAI {tajuk_jawatan}"
         else:
-            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ( SPM ) TAHUN {tahun_aktif()} :<br/>PELANTIKAN SEBAGAI {tajuk_jawatan} - {display_pusat}"
+            tajuk_full = f"SIJIL PELAJARAN MALAYSIA ( SPM ) TAHUN 2026 :<br/>PELANTIKAN SEBAGAI {tajuk_jawatan} - {display_pusat}"
 
         story.append(Paragraph(f"<b>{tajuk_full}</b>", style_tajuk))
         story.append(Spacer(1,6))
@@ -2196,7 +1957,7 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         is_penyelia_kawasan = "PENYELIA KAWASAN" in jawatan.upper()
 
         if is_penyelia_kawasan:
-            para2_text = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan bahawa, tuan dilantik sebagai <b>{jawatan}</b> bagi peperiksaan di atas dari tempoh <b>14 Julai hingga 16 Julai {tahun_aktif()}</b>. Pelantikan ini merupakan sebahagian daripada tugas rasmi. Maklumat pusat peperiksaan di bawah pengawasan tuan adalah seperti berikut:"
+            para2_text = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan bahawa, tuan dilantik sebagai <b>{jawatan}</b> bagi peperiksaan di atas dari tempoh <b>14 Julai hingga 16 Julai 2026</b>. Pelantikan ini merupakan sebahagian daripada tugas rasmi. Maklumat pusat peperiksaan di bawah pengawasan tuan adalah seperti berikut:"
         else:
             para2_text = f"2. &nbsp;&nbsp;&nbsp;&nbsp;Sukacita dimaklumkan tuan dilantik sebagai <b>{jawatan} bagi peperiksaan di atas. Berikut adalah pusat peperiksaan di bawah pengawasan tuan:</b>"
 
@@ -2613,7 +2374,7 @@ def build_pusat_map_from_master():
         # Fallback: cuba direct dari supabase pusat_master jika get_pusat_df kosong
         if not pmap:
             try:
-                _supa = supa
+                _supa = get_supabase()
                 res = _supa.table("pusat_master").select("*").limit(1000).execute()
                 for r in (res.data or []):
                     no_p = str(r.get("no_pusat") or r.get("kod_pusat") or r.get("NO_PUSAT") or "").upper().strip()
@@ -2840,7 +2601,6 @@ if st.session_state.role is None:
     </style>
     """, unsafe_allow_html=True)
 
-    render_bar_tahun("login")
     c1, c2, c3 = st.columns(3, gap="medium")
     with c1:
         st.markdown('<div class="main-btn"><div style="font-size:32px">🏫</div><h3>SUP</h3><p>Penyelia Sekolah</p></div>', unsafe_allow_html=True)
@@ -2858,7 +2618,7 @@ if st.session_state.role is None:
             st.session_state.popup_stage = "PASSWORD_JPN"
             st.rerun()
 
-    st.markdown("<div style='text-align:center;margin-top:28px;color:#0d47a1;font-size:12px;'>Sistem Pelantikan Petugas SPM Selangor 2026 · JPN Selangor</div>".replace("2026", str(tahun_aktif())), unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center;margin-top:28px;color:#0d47a1;font-size:12px;'>Sistem Pelantikan Petugas SPM Selangor 2026 · JPN Selangor</div>", unsafe_allow_html=True)
     st.stop()
 
 # ================= FLYOUT SUB MENU V36 - BUTANG PETAK BIRU / TULISAN PUTIH =================
@@ -3009,7 +2769,7 @@ FLY_JPN = {
     'sekolah':   [('senarai', '🏫 Senarai Sekolah'), ('import', '📤 Import Sekolah'), ('auto', '⚡ Auto Generate')],
     'pusat':     [('senarai', '📋 Senarai Pusat'), ('fix', '🔧 Fix Jumlah Calon'), ('tambah', '➕ Tambah Pusat'), ('import', '📤 Import Pusat'), ('kosong', '🗑️ Kosongkan Pusat')],
     'guru':      [('import', '📤 Import Master 60K'), ('data', '📊 Data Sedia Ada')],
-    'admin':     [('status', '🩺 Status Sistem'), ('table', '🛠️ Buat Table'), ('tahun', '📅 Urus Tahun')],
+    'admin':     [('status', '🩺 Status Sistem'), ('table', '🛠️ Buat Table')],
 }
 # ================= END FLYOUT V36 =================
 
@@ -3063,12 +2823,11 @@ if st.session_state.role == "SUP":
 
         st.markdown('</div>', unsafe_allow_html=True)
     with col_main:
-        render_bar_tahun("sup")
         show_flash()
         df_guru = get_guru_df(kod)
 
         if menu == "keluar":
-            reset_sesi_kekal_tahun()
+            st.session_state.clear()
             st.rerun()
 
         elif menu == "dashboard":
@@ -4138,9 +3897,8 @@ elif st.session_state.role == "PPD":
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_main:
-        render_bar_tahun("ppd")
         if menu == "keluar":
-            reset_sesi_kekal_tahun()
+            st.session_state.clear()
             st.rerun()
 
         elif menu == "dashboard":
@@ -4150,7 +3908,7 @@ elif st.session_state.role == "PPD":
                     <div style="font-size:48px;">🏢</div>
                     <div>
                         <h2 style="margin:0; color:white; font-size:28px;">PPD {kod_ppd} - {PPD_MAP.get(kod_ppd, '')}</h2>
-                        <p style="margin:5px 0 0 0; color:#bbdefb; font-size:14px;">Dashboard Pelantikan SPM {tahun_aktif()} - Senarai Pusat & Keperluan Petugas</p>
+                        <p style="margin:5px 0 0 0; color:#bbdefb; font-size:14px;">Dashboard Pelantikan SPM 2026 - Senarai Pusat & Keperluan Petugas</p>
                     </div>
                     <div style="margin-left:auto; font-size:48px;">📚</div>
                 </div>
@@ -6803,7 +6561,7 @@ elif st.session_state.role == "PPD":
 
                                 # Simpan surat kolektif untuk PPD download HTML
                                 full_html_all = f'<html><head><meta charset="UTF-8"><title>Surat Lantikan Keseluruhan PPD {kod_ppd}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:2px solid #000; padding:20px; margin:20px 0; page-break-after:always;}}</style></head><body>'
-                                full_html_all += f'<h1 style="text-align:center;">SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM {tahun_aktif()} - KESELURUHAN PPD {kod_ppd}</h1><p style="text-align:center;">No Surat: {max_no_global+1} hingga {cur_no-1}</p><hr>'
+                                full_html_all += f'<h1 style="text-align:center;">SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026 - KESELURUHAN PPD {kod_ppd}</h1><p style="text-align:center;">No Surat: {max_no_global+1} hingga {cur_no-1}</p><hr>'
                                 for s in surat_list_all:
                                     full_html_all += s["html"]
                                 full_html_all += '</body></html>'
@@ -6832,7 +6590,7 @@ elif st.session_state.role == "PPD":
                         if st.button(f"📄 Jana Surat Keseluruhan {len(df_belum_lulus)} Guru (No Berturutan)", use_container_width=True, key="btn_jana_surat_keseluruhan"):
                             tarikh = datetime.date.today().strftime('%d %B %Y')
                             full_html = f'<html><head><meta charset="UTF-8"><title>Surat Lantikan Keseluruhan PPD {kod_ppd}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:1px solid #ccc; padding:20px; margin:20px 0; page-break-after:always;}} h2{{text-align:center;}}</style></head><body>'
-                            full_html += f'<h1 style="text-align:center;">SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM {tahun_aktif()}</h1><h2 style="text-align:center;">PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,"")} - KESELURUHAN</h2><p style="text-align:center;">No Surat Berturutan: {max_no_global+1} hingga {max_no_global+len(df_preview_keseluruhan)} - Ikut Daerah {kod_ppd} - Siapa Jana Dahulu No Dia Dahulu</p><hr>'
+                            full_html += f'<h1 style="text-align:center;">SURAT LANTIKAN PETUGAS PEPERIKSAAN SPM 2026</h1><h2 style="text-align:center;">PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,"")} - KESELURUHAN</h2><p style="text-align:center;">No Surat Berturutan: {max_no_global+1} hingga {max_no_global+len(df_preview_keseluruhan)} - Ikut Daerah {kod_ppd} - Siapa Jana Dahulu No Dia Dahulu</p><hr>'
                             for s in preview_rows:
                                 full_html += generate_surat_html(s["NAMA GURU"], s["IC"], s["JAWATAN"], s["SEKOLAH ASAL"], s["NAMA GURU"], s["PUSAT TUGAS"], s["NAMA PUSAT"], s["NO SURAT BARU"], kod_ppd, PPD_MAP.get(kod_ppd,""), tarikh)
                             full_html += '</body></html>'
@@ -6991,7 +6749,7 @@ elif st.session_state.role == "PPD":
 
                                     # Generate full HTML for this pusat
                                     full_html_pusat = f'<html><head><meta charset="UTF-8"><title>Surat {pilihan_pusat_lulus}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:2px solid #000; padding:20px; margin:20px 0; page-break-after:always;}}</style></head><body>'
-                                    full_html_pusat += f'<h1 style="text-align:center;">SURAT LANTIKAN SPM {tahun_aktif()} - {pilihan_pusat_lulus} - {pusat_map.get(pilihan_pusat_lulus,"")}</h1><p style="text-align:center;">PPD {kod_ppd} - No Surat {max_no_global+1} hingga {cur_no2-1}</p><hr>'
+                                    full_html_pusat += f'<h1 style="text-align:center;">SURAT LANTIKAN SPM 2026 - {pilihan_pusat_lulus} - {pusat_map.get(pilihan_pusat_lulus,"")}</h1><p style="text-align:center;">PPD {kod_ppd} - No Surat {max_no_global+1} hingga {cur_no2-1}</p><hr>'
                                     for s in surat_list_pusat:
                                         full_html_pusat += s["html"]
                                     full_html_pusat += '</body></html>'
@@ -7017,7 +6775,7 @@ elif st.session_state.role == "PPD":
                             if st.button(f"📄 Jana Surat {pilihan_pusat_lulus} - {len(df_belum_pusat)} Guru", use_container_width=True, key=f"btn_jana_surat_pusat_{pilihan_pusat_lulus}"):
                                 tarikh = datetime.date.today().strftime('%d %B %Y')
                                 full_html = f'<html><head><meta charset="UTF-8"><title>Surat Lantikan {pilihan_pusat_lulus}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:1px solid #ccc; padding:20px; margin:20px 0; page-break-after:always;}}</style></head><body>'
-                                full_html += f'<h1 style="text-align:center;">SURAT LANTIKAN SPM {tahun_aktif()} - {pilihan_pusat_lulus}</h1><h2 style="text-align:center;">{pusat_map.get(pilihan_pusat_lulus,"")} - PPD {kod_ppd}</h2><p style="text-align:center;">No Surat Berturutan: {max_no_global+1} hingga {max_no_global+len(preview_pusat)} - Ikut Daerah {kod_ppd}</p><hr>'
+                                full_html += f'<h1 style="text-align:center;">SURAT LANTIKAN SPM 2026 - {pilihan_pusat_lulus}</h1><h2 style="text-align:center;">{pusat_map.get(pilihan_pusat_lulus,"")} - PPD {kod_ppd}</h2><p style="text-align:center;">No Surat Berturutan: {max_no_global+1} hingga {max_no_global+len(preview_pusat)} - Ikut Daerah {kod_ppd}</p><hr>'
                                 for s in preview_pusat:
                                     full_html += generate_surat_html(s["NAMA GURU"], s["IC"], s["JAWATAN"], s["SEKOLAH ASAL"], s["NAMA GURU"], s["PUSAT"], pusat_map.get(s["PUSAT"],""), s["NO SURAT BARU"], kod_ppd, PPD_MAP.get(kod_ppd,""), tarikh)
                                 full_html += '</body></html>'
@@ -7722,7 +7480,7 @@ elif st.session_state.role == "PPD":
                             col_no1, col_no2, col_no3 = st.columns(3)
                             with col_no1:
                                 # Default prefix ikut format standard daerah - sama seperti petugas lain
-                                default_prefix = f"JPN.SEL/PPD.{kod_ppd}/SPM/{tahun_aktif()}/"
+                                default_prefix = f"JPN.SEL/PPD.{kod_ppd}/SPM/2026/"
                                 prefix_surat = st.text_input("Prefix No Surat (ikut format daerah)", value=default_prefix, key="prefix_surat_pk", help="No surat Penyelia akan ikut format yang sama seperti petugas lain di daerah ini, cuma berturutan")
                             with col_no2:
                                 no_mula_auto = max_no_global + 1
@@ -8282,13 +8040,12 @@ elif st.session_state.role == "JPN":
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_main:
-        render_bar_tahun("jpn")
         if menu == "keluar":
-            reset_sesi_kekal_tahun()
+            st.session_state.clear()
             st.rerun()
 
         elif menu == "dashboard":
-            st.header("Dashboard JPN Selangor - Pelantikan SPM 2026".replace("2026", str(tahun_aktif())))
+            st.header("Dashboard JPN Selangor - Pelantikan SPM 2026")
             if fly_cur == "ringkasan":
                 cols = st.columns(5)
                 for idx, t in enumerate(["sekolah_master", "pusat_master", "guru_master", "cadangan_sup"]):
@@ -8318,17 +8075,17 @@ elif st.session_state.role == "JPN":
             try:
                 JAWATAN_11 = ["KETUA PENGAWAS","TIMBALAN KETUA PENGAWAS","PENGAWAS PEPERIKSAAN","JURU TULIS","JURU BACA","KETUA PENGAWAS HOSPITAL","PENGAWAS HOSPITAL","PENGAWAS PENGIRING","PENGEMAS BILIK","PENYELIA KAWASAN","SELENGGARA BILIK KEBAL"]
                 DEFAULT_11 = {
-                    "KETUA PENGAWAS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN KETUA PENGAWAS</b><br><br>2. Dilantik sebagai <b>Ketua Pengawas</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00 + 0.25C + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "TIMBALAN KETUA PENGAWAS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN TIMBALAN KETUA PENGAWAS</b><br><br>2. Dilantik sebagai <b>Timbalan Ketua Pengawas</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "PENGAWAS PEPERIKSAAN": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS PEPERIKSAAN</b><br><br>2. Dilantik sebagai <b>Pengawas Peperiksaan</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "PENYELIA KAWASAN": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENYELIA KAWASAN</b><br><br>2. Dilantik sebagai <b>Penyelia Kawasan</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 437.50 + 10P + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "KETUA PENGAWAS HOSPITAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN KETUA PENGAWAS HOSPITAL</b><br><br>2. Dilantik sebagai <b>Ketua Pengawas Hospital</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00 + 0.25C + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "PENGAWAS HOSPITAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS HOSPITAL</b><br><br>2. Dilantik sebagai <b>Pengawas Hospital</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "JURU TULIS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN JURU TULIS</b><br><br>2. Dilantik sebagai <b>Juru Tulis</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "JURU BACA": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN JURU BACA</b><br><br>2. Dilantik sebagai <b>Juru Baca</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "PENGAWAS PENGIRING": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS PENGIRING</b><br><br>2. Dilantik sebagai <b>Pengawas Pengiring</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "PENGEMAS BILIK": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGEMAS BILIK</b><br><br>2. Dilantik sebagai <b>Pengemas Bilik</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
-                    "SELENGGARA BILIK KEBAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN SELENGGARA BILIK KEBAL</b><br><br>2. Dilantik sebagai <b>Selenggara Bilik Kebal</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>".replace("2026", str(tahun_aktif())),
+                    "KETUA PENGAWAS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN KETUA PENGAWAS</b><br><br>2. Dilantik sebagai <b>Ketua Pengawas</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00 + 0.25C + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "TIMBALAN KETUA PENGAWAS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN TIMBALAN KETUA PENGAWAS</b><br><br>2. Dilantik sebagai <b>Timbalan Ketua Pengawas</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "PENGAWAS PEPERIKSAAN": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS PEPERIKSAAN</b><br><br>2. Dilantik sebagai <b>Pengawas Peperiksaan</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "PENYELIA KAWASAN": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENYELIA KAWASAN</b><br><br>2. Dilantik sebagai <b>Penyelia Kawasan</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 437.50 + 10P + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "KETUA PENGAWAS HOSPITAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN KETUA PENGAWAS HOSPITAL</b><br><br>2. Dilantik sebagai <b>Ketua Pengawas Hospital</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 375.00 + 0.25C + 2S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "PENGAWAS HOSPITAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS HOSPITAL</b><br><br>2. Dilantik sebagai <b>Pengawas Hospital</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "JURU TULIS": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN JURU TULIS</b><br><br>2. Dilantik sebagai <b>Juru Tulis</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "JURU BACA": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN JURU BACA</b><br><br>2. Dilantik sebagai <b>Juru Baca</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "PENGAWAS PENGIRING": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGAWAS PENGIRING</b><br><br>2. Dilantik sebagai <b>Pengawas Pengiring</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "PENGEMAS BILIK": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN PENGEMAS BILIK</b><br><br>2. Dilantik sebagai <b>Pengemas Bilik</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
+                    "SELENGGARA BILIK KEBAL": "<div style='font-family:Arial; padding:25px; border:1px solid #000;'><table style='width:100%; border:none;'><tr><td style='width:80px; vertical-align:top; border:none;'><img src='https://upload.wikimedia.org/wikipedia/commons/2/2a/Coat_of_arms_of_Malaysia.svg' style='width:70px;'></td><td style='vertical-align:top; border:none; text-align:left;'><b>KEMENTERIAN PENDIDIKAN MALAYSIA</b><br>JABATAN PENDIDIKAN NEGERI SELANGOR<br><small>Persiaran Tengku Ampuan Rahimah, Seksyen 20, 40300 Shah Alam, Selangor</small></td></tr></table><hr style='border:2px solid #000; margin:10px 0;'><div style='text-align:right; font-size:10pt;'>Ruj. Kami: {{NO_SURAT}}<br>Tarikh: {{TARIKH}}</div><div style='font-size:10pt; margin-top:12px;'><b>{{NAMA}}</b><br>Melalui:<br>PENGETUA<br><b>{{NAMA_SEKOLAH_ASAL}}</b><br>{{PPD}}<br><br>Tuan,<br><b>SPM 2026 : PELANTIKAN SELENGGARA BILIK KEBAL</b><br><br>2. Dilantik sebagai <b>Selenggara Bilik Kebal</b> di {{PUSAT}} - {{NAMA_PUSAT}}<br>Bilik Kebal: {{BILIK_KEBAL}}<br>Sekolah Asal: {{SEKOLAH_ASAL}} - {{NAMA_SEKOLAH_ASAL}}<br>No Surat: {{NO_SURAT}}<br><br>3. Elaun: RM 281.25 + S<br>4. Sulit - Akta Rahsia Rasmi 1972<br><br>MALAYSIA MADANI<br>BERKHIDMAT UNTUK NEGARA<br><br>(DATIN WAN NOR ASHIKIN)<br>Pengarah JPN Selangor</div></div>",
                 }
                 templates = get_jpn_templates_one()
                 pilih = st.selectbox("Pilih Jawatan", JAWATAN_11, key="pilih_11_fix")
@@ -8353,7 +8110,7 @@ elif st.session_state.role == "JPN":
                         st.cache_data.clear()
                         st.rerun()
                 # ===== V37: Panduan placeholder, preview sebenar & ujian PDF =====
-                st.caption("Placeholder boleh guna (huruf besar/kecil sama): {{NAMA}} {{IC}} {{JAWATAN}} {{SEKOLAH_ASAL}} {{NAMA_SEKOLAH_ASAL}} {{SEKOLAH_ASAL_PENUH}} {{PUSAT}} {{NAMA_PUSAT}} {{PUSAT_PENUH}} {{BILIK_KEBAL}} {{NO_SURAT}} {{PPD}} {{PPD_NAME}} {{TARIKH}} {{TAHUN}}")
+                st.caption("Placeholder boleh guna (huruf besar/kecil sama): {{NAMA}} {{IC}} {{JAWATAN}} {{SEKOLAH_ASAL}} {{NAMA_SEKOLAH_ASAL}} {{SEKOLAH_ASAL_PENUH}} {{PUSAT}} {{NAMA_PUSAT}} {{PUSAT_PENUH}} {{BILIK_KEBAL}} {{NO_SURAT}} {{PPD}} {{PPD_NAME}} {{TARIKH}}")
                 if enjin_pdf_templat_ada():
                     st.success("✅ Enjin PDF templat aktif - butang PDF / ZIP / kolektif PPD akan ikut templat ini.")
                 else:
@@ -8470,7 +8227,7 @@ elif st.session_state.role == "JPN":
                         st.error(f"Error generate: {e}")
 
         elif menu == "pusat":
-            st.header("Pusat Master - Selangor 2026 (506 Pusat) - FIX Jumlah Calon".replace("2026", str(tahun_aktif())))
+            st.header("Pusat Master - Selangor 2026 (506 Pusat) - FIX Jumlah Calon")
             try:
                 total = safe_count("pusat_master")
                 res = supa.table("pusat_master").select("*").limit(1000).execute()
@@ -9056,40 +8813,6 @@ ALTER TABLE pusat_master ADD COLUMN IF NOT EXISTS nama_pusat TEXT;
                         st.success(f"✅ {t}: {res.count} records")
                     except Exception as e:
                         st.error(f"❌ {t}: {e}")
-            if fly_cur == "tahun":
-                st.subheader(f"📅 Urus Tahun Peperiksaan (tahun dipilih sekarang: {tahun_aktif()})")
-                st.caption("Pilih tahun di bahagian atas mana-mana page. Data guru, pusat, bilik kebal, cadangan SUP dan surat dibaca/disimpan ikut tahun dipilih.")
-                st.markdown("#### 1) Status migrasi pangkalan data")
-                _stat_m = status_migrasi_tahun()
-                for _t, _ok in _stat_m.items():
-                    if (not _ok) and _t == "surat_hantar_sekolah_asal":
-                        st.info(f"ℹ️ {_t}: jadual pilihan - boleh diabaikan jika belum wujud")
-                        continue
-                    (st.success if _ok else st.error)(f"{'✅' if _ok else '❌'} {_t}: {'lajur tahun sedia' if _ok else 'lajur tahun BELUM ada - jalankan SQL di bawah'}")
-                if st.button("🔄 Semak semula status", key="btn_semak_migrasi"):
-                    st.cache_data.clear()
-                    st.rerun()
-                with st.expander("📋 SQL migrasi (jalankan SEKALI di Supabase → SQL Editor)", expanded=not all(v for k, v in _stat_m.items() if k != "surat_hantar_sekolah_asal")):
-                    st.code(SQL_MIGRASI_TAHUN, language="sql")
-                    st.caption("Data sedia ada automatik ditanda tahun 2026. Selepas SQL berjaya, tekan 'Semak semula status'.")
-                st.markdown("---")
-                st.markdown("#### 2) Salin data guru / pusat ke tahun baharu")
-                st.caption("Cadangan SUP TIDAK disalin - sentiasa kosong bagi tahun baharu sehingga SUP buat cadangan. Nombor surat juga bermula semula.")
-                _c1, _c2 = st.columns(2)
-                with _c1:
-                    _asal = st.selectbox("Salin DARI tahun", TAHUN_PILIHAN, index=0, key="salin_asal")
-                with _c2:
-                    _tuju = st.selectbox("Salin KE tahun", TAHUN_PILIHAN, index=1, key="salin_tuju")
-                _jad = st.multiselect("Jadual untuk disalin", ["guru_master", "pusat_master", "bilik_kebal_master"], default=["guru_master", "pusat_master"], key="salin_jadual")
-                st.caption("bilik_kebal_master: penempatan penyelia tahun asal turut tersalin - semak semula selepas salin.")
-                _timpa = st.checkbox("Ganti data tahun tuju (PADAM data tahun tuju dahulu)", key="salin_timpa")
-                if st.button(f"📥 Salin {_asal} → {_tuju}", type="primary", key="btn_salin_tahun"):
-                    for _j in _jad:
-                        try:
-                            _ok, _msg = salin_data_tahun(_j, int(_asal), int(_tuju), bool(_timpa))
-                            (st.success if _ok else st.warning)(_msg)
-                        except Exception as _e:
-                            st.error(f"{_j}: {_e}")
             if fly_cur == "table":
                 st.markdown("---")
                 st.subheader("Buat Table cadangan_sup jika belum ada")
@@ -9114,4 +8837,4 @@ CREATE POLICY "allow all" ON cadangan_sup FOR ALL USING (true) WITH CHECK (true)
 """, language="sql")
 
 # ================= FOOTER =================
-st.markdown("<div class='app-footer'>Sistem Pelantikan Petugas SPM Selangor 2026 · Jabatan Pendidikan Negeri Selangor</div>".replace("2026", str(tahun_aktif())), unsafe_allow_html=True)
+st.markdown("<div class='app-footer'>Sistem Pelantikan Petugas SPM Selangor 2026 · Jabatan Pendidikan Negeri Selangor</div>", unsafe_allow_html=True)
