@@ -3983,16 +3983,17 @@ elif st.session_state.role == "PPD":
                         html_table = """
                     <style>
                     .ppd-table {width:100%; border-collapse:collapse; font-size:13px; background:white;}
-                    .ppd-table th {background:#0d47a1; color:white; padding:10px 8px; text-align:left; font-weight:700; position:sticky; top:0;}
-                    .ppd-table td {padding:8px; border-bottom:1px solid #e0e0e0; background:white; color:#212121;}
+                    .ppd-table th {background:#0d47a1; color:white; padding:0 8px; height:40px; text-align:left; font-weight:700; position:sticky; top:0; z-index:2; white-space:nowrap;}
+                    .ppd-scroll {max-height:480px; overflow-y:auto; overflow-x:auto; border:2px solid #90caf9; border-radius:6px; background:white;}
+                    .ppd-table td {padding:0 8px; height:44px; border-bottom:1px solid #e0e0e0; background:white; color:#212121; white-space:nowrap;}
                     .ppd-table tr:hover td {background:#f5f5f5 !important;}
                     .badge-merah {background:#ffcdd2 !important; color:#b71c1c !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #d32f2f;}
                     .badge-kuning {background:#fff9c4 !important; color:#e65100 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #f57f17;}
                     .badge-hijau {background:#c8e6c9 !important; color:#1b5e20 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #2e7d32;}
                     .edit-hint {background:#e3f2fd; border-left:4px solid #1976d2; padding:6px 10px; margin:4px 0; font-size:11px;}
                     </style>
-                    <div class="edit-hint">✏️ <b>PPD boleh edit:</b> BIL CALON, KELAS, PERLU (K+9) ikut keperluan sebenar - klik angka dalam table atas untuk edit</div>
-                    <table class="ppd-table">
+                    <div class="edit-hint">✏️ <b>PPD boleh edit:</b> BIL CALON, KELAS, PERLU (K+9) ikut keperluan sebenar - klik angka dalam table atas untuk edit &nbsp;|&nbsp; 📜 Papar 10 baris - skrol ke bawah untuk lihat selebihnya</div>
+                    <div class="ppd-scroll"><table class="ppd-table">
                     <tr><th>BIL</th><th>NO PUSAT</th><th>NAMA PUSAT</th><th>KOD TUAN</th><th>BIL CALON ✏️</th><th>KELAS ✏️</th><th>PERLU (K+9) ✏️</th><th>DICADANG</th><th>STATUS</th></tr>
                     """
 
@@ -4014,7 +4015,7 @@ elif st.session_state.role == "PPD":
 
                             html_table += f"<tr><td><b>{r['BIL']}</b></td><td><b>{r['NO_PUSAT']}</b></td><td>{r['NAMA_PUSAT']}</td><td>{r['KOD_TUAN']}</td><td style='text-align:center; background:#fff9c4; font-weight:700; border:1px dashed #f57f17;'>{r['BIL_CALON']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700; border:1px dashed #1976d2;'>{r['KELAS']}</td><td style='text-align:center; background:#fce4ec; font-weight:700; border:1px dashed #d32f2f;'>{r['PERLU_K9']}</td><td style='text-align:center;'><span class='{badge_class}'>{badge_text}</span></td><td>{status_badge}</td></tr>"
 
-                        html_table += "</table>"
+                        html_table += "</table></div>"
 
                         st.markdown(html_table, unsafe_allow_html=True)
 
@@ -6353,6 +6354,7 @@ elif st.session_state.role == "PPD":
                                 st.download_button("📥 Download Surat Keseluruhan (HTML) - Untuk PPD", data=full_html_all.encode('utf-8'), file_name=f"Surat_Lantikan_Keseluruhan_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key="dl_surat_keseluruhan_after_lulus")
                                 # Also PDF individual zip? For now collective PDF
 
+                                st.cache_data.clear()   # segar semula data supaya bilangan "Belum Lulus" betul
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error lulus keseluruhan: {e}")
@@ -6411,8 +6413,12 @@ elif st.session_state.role == "PPD":
                     df_pusat_lulus = pd.DataFrame(guru_pusat_list)
 
                     # Belum lulus vs sudah lulus
-                    df_belum_pusat = df_pusat_lulus[df_pusat_lulus.apply(lambda r: str(r.get("status") or "").upper() != "LULUS PPD" or str(r.get("no_surat") or "").strip() == "", axis=1)].copy()
-                    df_sudah_lulus_pusat = df_pusat_lulus[df_pusat_lulus.apply(lambda r: str(r.get("status") or "").upper() == "LULUS PPD" and str(r.get("no_surat") or "").strip() != "", axis=1)].copy()
+                    def _is_lulus_pusat(r):
+                        _st = str(r.get("status") or r.get("STATUS") or "").upper()
+                        _ns = str(r.get("no_surat") or r.get("NO_SURAT") or "").strip().lower()
+                        return ("LULUS" in _st) and (_ns not in ("", "nan", "none", "null"))
+                    df_belum_pusat = df_pusat_lulus[~df_pusat_lulus.apply(_is_lulus_pusat, axis=1)].copy()
+                    df_sudah_lulus_pusat = df_pusat_lulus[df_pusat_lulus.apply(_is_lulus_pusat, axis=1)].copy()
 
                     col1, col2, col3 = st.columns(3)
                     col1.metric("Total Dilantik di Pusat", len(df_pusat_lulus))
@@ -6526,6 +6532,7 @@ elif st.session_state.role == "PPD":
                                     except:
                                         pass
                                     st.download_button(f"📥 Download Surat {pilihan_pusat_lulus} (HTML) & Hantar ke Sekolah Asal", data=full_html_pusat.encode('utf-8'), file_name=f"Surat_{pilihan_pusat_lulus}_{kod_ppd}_{datetime.date.today()}.html", mime="text/html", use_container_width=True, key=f"dl_surat_pusat_after_{pilihan_pusat_lulus}")
+                                    st.cache_data.clear()   # segar semula data supaya bilangan "Belum Lulus" betul
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error lulus pusat: {e}")
