@@ -1344,6 +1344,20 @@ def get_cadangan_df(kod_ppd=None, kod_sekolah=None):
             elif 'STATUS' not in row_dict or not row_dict['STATUS']:
                 row_dict['STATUS'] = row_dict.get('status') or 'DICADANGKAN'
 
+            # No Surat: lajur `no_surat` (top-level) ialah sumber sebenar. Nilai kosong dalam JSON `data`
+            # tak boleh menimpanya (punca guru kekal "belum lulus" walaupun surat dah dijana).
+            def _ns_ok(v):
+                if v is None or (isinstance(v, float) and pd.isna(v)):
+                    return ""
+                t = str(v).strip()
+                return "" if t.lower() in ("nan", "none", "null") else t
+            _ns_final = _ns_ok(r.get('no_surat')) or _ns_ok(r.get('NO_SURAT')) \
+                or _ns_ok(row_dict.get('no_surat')) or _ns_ok(row_dict.get('NO_SURAT')) \
+                or _ns_ok(row_dict.get('surat_no')) or _ns_ok(row_dict.get('SURAT_NO')) \
+                or _ns_ok(row_dict.get('no_surat_lantikan'))
+            row_dict['no_surat'] = _ns_final
+            row_dict['NO_SURAT'] = _ns_final
+
             norm_rows.append(row_dict)
 
         df_norm = pd.DataFrame(norm_rows)
@@ -6100,6 +6114,61 @@ elif st.session_state.role == "PPD":
                 rujukan_clean = rujukan.rstrip('/')
                 return f"{rujukan_clean}/{seq_no:04d}"
 
+            def sebab_belum_lulus(r):
+                st_ = str(r.get("status") or r.get("STATUS") or "").strip()
+                ns_ = str(r.get("no_surat") or r.get("NO_SURAT") or "").strip().lower()
+                if "LULUS" not in st_.upper():
+                    return f"Status belum LULUS ({st_ or 'kosong'})"
+                if ns_ in ("", "nan", "none", "null"):
+                    return "Status LULUS tetapi No Surat kosong"
+                return "-"
+
+            def paparkan_sebab_belum(df_b, tajuk):
+                if df_b is None or df_b.empty:
+                    return
+                with st.expander(f"🔎 Kenapa {len(df_b)} guru ini masih dalam senarai belum lulus? ({tajuk})", expanded=False):
+                    _rows = []
+                    for _, _r in df_b.iterrows():
+                        _rows.append({
+                            "ID": _r.get("id", ""),
+                            "NAMA": _r.get("NAMA_GURU", "") or _r.get("nama_guru", ""),
+                            "IC": _r.get("IC_GURU", "") or _r.get("ic_guru", ""),
+                            "PUSAT": _r.get("kod_pusat", "") or _r.get("KOD_PUSAT", ""),
+                            "STATUS": _r.get("status", "") or _r.get("STATUS", ""),
+                            "NO SURAT": _r.get("no_surat", "") or _r.get("NO_SURAT", ""),
+                            "SEBAB": sebab_belum_lulus(_r),
+                        })
+                    st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+
+            def semak_selepas_lulus(df_b, ns_map):
+                """Baca semula dari DB: pastikan setiap guru betul-betul LULUS + ada No Surat. Cuba simpan semula yang gagal.
+                Pulangkan senarai nama yang masih gagal."""
+                gagal = []
+                try:
+                    ids = [r.get("id") for _, r in df_b.iterrows() if r.get("id")]
+                    ok_ids = set()
+                    if ids:
+                        chk = supa.table("cadangan_sup").select("id,status,no_surat").in_("id", ids).execute()
+                        for x in (chk.data or []):
+                            if "LULUS" in str(x.get("status") or "").upper() and str(x.get("no_surat") or "").strip().lower() not in ("", "nan", "none", "null"):
+                                ok_ids.add(x.get("id"))
+                    for _, r in df_b.iterrows():
+                        id_x = r.get("id")
+                        if not id_x or id_x in ok_ids:
+                            continue
+                        ns_x = ns_map.get(id_x) or str(r.get("no_surat") or "").strip()
+                        try:
+                            supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": ns_x}).eq("id", id_x).execute()
+                            chk2 = supa.table("cadangan_sup").select("id,status,no_surat").eq("id", id_x).limit(1).execute()
+                            d2 = (chk2.data or [{}])[0]
+                            if not ("LULUS" in str(d2.get("status") or "").upper() and str(d2.get("no_surat") or "").strip()):
+                                gagal.append(f"{r.get('NAMA_GURU','') or r.get('nama_guru','')} (ID {id_x})")
+                        except Exception as e_retry:
+                            gagal.append(f"{r.get('NAMA_GURU','') or r.get('nama_guru','')} (ID {id_x}): {e_retry}")
+                except Exception as e_chk:
+                    gagal.append(f"Semakan gagal: {e_chk}")
+                return gagal
+
             # Get all data for PPD
             df_cad_all = get_cadangan_df(kod_ppd=kod_ppd)
             df_pusat_raw = get_pusat_df()
@@ -6216,6 +6285,12 @@ elif st.session_state.role == "PPD":
             st.markdown("---")
 
             # ===== OPTION 1: KELULUSAN KESELURUHAN =====
+            if st.session_state.get("kelulusan_amaran"):
+                st.error("⚠️ Guru berikut TIDAK berjaya disimpan sebagai LULUS dalam pangkalan data (sila semak kebenaran/jadual Supabase):\n\n" + "\n".join(f"- {x}" for x in st.session_state["kelulusan_amaran"]))
+                if st.button("Tutup amaran", key="btn_tutup_amaran_kelulusan"):
+                    st.session_state["kelulusan_amaran"] = []
+                    st.rerun()
+
             # ===== OPTION 1: KELULUSAN KESELURUHAN =====
             if "Keseluruhan" in sub_kelulusan:
                 st.markdown("### ✅ Kelulusan Keseluruhan - Lulus Semua & Jana Surat Keseluruhan")
@@ -6252,6 +6327,7 @@ elif st.session_state.role == "PPD":
                     st.success(f"✅ Semua {len(df_sudah)} guru sudah LULUS dan ada No Surat - tiada yang perlu diluluskan lagi")
                 else:
                     st.markdown(f"#### 📝 {len(df_belum_lulus)} Guru Perlu Diluluskan - No Surat Berturutan {max_no_global+1} hingga {max_no_global+len(df_belum_lulus)}")
+                    paparkan_sebab_belum(df_belum_lulus, "Kelulusan Keseluruhan")
 
                     # Preview
                     preview_rows = []
@@ -6283,6 +6359,7 @@ elif st.session_state.role == "PPD":
                                 berjaya = 0
                                 cur_no = max_no_global + 1
                                 surat_list_all = []
+                                _map_ns_all = {}
                                 for _, r in df_belum_lulus.iterrows():
                                     id_g = r.get("id","")
                                     existing_ns = str(r.get("no_surat") or "").strip()
@@ -6330,7 +6407,12 @@ elif st.session_state.role == "PPD":
                                         supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_surat_baru}).eq("ic_guru", r.get("IC_GURU","") or r.get("ic_guru","")).execute()
 
                                     surat_list_all.append({"nama": nama_g, "ic": ic_g, "sekolah_asal": sek_asal, "pusat": pusat_tugas, "no_surat": no_surat_baru, "html": html_surat_single})
+                                    if id_g:
+                                        _map_ns_all[id_g] = no_surat_baru
                                     berjaya += 1
+
+                                # Semak semula dari pangkalan data - pastikan semua betul-betul LULUS
+                                st.session_state["kelulusan_amaran"] = semak_selepas_lulus(df_belum_lulus, _map_ns_all)
 
                                 # Simpan surat kolektif untuk PPD download HTML
                                 full_html_all = f'<html><head><meta charset="UTF-8"><title>Surat Lantikan Keseluruhan PPD {kod_ppd}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:2px solid #000; padding:20px; margin:20px 0; page-break-after:always;}}</style></head><body>'
@@ -6445,6 +6527,7 @@ elif st.session_state.role == "PPD":
                         st.success(f"✅ Semua guru di {pilihan_pusat_lulus} sudah LULUS dan ada No Surat")
                     else:
                         st.markdown(f"#### 📝 {len(df_belum_pusat)} Guru di {pilihan_pusat_lulus} Perlu Diluluskan - No Surat Berturutan Bermula {max_no_global+1}")
+                        paparkan_sebab_belum(df_belum_pusat, pilihan_pusat_lulus)
 
                         preview_pusat = []
                         cur_no = max_no_global + 1
@@ -6473,6 +6556,7 @@ elif st.session_state.role == "PPD":
                                     berjaya = 0
                                     cur_no2 = max_no_global + 1
                                     surat_list_pusat = []
+                                    _map_ns_p = {}
                                     for _, r in df_belum_pusat.iterrows():
                                         id_g = r.get("id","")
                                         existing_ns = str(r.get("no_surat") or "").strip()
@@ -6511,7 +6595,12 @@ elif st.session_state.role == "PPD":
                                                 supa.table("cadangan_sup").update({"status": "LULUS PPD - SURAT DIHANTAR KE SEKOLAH ASAL", "no_surat": no_baru}).eq("id", id_g).execute()
 
                                         surat_list_pusat.append({"nama": nama_g, "ic": ic_g, "sekolah_asal": sek_asal, "pusat": pilihan_pusat_lulus, "no_surat": no_baru, "html": html_single})
+                                        if id_g:
+                                            _map_ns_p[id_g] = no_baru
                                         berjaya += 1
+
+                                    # Semak semula dari pangkalan data - pastikan semua betul-betul LULUS
+                                    st.session_state["kelulusan_amaran"] = semak_selepas_lulus(df_belum_pusat, _map_ns_p)
 
                                     # Generate full HTML for this pusat
                                     full_html_pusat = f'<html><head><meta charset="UTF-8"><title>Surat {pilihan_pusat_lulus}</title><style>body{{font-family:Arial;margin:20px;}} .surat{{border:2px solid #000; padding:20px; margin:20px 0; page-break-after:always;}}</style></head><body>'
