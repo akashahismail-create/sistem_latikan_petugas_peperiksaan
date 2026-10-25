@@ -2512,9 +2512,45 @@ if st.session_state.role == "SUP":
             st.session_state.clear()
             st.rerun()
 
+
         elif menu == "dashboard":
             st.header(f"Dashboard SUP - {kod} {info.get('nama_sekolah', '')}")
             st.markdown(f"**Kod Sekolah:** `{kod}` | **PPD:** `{info.get('kod_ppd','')} - {PPD_MAP.get(info.get('kod_ppd',''),'')}` | **Nama:** {info.get('nama_sekolah','')}")
+
+            # ===== POPUP DIALOGS UNTUK DASHBOARD =====
+            @st.dialog("📍 Senarai Pusat Sekolah Anda")
+            def dlg_pusat_popup(pusat_list_df):
+                st.markdown(f"**Sekolah:** {kod} - {info.get('nama_sekolah','')}")
+                if pusat_list_df is not None and not pusat_list_df.empty:
+                    st.dataframe(pusat_list_df, use_container_width=True, hide_index=True)
+                    st.success(f"Ada {len(pusat_list_df)} pusat")
+                else:
+                    st.warning("Tiada pusat dijumpai")
+                if st.button("Tutup", key="close_pusat_dlg"):
+                    st.rerun()
+
+            @st.dialog("👥 Guru Terkini")
+            def dlg_guru_popup(df_g):
+                st.markdown(f"**Sekolah:** {kod} - {info.get('nama_sekolah','')}")
+                if df_g is not None and not df_g.empty:
+                    cols = [c for c in ["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN"] if c in df_g.columns]
+                    st.dataframe(df_g[cols] if cols else df_g, use_container_width=True, hide_index=True)
+                    st.info(f"Jumlah: {len(df_g)} guru")
+                else:
+                    st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
+                if st.button("Tutup", key="close_guru_dlg"):
+                    st.rerun()
+
+            @st.dialog("📊 Ringkasan Dashboard")
+            def dlg_ringkasan_popup():
+                st.markdown(jpn_kad_pusat(no_pusat_list, total_kelas, total_petugas, total_perlu, kod), unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.metric("Jumlah Guru", len(df_guru))
+                with c2:
+                    st.metric("Pusat Sekolah Ini", len(pusat_sekolah) if 'pusat_sekolah' in locals() else 0)
+                st.caption("Klik butang di dashboard utama untuk detail")
+
             try:
                 df_pusat_all = get_pusat_df()
                 pusat_sekolah = []
@@ -2523,10 +2559,8 @@ if st.session_state.role == "SUP":
                     if isinstance(d, str):
                         try: d = json.loads(d)
                         except: d = {}
-                    # Check multiple possible columns for tuan rumah
                     ks_tuan = str(r.get("kod_sekolah_tuan_rumah") or r.get("kod_sekolah") or r.get("KOD_SEKOLAH") or d.get("KOD_SEKOLAH") or d.get("KOD SEKOLAH") or d.get("KOD_SEKOLAH_TUAN_RUMAH") or "").upper().strip()
                     ks_biasa = str(r.get("kod_sekolah") or d.get("KOD_SEKOLAH") or "").upper().strip()
-                    # Match if kod sekolah matches tuan rumah OR kod sekolah biasa
                     if ks_tuan == kod.upper().strip() or ks_biasa == kod.upper().strip():
                         calon = r.get("jumlah_calon") or r.get("calon") or r.get("JUMLAH_CALON") or d.get("JUMLAH_CALON") or d.get("CALON") or 0
                         try: calon_i = int(float(str(calon) or 0))
@@ -2546,38 +2580,52 @@ if st.session_state.role == "SUP":
                 total_kelas = sum([p["KELAS"] for p in pusat_sekolah])
                 total_petugas = sum([p["PETUGAS_K9"] for p in pusat_sekolah])
                 total_perlu = sum([p["SEKOLAH_PERLU"] for p in pusat_sekolah])
-                # PAPARAN NO PUSAT - SERAGAM JPN BIRU (TAK UBAH LOGIK)
                 no_pusat_list = ", ".join([f"{p['NO_PUSAT']}" for p in pusat_sekolah if p['NO_PUSAT']])
+                # KAD RINGKAS - AUTO PAPAR
                 st.markdown(jpn_kad_pusat(no_pusat_list, total_kelas, total_petugas, total_perlu, kod), unsafe_allow_html=True)
-                # Table dengan NO PUSAT di depan, lebih jelas
-                df_pusat_display = pd.DataFrame(pusat_sekolah)
-                # Reorder columns: NO_PUSAT first
-                cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
-                df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
-                st.markdown("### 📍 Senarai Pusat Sekolah Anda (NO PUSAT)")
-                st.dataframe(df_pusat_display, use_container_width=True, hide_index=True)
+
+                # BUTTON POPUP PILIHAN - KONSEP POPUP
+                st.markdown("### 🎯 Pilih Untuk Lihat Detail (Klik Popup)")
+                b1, b2, b3 = st.columns(3)
+                with b1:
+                    if st.button("📍 Lihat Senarai Pusat", use_container_width=True, type="primary", key="btn_popup_pusat"):
+                        df_pusat_display = pd.DataFrame(pusat_sekolah)
+                        cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
+                        df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
+                        dlg_pusat_popup(df_pusat_display)
+                with b2:
+                    if st.button("👥 Lihat Guru Terkini", use_container_width=True, type="primary", key="btn_popup_guru"):
+                        dlg_guru_popup(df_guru)
+                with b3:
+                    if st.button("📊 Ringkasan Penuh", use_container_width=True, key="btn_popup_ringkas"):
+                        dlg_ringkasan_popup()
+
+                # METRIK RINGKAS - AUTO
+                c1, c2, c3, c4 = st.columns(4)
+                with c1: st.metric("Jumlah Guru", len(df_guru))
+                with c2:
+                    try:
+                        cnt = supa.table("guru_master").select("id", count="exact").execute()
+                        st.metric("Total Guru Selangor", cnt.count)
+                    except: st.metric("Total Guru Selangor", "-")
+                with c3: st.metric("Pusat Sekolah Ini", len(pusat_sekolah) if 'pusat_sekolah' in locals() else 0)
+                with c4:
+                    try:
+                        cad = get_cadangan_df(kod_sekolah=kod)
+                        st.metric("Cadangan Dihantar", len(cad))
+                    except: st.metric("Cadangan", "0")
+
             else:
                 st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
                 st.info("Sistem cuba cari pusat dengan kod_sekolah_tuan_rumah = kod sekolah anda. Hubungi PPD untuk semak pusat sekolah anda di table pusat_master.")
 
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: st.metric("Jumlah Guru", len(df_guru))
-            with c2:
-                try:
-                    cnt = supa.table("guru_master").select("id", count="exact").execute()
-                    st.metric("Total Guru Selangor", cnt.count)
-                except: st.metric("Total Guru Selangor", "-")
-            with c3: st.metric("Pusat Sekolah Ini", len(pusat_sekolah) if 'pusat_sekolah' in locals() else 0)
-            with c4:
-                try:
-                    cad = get_cadangan_df(kod_sekolah=kod)
-                    st.metric("Cadangan Dihantar", len(cad))
-                except: st.metric("Cadangan", "0")
-
+            # Guru Terkini - versi ringkas juga, klik popup untuk penuh
             st.markdown("---")
-            st.subheader("Guru Terkini")
+            st.subheader("Guru Terkini (Ringkasan 5 Terbaru)")
             if not df_guru.empty:
-                st.dataframe(df_guru[["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN"]], use_container_width=True, hide_index=True)
+                st.dataframe(df_guru[["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN"]].head(5), use_container_width=True, hide_index=True)
+                if st.button("🔍 Buka Popup Guru Terkini Penuh", key="btn_popup_guru2"):
+                    dlg_guru_popup(df_guru)
             else:
                 st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
 
