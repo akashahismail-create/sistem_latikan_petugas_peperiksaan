@@ -1,4 +1,6 @@
 """
+VERSION V37 - SERAGAM WARNA BIRU PEKAT & PUTIH SAHAJA (tajuk besar/kecil, menu, sub menu, SUP/PPD/JPN)
+  - Logik / fungsi / pangkalan data TIDAK diubah (hanya warna)
 VERSION V36 - FLYOUT SUB MENU UNTUK SEMUA (SUP / PPD / JPN) - BUTANG PETAK BIRU, TULISAN PUTIH
   - Menu utama & sub menu = butang petak biru/tulisan putih (butang aktif biru tua + jalur kuning)
   - Menu yang ada banyak bahagian/tab sekarang papar satu bahagian sahaja ikut pilihan flyout
@@ -106,7 +108,7 @@ def apply_pretty_theme():
 
     /* Tab */
     .stTabs [data-baseweb="tab-list"] { gap: 6px; background: #e8eef8; padding: 6px; border-radius: 14px; }
-    .stTabs [data-baseweb="tab"] { border-radius: 10px; padding: 8px 18px; font-weight: 600; color: #34527f; }
+    .stTabs [data-baseweb="tab"] { border-radius: 10px; padding: 8px 18px; font-weight: 600; color: #0d47a1; }
     .stTabs [aria-selected="true"] { background: #ffffff !important; color: #0d47a1 !important; box-shadow: 0 2px 8px rgba(13,71,161,.15); }
     .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] { display: none; }
 
@@ -116,7 +118,7 @@ def apply_pretty_theme():
         padding: 14px 18px; box-shadow: 0 2px 10px rgba(13,71,161,.07);
     }
     [data-testid="stMetricValue"] { color: #0d47a1; font-weight: 800; }
-    [data-testid="stMetricLabel"] { color: #5b6f94; font-weight: 600; }
+    [data-testid="stMetricLabel"] { color: #0d47a1; font-weight: 600; }
 
     /* Container bersempadan, expander, jadual */
     [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 16px !important; }
@@ -144,7 +146,7 @@ def apply_pretty_theme():
     .hero-login p { margin: 0; opacity: .92; font-size: .98rem; }
     .hero-stats { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
     .hero-stats span { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28); padding: 6px 16px; border-radius: 999px; font-weight: 600; font-size: .9rem; }
-    .app-footer { text-align: center; color: #7a8bab; font-size: .82rem; margin-top: 36px; padding-top: 14px; border-top: 1px solid #e1e8f5; }
+    .app-footer { text-align: center; color: #0d47a1; font-size: .82rem; margin-top: 36px; padding-top: 14px; border-top: 1px solid #e1e8f5; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -158,15 +160,15 @@ JPN_COLORS = {
     "biru_cair": "#EEF3FB",
     "biru_border": "#CFDBF0",
     "putih": "#FFFFFF",
-    "hitam_teks": "#1A2B4D",
-    "kelabu_teks": "#4A5C7A",
-    "hijau_lulus": "#2E7D32",
-    "hijau_bg": "#E8F5E9",
-    "kuning_pending": "#F57F17",
-    "kuning_bg": "#FFF8E1",
-    "merah_gagal": "#C62828",
-    "merah_bg": "#FFEBEE",
-    "jingga_need": "#E65100",
+    "hitam_teks": "#0D47A1",
+    "kelabu_teks": "#0D47A1",
+    "hijau_lulus": "#0D47A1",
+    "hijau_bg": "#FFFFFF",
+    "kuning_pending": "#0D47A1",
+    "kuning_bg": "#E3F2FD",
+    "merah_gagal": "#0D47A1",
+    "merah_bg": "#BBDEFB",
+    "jingga_need": "#0D47A1",
 }
 
 def _apply_jpn_kad_css():
@@ -190,11 +192,11 @@ def _apply_jpn_kad_css():
     }}
     .jpn-badge {{ display:inline-block; padding:4px 12px; border-radius:999px; font-weight:800; font-size:0.78rem; }}
     .jpn-badge-biru {{ background: {JPN_COLORS["biru_muda"]}; color: {JPN_COLORS["biru_tua"]}; border:1px solid {JPN_COLORS["biru_border"]}; }}
-    .jpn-badge-hijau {{ background: {JPN_COLORS["hijau_bg"]}; color: {JPN_COLORS["hijau_lulus"]}; border:1px solid #A5D6A7; }}
-    .jpn-badge-kuning {{ background: {JPN_COLORS["kuning_bg"]}; color: {JPN_COLORS["kuning_pending"]}; border:1px solid #FFE082; }}
+    .jpn-badge-hijau {{ background: {JPN_COLORS["hijau_bg"]}; color: {JPN_COLORS["hijau_lulus"]}; border:1px solid #FFFFFF; }}
+    .jpn-badge-kuning {{ background: {JPN_COLORS["kuning_bg"]}; color: {JPN_COLORS["kuning_pending"]}; border:1px solid #E3F2FD; }}
     .jpn-no-pusat-box {{ background: {JPN_COLORS["kuning_bg"]}; border-left:4px solid {JPN_COLORS["kuning_pending"]}; padding:12px 16px; border-radius:8px; margin:12px 0; }}
     .jpn-no-pusat-label {{ font-size:0.82rem; color:{JPN_COLORS["kuning_pending"]}; font-weight:800; text-transform:uppercase; }}
-    .jpn-no-pusat-value {{ font-size:1.35rem; font-weight:900; color:#BF360C; letter-spacing:0.8px; word-spacing:6px; }}
+    .jpn-no-pusat-value {{ font-size:1.35rem; font-weight:900; color:#0D47A1; letter-spacing:0.8px; word-spacing:6px; }}
     .surat-box img, .surat-container img, .tandatangan img {{ display:block !important; visibility:visible !important; }}
     </style>
     ''', unsafe_allow_html=True)
@@ -272,9 +274,9 @@ def show_hero_header():
     <div style="background:linear-gradient(180deg,#ffffff 0%,#eef4ff 100%);border:1px solid #d6e2f5;border-radius:24px;padding:28px 20px 22px 20px;text-align:center;box-shadow:0 10px 30px rgba(13,71,161,0.08);margin-bottom:22px;">
         {get_jata_img_html(88)}
         <div style="font-family:Poppins,Inter,sans-serif;font-weight:800;font-size:1.45rem;color:#0d47a1;line-height:1.3;">SISTEM PELANTIKAN PETUGAS<br/>PEPERIKSAAN SPM TAHUN 2026</div>
-        <div style="width:88px;height:4px;background:linear-gradient(90deg,#0d47a1,#e53935);margin:14px auto 0 auto;border-radius:999px;"></div>
-        <div style="font-weight:700;color:#334e85;font-size:0.98rem;margin-top:8px;">Jabatan Pendidikan Negeri Selangor</div>
-        <div style="color:#5b739c;font-size:0.86rem;margin-top:10px;max-width:620px;margin-left:auto;margin-right:auto;line-height:1.5;">Selamat Datang ke Portal Pelantikan — Sila pilih kategori petugas untuk log masuk. Sistem ini untuk urusan pelantikan petugas peperiksaan SPM Selangor 2026.</div>
+        <div style="width:88px;height:4px;background:linear-gradient(90deg,#0d47a1,#1565c0);margin:14px auto 0 auto;border-radius:999px;"></div>
+        <div style="font-weight:700;color:#0d47a1;font-size:0.98rem;margin-top:8px;">Jabatan Pendidikan Negeri Selangor</div>
+        <div style="color:#0d47a1;font-size:0.86rem;margin-top:10px;max-width:620px;margin-left:auto;margin-right:auto;line-height:1.5;">Selamat Datang ke Portal Pelantikan — Sila pilih kategori petugas untuk log masuk. Sistem ini untuk urusan pelantikan petugas peperiksaan SPM Selangor 2026.</div>
         <div style="margin-top:16px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
             <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">🏫 369 Sekolah</span>
             <span style="background:#fff;border:1px solid #dbe6f8;border-radius:999px;padding:6px 14px;font-weight:700;font-size:0.82rem;color:#0d47a1;">📍 506 Pusat</span>
@@ -436,16 +438,16 @@ def style_nama_hijau_hantar(df_input):
                 col_str = str(col).upper()
                 if "NAMA_GURU" in col_str:
                     if is_hantar:
-                        styles.append('background-color: #c8e6c9; color: #1b5e20; font-weight: 800; border-left: 4px solid #2e7d32;')
+                        styles.append('background-color: #ffffff; color: #0d47a1; font-weight: 800; border-left: 4px solid #0d47a1;')
                     elif is_baru:
-                        styles.append('background-color: #fff9c4; color: #e65100; font-weight: 600;')
+                        styles.append('background-color: #e3f2fd; color: #0d47a1; font-weight: 600;')
                     else:
                         styles.append('')
                 else:
                     if is_hantar:
-                        styles.append('background-color: #e8f5e9;')
+                        styles.append('background-color: #ffffff;')
                     elif is_baru:
-                        styles.append('background-color: #fffde7;')
+                        styles.append('background-color: #e3f2fd;')
                     else:
                         styles.append('')
             return styles
@@ -494,7 +496,7 @@ section[data-testid="stSidebar"] {display: none !important;}
     box-shadow: 0 2px 8px rgba(13, 71, 161, 0.1) !important;
 }
 [data-testid="stMetric"] label, [data-testid="stMetric"] div {
-    color: #212121 !important;
+    color: #0d47a1 !important;
 }
 [data-testid="stMetricValue"] {
     color: #0d47a1 !important;
@@ -503,12 +505,12 @@ section[data-testid="stSidebar"] {display: none !important;}
 
 [data-testid="stAlert"] {
     background: #ffffff !important;
-    color: #212121 !important;
+    color: #0d47a1 !important;
     border: 1px solid #90caf9 !important;
     border-radius: 10px !important;
 }
 [data-testid="stAlert"] p, [data-testid="stAlert"] div {
-    color: #212121 !important;
+    color: #0d47a1 !important;
 }
 
 [data-testid="stDataFrame"] {
@@ -534,39 +536,39 @@ section[data-testid="stSidebar"] {display: none !important;}
     margin-bottom: 4px;
 }
 .custom-sidebar p, .custom-sidebar span, .custom-sidebar div {
-    color: #212121 !important;
+    color: #0d47a1 !important;
 }
 .custom-sidebar [data-testid="stCaptionContainer"] {
-    color: #212121 !important;
+    color: #0d47a1 !important;
     opacity: 1 !important;
 }
 .custom-sidebar [data-testid="stCaptionContainer"] p {
-    color: #212121 !important;
+    color: #0d47a1 !important;
     font-weight: 700 !important;
     font-size: 13px !important;
 }
 
 .no-pusat-box {
-    background: #ffeb3b !important;
-    border: 2px solid #f57f17 !important;
+    background: #e3f2fd !important;
+    border: 2px solid #0d47a1 !important;
     border-radius: 8px;
     padding: 10px 12px;
     margin: 10px 0;
 }
 .no-pusat-label {
     font-size: 11px;
-    color: #bf360c !important;
+    color: #0d47a1 !important;
     font-weight: 700;
 }
 .no-pusat-value {
     font-size: 18px;
-    color: #000000 !important;
+    color: #0d47a1 !important;
     font-weight: 900;
 }
 
 .ppd-table {
     background: white !important;
-    color: #212121 !important;
+    color: #0d47a1 !important;
 }
 .ppd-table th {
     background: #0d47a1 !important;
@@ -574,19 +576,19 @@ section[data-testid="stSidebar"] {display: none !important;}
 }
 .ppd-table td {
     background: white !important;
-    color: #212121 !important;
+    color: #0d47a1 !important;
     border-bottom: 1px solid #e0e0e0 !important;
 }
 
 .badge-merah, .badge-kuning, .badge-hijau {
     font-weight: 800 !important;
 }
-.badge-merah {background: #ffcdd2 !important; border: 2px solid #d32f2f !important; color: #b71c1c !important;}
-.badge-kuning {background: #fff9c4 !important; border: 2px solid #f57f17 !important; color: #e65100 !important;}
-.badge-hijau {background: #c8e6c9 !important; border: 2px solid #2e7d32 !important; color: #1b5e20 !important;}
+.badge-merah {background: #0d47a1 !important; border: 2px solid #0d47a1 !important; color: #ffffff !important;}
+.badge-kuning {background: #bbdefb !important; border: 2px solid #0d47a1 !important; color: #0d47a1 !important;}
+.badge-hijau {background: #ffffff !important; border: 2px solid #0d47a1 !important; color: #0d47a1 !important;}
 
 [data-testid="stRadio"] label {
-    color: #212121 !important;
+    color: #0d47a1 !important;
     font-weight: 600 !important;
 }
 
@@ -595,7 +597,7 @@ section[data-testid="stSidebar"] {display: none !important;}
 }
 
 [data-testid="stTabs"] button {
-    color: #212121 !important;
+    color: #0d47a1 !important;
     font-weight: 600 !important;
 }
 
@@ -604,13 +606,13 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 [data-testid="stCaptionContainer"] p {
-    color: #424242 !important;
+    color: #0d47a1 !important;
     font-weight: 600 !important;
     opacity: 1 !important;
 }
 
 label {
-    color: #212121 !important;
+    color: #0d47a1 !important;
     font-weight: 600 !important;
 }
 
@@ -627,6 +629,82 @@ div[data-testid="stHorizontalBlock"] {
 }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ================= V37 - SERAGAM BIRU PEKAT & PUTIH (SUP / PPD / JPN) =================
+st.markdown("""
+<style>
+:root { --biru-pekat:#0d47a1; --biru-gelap:#002171; --biru-sederhana:#1565c0; --biru-cair:#e3f2fd; --putih:#ffffff; accent-color:#0d47a1; }
+
+/* ---- TAJUK BESAR (header / h1 / h2): palang biru pekat, tulisan putih ---- */
+.stApp h1, .stApp h2 {
+    background: #0d47a1 !important; color: #ffffff !important;
+    padding: 12px 18px !important; border-radius: 8px !important;
+    font-size: 1.35rem !important; font-weight: 800 !important;
+    margin: 6px 0 14px 0 !important; letter-spacing: 0 !important;
+}
+/* ---- TAJUK KECIL (subheader / h3 / h4 / h5 / h6): palang biru pekat lebih kecil ---- */
+.stApp h3, .stApp h4, .stApp h5, .stApp h6 {
+    background: #0d47a1 !important; color: #ffffff !important;
+    padding: 8px 14px !important; border-radius: 6px !important;
+    font-size: 1.02rem !important; font-weight: 700 !important;
+    margin: 6px 0 10px 0 !important; letter-spacing: 0 !important;
+}
+.stApp h1 *, .stApp h2 *, .stApp h3 *, .stApp h4 *, .stApp h5 *, .stApp h6 * { color: #ffffff !important; }
+/* tajuk di dalam kad/palang biru sedia ada: jangan bertindan */
+.stApp [style*="linear-gradient"] h1, .stApp [style*="linear-gradient"] h2,
+.stApp [style*="linear-gradient"] h3, .stApp [style*="linear-gradient"] h4,
+.stApp [style*="background:#0d47a1"] h1, .stApp [style*="background:#0d47a1"] h2,
+.stApp [style*="background:#0d47a1"] h3, .stApp [style*="background:#0d47a1"] h4,
+.main-btn h3, .hero-login h1 {
+    background: transparent !important; padding: 0 !important; margin: 0 0 4px 0 !important;
+    color: #ffffff !important;
+}
+.main-btn h3 { color: #0d47a1 !important; }
+.custom-sidebar h3 { margin-top: 0 !important; }
+
+/* ---- LABEL & KAPSYEN: biru pekat (teks biasa ikut config.toml textColor) ---- */
+[data-testid="stCaptionContainer"] p { color: #0d47a1 !important; }
+.custom-sidebar p, .custom-sidebar span, .custom-sidebar div { color: #0d47a1 !important; }
+[data-testid="stRadio"] label, [data-testid="stTabs"] button, label { color: #0d47a1 !important; }
+.hero-login, .hero-login *, .hero-stats span { color: #ffffff !important; }
+
+/* ---- TAB: biru pekat & putih ---- */
+.stTabs [data-baseweb="tab-list"] { background: #0d47a1 !important; }
+.stTabs [data-baseweb="tab"], .stTabs [data-baseweb="tab"] p, [data-testid="stTabs"] button { color: #ffffff !important; }
+.stTabs [aria-selected="true"], .stTabs [aria-selected="true"] p { background: #ffffff !important; color: #0d47a1 !important; }
+
+/* ---- BUTANG BIASA & MUAT TURUN: biru pekat, tulisan putih ---- */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
+    background: #0d47a1 !important; color: #ffffff !important; border: 1px solid #002171 !important;
+}
+.stButton > button *, .stDownloadButton > button *, .stFormSubmitButton > button * { color: #ffffff !important; }
+.stButton > button:hover, .stDownloadButton > button:hover { background: #1565c0 !important; }
+.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] { background: #002171 !important; }
+
+/* ---- AMARAN / MAKLUMAT / BERJAYA / RALAT: putih + jalur biru ---- */
+[data-testid="stAlert"] { background: #ffffff !important; border: 1px solid #0d47a1 !important; border-left: 6px solid #0d47a1 !important; }
+[data-testid="stAlert"] *, [data-testid="stAlert"] svg { color: #0d47a1 !important; fill: #0d47a1 !important; }
+
+/* ---- Metrik, delta, pill, tag, slider, progress ---- */
+[data-testid="stMetricDelta"], [data-testid="stMetricDelta"] * { color: #0d47a1 !important; fill: #0d47a1 !important; }
+[data-baseweb="tag"] { background: #0d47a1 !important; color: #ffffff !important; }
+[data-baseweb="tag"] * { color: #ffffff !important; }
+[data-testid="stProgress"] > div > div > div > div { background-color: #0d47a1 !important; }
+[data-testid="stSlider"] [role="slider"] { background-color: #0d47a1 !important; }
+input[type="checkbox"], input[type="radio"] { accent-color: #0d47a1 !important; }
+[data-baseweb="checkbox"] > span:first-child, [data-baseweb="radio"] > div:first-child { border-color: #0d47a1 !important; }
+[data-baseweb="checkbox"] input:checked + span, [data-baseweb="toggle"] input:checked + div { background-color: #0d47a1 !important; }
+[data-baseweb="radio"] input:checked + div { background-color: #0d47a1 !important; border-color: #0d47a1 !important; }
+
+/* ---- Kotak No Pusat: biru cair + sempadan biru pekat ---- */
+.no-pusat-box, .jpn-no-pusat-box { background: #e3f2fd !important; border: 2px solid #0d47a1 !important; border-left-width: 6px !important; }
+.no-pusat-label, .jpn-no-pusat-label, .no-pusat-value, .jpn-no-pusat-value { color: #0d47a1 !important; }
+.jpn-badge-hijau { background: #ffffff !important; color: #0d47a1 !important; border: 1px solid #0d47a1 !important; }
+.jpn-badge-kuning { background: #bbdefb !important; color: #0d47a1 !important; border: 1px solid #0d47a1 !important; }
+</style>
+""", unsafe_allow_html=True)
+# ================= END V37 =================
 
 # ================= HELPER FUNCTIONS (FORMULA & LOGIC) =================
 
@@ -1061,12 +1139,12 @@ def generate_surat_penyelia_kawasan_html(nama, ic, sek_asal, nama_sek_asal, tele
     html += 'table.pusat th, table.pusat td{border:1px solid #0d47a1;padding:8px;text-align:left;}'
     html += 'table.pusat th{background:#0d47a1;color:white;}'
     html += '.tandatangan{margin-top:60px;display:flex;justify-content:space-between;}'
-    html += '.penting{background:#fff3e0;border-left:5px solid #e65100;padding:12px;margin:15px 0;}'
+    html += '.penting{background:#e3f2fd;border-left:5px solid #0d47a1;padding:12px;margin:15px 0;}'
     html += '</style></head><body>'
     html += '<div class="surat"><div class="header">'
     html += '<h2>JABATAN PENDIDIKAN NEGERI SELANGOR</h2>'
     html += f'<h3>PEJABAT PENDIDIKAN DAERAH {kod_ppd} - {ppd_name}</h3>'
-    html += '<h3 style="color:#e65100;">SURAT LANTIKAN PENYELIA KAWASAN SPM 2026</h3>'
+    html += '<h3 style="color:#0d47a1;">SURAT LANTIKAN PENYELIA KAWASAN SPM 2026</h3>'
     html += f'<p><strong>No Rujukan: {no_surat}</strong> | Tarikh: {tarikh}</p></div>'
     html += '<div class="kandungan">'
     html += '<p><strong>Tuan/Puan,</strong></p>'
@@ -1847,7 +1925,7 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         # 2.1, 2.2, 2.3 - TABLE KEMAS - FIX: No Pusat betul, Bilik Kebal ikut selenggara
         style_sub_label = ParagraphStyle('SubLabel', parent=styles['Normal'], fontSize=10, leading=13, alignment=0, leftIndent=15*mm, fontName='Helvetica')
         style_sub_value = ParagraphStyle('SubValue', parent=styles['Normal'], fontSize=10, leading=13, alignment=0, fontName='Helvetica-Bold')
-        style_sub_value_empty = ParagraphStyle('SubValueEmpty', parent=styles['Normal'], fontSize=10, leading=13, alignment=0, fontName='Helvetica', textColor=colors.HexColor('#999999'))
+        style_sub_value_empty = ParagraphStyle('SubValueEmpty', parent=styles['Normal'], fontSize=10, leading=13, alignment=0, fontName='Helvetica', textColor=colors.HexColor('#1565c0'))
 
         # LOGIK: No Pusat = kod pusat sebenar, BUKAN bilik kebal
         # Kalau bilik_kebal kosong, paparkan - atau kosong untuk isi kemudian
@@ -2452,7 +2530,7 @@ if st.session_state.role is None:
     }
     .main-btn:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(13,71,161,0.16); border-color: #1565c0; }
     .main-btn h3 { margin: 8px 0 4px 0; color: #0d47a1; font-weight: 800; }
-    .main-btn p { margin: 0; color: #5b739c; font-size: 0.85rem; }
+    .main-btn p { margin: 0; color: #0d47a1; font-size: 0.85rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -2473,7 +2551,7 @@ if st.session_state.role is None:
             st.session_state.popup_stage = "PASSWORD_JPN"
             st.rerun()
 
-    st.markdown("<div style='text-align:center;margin-top:28px;color:#7a8bab;font-size:12px;'>Sistem Pelantikan Petugas SPM Selangor 2026 · JPN Selangor</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center;margin-top:28px;color:#0d47a1;font-size:12px;'>Sistem Pelantikan Petugas SPM Selangor 2026 · JPN Selangor</div>", unsafe_allow_html=True)
     st.stop()
 
 # ================= FLYOUT SUB MENU V36 - BUTANG PETAK BIRU / TULISAN PUTIH =================
@@ -2482,8 +2560,8 @@ st.markdown("""
 /* Semua butang menu & sub menu: petak biru, tulisan putih */
 [class*="st-key-flymenu_"] button,
 [class*="st-key-flysub_"] button {
-    background: #1565c0 !important;
-    border: 1px solid #0d47a1 !important;
+    background: #0d47a1 !important;
+    border: 1px solid #002171 !important;
     border-radius: 3px !important;
     color: #ffffff !important;
     min-height: 38px !important;
@@ -2501,17 +2579,17 @@ st.markdown("""
 }
 [class*="st-key-flymenu_"] button:hover,
 [class*="st-key-flysub_"] button:hover {
-    background: #1e88e5 !important;
-    border-color: #0d47a1 !important;
+    background: #1565c0 !important;
+    border-color: #002171 !important;
 }
 /* Butang aktif: biru tua + jalur kuning di kiri */
 [class*="st-key-flymenu_"] button[kind="primary"],
 [class*="st-key-flysub_"] button[kind="primary"],
 [class*="st-key-flymenu_"] [data-testid="stBaseButton-primary"],
 [class*="st-key-flysub_"] [data-testid="stBaseButton-primary"] {
-    background: #0b2f7a !important;
-    border-color: #0b2f7a !important;
-    box-shadow: inset 5px 0 0 #ffca28 !important;
+    background: #002171 !important;
+    border-color: #002171 !important;
+    box-shadow: inset 5px 0 0 #ffffff !important;
 }
 /* Flyout terapung sebaris dengan menu terpilih (tidak tolak menu lain ke bawah) */
 [data-testid="stColumn"]:has(.fly-anchor),
@@ -2643,7 +2721,7 @@ if st.session_state.role == "SUP":
     with col_menu:
         st.markdown('<div class="custom-sidebar">', unsafe_allow_html=True)
         st.markdown(f"### 🏫 SUP {kod}")
-        st.markdown(f"<div style='color:#212121; font-weight:700; font-size:13px; margin-bottom:4px;'>{info.get('nama_sekolah', '')}</div><div style='color:#424242; font-size:12px; margin-bottom:8px;'>{info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:#0d47a1; font-weight:700; font-size:13px; margin-bottom:4px;'>{info.get('nama_sekolah', '')}</div><div style='color:#0d47a1; font-size:12px; margin-bottom:8px;'>{info.get('kod_ppd', 'BH')} - {PPD_MAP.get(info.get('kod_ppd', 'BH'), '')}</div>", unsafe_allow_html=True)
         try:
             df_pusat_sidebar = get_pusat_df()
             no_pusat_list_sidebar = []
@@ -2662,9 +2740,9 @@ if st.session_state.role == "SUP":
                 no_pusat_str = ", ".join(no_pusat_list_sidebar)
                 st.markdown('<div class="no-pusat-box"><div class="no-pusat-label">📍 NO PUSAT SEKOLAH:</div><div class="no-pusat-value">' + no_pusat_str + '</div></div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div class="no-pusat-box" style="background:#ffccbc; border-color:#d32f2f;"><div class="no-pusat-label" style="color:#b71c1c;">⚠️ TIADA NO PUSAT:</div><div class="no-pusat-value" style="font-size:12px;">Tiada pusat dijumpai untuk ' + kod + '<br>Hubungi PPD</div></div>', unsafe_allow_html=True)
+                st.markdown('<div class="no-pusat-box" style="background:#bbdefb; border-color:#0d47a1;"><div class="no-pusat-label" style="color:#0d47a1;">⚠️ TIADA NO PUSAT:</div><div class="no-pusat-value" style="font-size:12px;">Tiada pusat dijumpai untuk ' + kod + '<br>Hubungi PPD</div></div>', unsafe_allow_html=True)
         except Exception as e:
-            st.markdown("<div style='background:#fff3e0; padding:8px; border-radius:6px; font-size:11px;'>Error load pusat: " + str(e) + "</div>", unsafe_allow_html=True)
+            st.markdown("<div style='background:#e3f2fd; padding:8px; border-radius:6px; font-size:11px;'>Error load pusat: " + str(e) + "</div>", unsafe_allow_html=True)
         add_refresh_button()
 
         if "sup_dash_sub" not in st.session_state:
@@ -2731,7 +2809,7 @@ if st.session_state.role == "SUP":
                         st.markdown(f"<div style='background:white; padding:20px; border-radius:12px; border:3px solid #1565c0; margin-bottom:20px;'><h3>🏫 KEPERLUAN PENGAWAS - {kod}</h3><div>NO PUSAT: <b>{no_pusat_list}</b> | Kelas: {total_kelas} | Petugas: {total_petugas} | Perlu: {total_perlu}</div></div>", unsafe_allow_html=True)
                 else:
                     st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
-                st.markdown("<div style='background:#E3F2FD; border:1px dashed #CFDBF0; border-radius:8px; padding:8px 12px; font-size:0.8rem; color:#4A5C7A; text-align:center; margin-bottom:12px;'>📌 Sub-menu ada di sebelah kiri (popup) - pilih di kotak sebelah kanan Dashboard</div>", unsafe_allow_html=True)
+                st.markdown("<div style='background:#E3F2FD; border:1px dashed #CFDBF0; border-radius:8px; padding:8px 12px; font-size:0.8rem; color:#0D47A1; text-align:center; margin-bottom:12px;'>📌 Sub-menu ada di sebelah kiri (popup) - pilih di kotak sebelah kanan Dashboard</div>", unsafe_allow_html=True)
                 c1, c2, c3, c4 = st.columns(4)
                 with c1: st.metric("Jumlah Guru", len(df_guru))
                 with c2:
@@ -2753,7 +2831,7 @@ if st.session_state.role == "SUP":
                     st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
 
             elif sub == "pusat":
-                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>📍 Senarai Pusat Sekolah Anda - {kod}</div><div style='font-size:0.85rem; color:#4A5C7A; margin-top:4px;'>Paparan dashboard utama disembunyikan. Klik Utama di popup sebelah untuk kembali.</div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>📍 Senarai Pusat Sekolah Anda - {kod}</div><div style='font-size:0.85rem; color:#0D47A1; margin-top:4px;'>Paparan dashboard utama disembunyikan. Klik Utama di popup sebelah untuk kembali.</div></div>", unsafe_allow_html=True)
                 if pusat_sekolah:
                     df_pusat_display = pd.DataFrame(pusat_sekolah)
                     cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
@@ -2764,7 +2842,7 @@ if st.session_state.role == "SUP":
                     st.warning("Tiada pusat dijumpai")
 
             elif sub == "guru":
-                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>👥 Guru Terkini - {kod}</div><div style='font-size:0.85rem; color:#4A5C7A; margin-top:4px;'>Paparan dashboard utama disembunyikan. Klik Utama di popup sebelah untuk kembali.</div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background:white; border:2px solid #0D47A1; border-radius:12px; padding:14px 16px; margin-bottom:14px;'><div style='font-weight:900; color:#0D47A1; font-size:1.1rem;'>👥 Guru Terkini - {kod}</div><div style='font-size:0.85rem; color:#0D47A1; margin-top:4px;'>Paparan dashboard utama disembunyikan. Klik Utama di popup sebelah untuk kembali.</div></div>", unsafe_allow_html=True)
                 if not df_guru.empty:
                     cols_show = [c for c in ["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN", "POSKOD_RUMAH"] if c in df_guru.columns]
                     st.dataframe(df_guru[cols_show] if cols_show else df_guru, use_container_width=True, hide_index=True)
@@ -3027,12 +3105,12 @@ if st.session_state.role == "SUP":
 
                 if pusat_sek:
                     st.markdown(f"""
-                    <div style="background:#fff8e1; padding:15px; border-radius:10px; border-left:5px solid #ff8f00; margin-bottom:20px;">
-                        <h4 style="margin:0; color:#e65100;">📢 KEPERLUAN WAJIB SEKOLAH ANDA - {kod}</h4>
+                    <div style="background:#e3f2fd; padding:15px; border-radius:10px; border-left:5px solid #0d47a1; margin-bottom:20px;">
+                        <h4 style="margin:0; color:#0d47a1;">📢 KEPERLUAN WAJIB SEKOLAH ANDA - {kod}</h4>
                         <p style="margin:5px 0;">Pusat: {len(pusat_sek)} | Calon: {total_calon_alert} | Kelas: {total_kelas_alert} (1 kelas=20 calon)</p>
                         <p style="margin:5px 0; font-size:15px;">
-                            <b style="color:#c62828;">WAJIB:</b> Ketua Pengawas 1 orang + Timbalan Ketua 1 orang<br>
-                            <b style="color:#2e7d32;">OPTIONAL:</b> Penyelia Kawasan 1 orang<br>
+                            <b style="color:#0d47a1;">WAJIB:</b> Ketua Pengawas 1 orang + Timbalan Ketua 1 orang<br>
+                            <b style="color:#0d47a1;">OPTIONAL:</b> Penyelia Kawasan 1 orang<br>
                             <b style="color:#1565c0;">Pengawas Peperiksaan: {total_kelas_alert} orang</b> (ikut jumlah kelas)<br>
                             <b>Total Sekolah Perlu Calonkan: {total_need_simple} orang</b> (Formula: {total_calon_alert} calon /20 = {total_kelas_alert} kelas, {total_kelas_alert}+9={total_kelas_alert+9} petugas, +3 KP/TKP/Penyelia = {total_need_simple})
                         </p>
@@ -3157,9 +3235,9 @@ if st.session_state.role == "SUP":
                     st.markdown("---")
                     st.subheader(f"Senarai Cadangan Sekolah Ini - Perlu {total_need_simple if 'total_need_simple' in locals() else 18} orang")
                     st.markdown("""
-                <div style="background:#e8f5e9; border-left:4px solid #2e7d32; padding:8px 12px; border-radius:6px; margin-bottom:10px;">
-                <b>🟢 Panduan Warna:</b> Nama guru <span style="background:#c8e6c9; color:#1b5e20; font-weight:800; padding:2px 8px; border-radius:4px;">HIJAU</span> = Sudah hantar ke PPD |
-                <span style="background:#fff9c4; color:#e65100; font-weight:600; padding:2px 8px; border-radius:4px;">KUNING</span> = Baru dicadangkan, belum hantar
+                <div style="background:#ffffff; border-left:4px solid #0d47a1; padding:8px 12px; border-radius:6px; margin-bottom:10px;">
+                <b>🟢 Panduan Warna:</b> Nama guru <span style="background:#ffffff; color:#0d47a1; font-weight:800; padding:2px 8px; border-radius:4px;">HIJAU</span> = Sudah hantar ke PPD |
+                <span style="background:#e3f2fd; color:#0d47a1; font-weight:600; padding:2px 8px; border-radius:4px;">KUNING</span> = Baru dicadangkan, belum hantar
                 </div>
                 """, unsafe_allow_html=True)
                     df_cad = get_cadangan_df(kod_sekolah=kod)
@@ -3337,7 +3415,7 @@ if st.session_state.role == "SUP":
                 st.caption("ℹ️ Cadangan yang sudah LULUS PPD tidak akan diubah atau dipadam oleh butang di atas.")
 
         elif menu == "petugas":
-            st.markdown(f'<div style="background: linear-gradient(135deg, #e65100 0%, #ef6c00 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">👥 Petugas Yang Akan Hadir Bertugas Di Sekolah Saya - {kod}</h2><p style="margin:5px 0 0 0; color:#ffe0b2;">Pilih pusat yang ada di sekolah anda, lihat senarai petugas yang akan hadir bertugas</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background: linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">👥 Petugas Yang Akan Hadir Bertugas Di Sekolah Saya - {kod}</h2><p style="margin:5px 0 0 0; color:#e3f2fd;">Pilih pusat yang ada di sekolah anda, lihat senarai petugas yang akan hadir bertugas</p></div>', unsafe_allow_html=True)
 
             # Get pusat di sekolah ini
             try:
@@ -3447,7 +3525,7 @@ if st.session_state.role == "SUP":
                     # ===== END FIX PETUGAS =====
 
         elif menu == "surat":
-            st.markdown(f'<div style="background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">📄 Surat Lantikan Saya - {kod} - {info.get("nama_sekolah","")}</h2><p style="margin:5px 0 0 0; color:#e1bee7;">Surat lantikan petugas dari sekolah anda - Asing ikut jawatan untuk rujukan SUP</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background: linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;"><h2 style="margin:0; color:white;">📄 Surat Lantikan Saya - {kod} - {info.get("nama_sekolah","")}</h2><p style="margin:5px 0 0 0; color:#e3f2fd;">Surat lantikan petugas dari sekolah anda - Asing ikut jawatan untuk rujukan SUP</p></div>', unsafe_allow_html=True)
 
             df_cad_sup = get_cadangan_df(kod_sekolah=kod)
             if df_cad_sup.empty:
@@ -3521,7 +3599,7 @@ if st.session_state.role == "SUP":
                         if df_j.empty:
                             return
                         st.markdown(f"""
-                    <div style="background:{warna_header}; padding:12px 16px; border-radius:8px; margin:20px 0 10px 0; border-left:6px solid #4a148c;">
+                    <div style="background:{warna_header}; padding:12px 16px; border-radius:8px; margin:20px 0 10px 0; border-left:6px solid #0d47a1;">
                         <h3 style="margin:0; color:white;">{icon} {tajuk} - {len(df_j)} orang</h3>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3572,9 +3650,9 @@ if st.session_state.role == "SUP":
                                 st.download_button(f"📥 Export {tajuk} - Tunggu", to_excel(df_tunggu_show), file_name=f"surat_{tajuk.replace(' ','_')}_tunggu_{kod}.xlsx", key=f"exp_tunggu_{tajuk}_{kod}", use_container_width=True)
                         st.markdown("---")
 
-                    papar_table_jawatan(df_cad_sup, "TABLE 1: Penyelia Kawasan", "🔐", ["Penyelia Kawasan", "Penyelia"], "linear-gradient(135deg, #e65100 0%, #ef6c00 100%)")
+                    papar_table_jawatan(df_cad_sup, "TABLE 1: Penyelia Kawasan", "🔐", ["Penyelia Kawasan", "Penyelia"], "linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%)")
                     papar_table_jawatan(df_cad_sup, "TABLE 2: Ketua Pengawas & Timbalan", "👑", ["Ketua Pengawas", "Timbalan Ketua"], "linear-gradient(135deg, #0d47a1 0%, #1976d2 100%)")
-                    papar_table_jawatan(df_cad_sup, "TABLE 3: Pengawas Peperiksaan", "👨‍🏫", ["Pengawas Peperiksaan", "Pengawas"], "linear-gradient(135deg, #2e7d32 0%, #43a047 100%)")
+                    papar_table_jawatan(df_cad_sup, "TABLE 3: Pengawas Peperiksaan", "👨‍🏫", ["Pengawas Peperiksaan", "Pengawas"], "linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%)")
 
                 if fly_cur == "individu":
                     st.markdown("## 📄 Paparan Surat Lantikan (Yang Ada Surat Sahaja) - Individu")
@@ -3842,16 +3920,16 @@ elif st.session_state.role == "PPD":
 
                         # Color logic for total
                         if total_dicadangkan == 0:
-                            color_total = "#d32f2f"
-                            bg_total = "#ffebee"
+                            color_total = "#0d47a1"
+                            bg_total = "#bbdefb"
                             icon_total = "🔴"
                         elif total_dicadangkan < total_sepatutnya:
-                            color_total = "#f57f17"
-                            bg_total = "#fff8e1"
+                            color_total = "#0d47a1"
+                            bg_total = "#e3f2fd"
                             icon_total = "🟡"
                         else:
-                            color_total = "#2e7d32"
-                            bg_total = "#e8f5e9"
+                            color_total = "#0d47a1"
+                            bg_total = "#ffffff"
                             icon_total = "🟢"
 
                         st.markdown(jpn_status_meter(total_pusat, total_calon, total_kelas, total_sepatutnya, total_dicadangkan, kod_ppd), unsafe_allow_html=True)
@@ -3999,11 +4077,11 @@ elif st.session_state.role == "PPD":
                     .ppd-table {width:100%; border-collapse:collapse; font-size:13px; background:white;}
                     .ppd-table th {background:#0d47a1; color:white; padding:0 8px; height:40px; text-align:left; font-weight:700; position:sticky; top:0; z-index:2; white-space:nowrap;}
                     .ppd-scroll {max-height:480px; overflow-y:auto; overflow-x:auto; border:2px solid #90caf9; border-radius:6px; background:white;}
-                    .ppd-table td {padding:0 8px; height:44px; border-bottom:1px solid #e0e0e0; background:white; color:#212121; white-space:nowrap;}
+                    .ppd-table td {padding:0 8px; height:44px; border-bottom:1px solid #e0e0e0; background:white; color:#0d47a1; white-space:nowrap;}
                     .ppd-table tr:hover td {background:#f5f5f5 !important;}
-                    .badge-merah {background:#ffcdd2 !important; color:#b71c1c !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #d32f2f;}
-                    .badge-kuning {background:#fff9c4 !important; color:#e65100 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #f57f17;}
-                    .badge-hijau {background:#c8e6c9 !important; color:#1b5e20 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #2e7d32;}
+                    .badge-merah {background:#0d47a1 !important; color:#ffffff !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #0d47a1;}
+                    .badge-kuning {background:#bbdefb !important; color:#0d47a1 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #0d47a1;}
+                    .badge-hijau {background:#ffffff !important; color:#0d47a1 !important; padding:4px 8px; border-radius:12px; font-weight:700; border:2px solid #0d47a1;}
                     .edit-hint {background:#e3f2fd; border-left:4px solid #1976d2; padding:6px 10px; margin:4px 0; font-size:11px;}
                     </style>
                     <div class="edit-hint">✏️ <b>PPD boleh edit:</b> BIL CALON, KELAS, PERLU (K+9) ikut keperluan sebenar - klik angka dalam table atas untuk edit &nbsp;|&nbsp; 📜 Papar 10 baris - skrol ke bawah untuk lihat selebihnya</div>
@@ -4027,7 +4105,7 @@ elif st.session_state.role == "PPD":
                                 badge_text = f"🟢 {dic}"
                                 status_badge = f'<span class="{badge_class}">🟢 Cukup</span>'
 
-                            html_table += f"<tr><td><b>{r['BIL']}</b></td><td><b>{r['NO_PUSAT']}</b></td><td>{r['NAMA_PUSAT']}</td><td>{r['KOD_TUAN']}</td><td style='text-align:center; background:#fff9c4; font-weight:700; border:1px dashed #f57f17;'>{r['BIL_CALON']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700; border:1px dashed #1976d2;'>{r['KELAS']}</td><td style='text-align:center; background:#fce4ec; font-weight:700; border:1px dashed #d32f2f;'>{r['PERLU_K9']}</td><td style='text-align:center;'><span class='{badge_class}'>{badge_text}</span></td><td>{status_badge}</td></tr>"
+                            html_table += f"<tr><td><b>{r['BIL']}</b></td><td><b>{r['NO_PUSAT']}</b></td><td>{r['NAMA_PUSAT']}</td><td>{r['KOD_TUAN']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700; border:1px dashed #0d47a1;'>{r['BIL_CALON']}</td><td style='text-align:center; background:#e3f2fd; font-weight:700; border:1px dashed #1976d2;'>{r['KELAS']}</td><td style='text-align:center; background:#bbdefb; font-weight:700; border:1px dashed #0d47a1;'>{r['PERLU_K9']}</td><td style='text-align:center;'><span class='{badge_class}'>{badge_text}</span></td><td>{status_badge}</td></tr>"
 
                         html_table += "</table></div>"
 
@@ -4834,9 +4912,9 @@ elif st.session_state.role == "PPD":
 
         elif menu == "manual":
             st.markdown(f'''
-            <div style="background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+            <div style="background: linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
                 <h2 style="margin:0; color:white;">📌 Penempatan Manual - PPD {kod_ppd}</h2>
-                <p style="margin:5px 0 0 0; color:#e1bee7;">Pilih pusat, klik kolum jawatan untuk pilih petugas secara manual - 1 Pusat = 1 KP + 1 TKP + Pengawas ikut keperluan</p>
+                <p style="margin:5px 0 0 0; color:#e3f2fd;">Pilih pusat, klik kolum jawatan untuk pilih petugas secara manual - 1 Pusat = 1 KP + 1 TKP + Pengawas ikut keperluan</p>
             </div>
             ''', unsafe_allow_html=True)
 
@@ -4901,10 +4979,10 @@ elif st.session_state.role == "PPD":
                     perlu_m = int(info_pusat["PERLU"].values[0])
                     st.markdown(f'''
                     <div style="background:#e3f2fd; border:2px solid #1565c0; border-radius:8px; padding:10px; text-align:center;">
-                        <div style="font-size:11px; color:#666;">KEPERLUAN PUSAT</div>
+                        <div style="font-size:11px; color:#1565c0;">KEPERLUAN PUSAT</div>
                         <div style="font-size:20px; font-weight:800; color:#0d47a1;">{perlu_m} Petugas</div>
-                        <div style="font-size:11px; color:#424242;">1 KP + 1 TKP + {perlu_m-2} Pengawas</div>
-                        <div style="font-size:10px; color:#666; margin-top:4px;">{info_pusat['CALON'].values[0]} calon | {info_pusat['KELAS'].values[0]} kelas</div>
+                        <div style="font-size:11px; color:#0d47a1;">1 KP + 1 TKP + {perlu_m-2} Pengawas</div>
+                        <div style="font-size:10px; color:#1565c0; margin-top:4px;">{info_pusat['CALON'].values[0]} calon | {info_pusat['KELAS'].values[0]} kelas</div>
                     </div>
                     ''', unsafe_allow_html=True)
 
@@ -4993,13 +5071,13 @@ elif st.session_state.role == "PPD":
 
             # ===== KOLUM KETUA PENGAWAS =====
             with col_kp:
-                st.markdown('<div style="background:#ffebee; border:2px solid #b71c1c; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">👑</div><div style="font-weight:700; color:#b71c1c; font-size:12px;">KETUA PENGAWAS</div></div>', unsafe_allow_html=True)
+                st.markdown('<div style="background:#bbdefb; border:2px solid #0d47a1; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">👑</div><div style="font-weight:700; color:#0d47a1; font-size:12px;">KETUA PENGAWAS</div></div>', unsafe_allow_html=True)
 
                 if kp_curr:
                     st.markdown("**Semasa:**")
                     for c in kp_curr:
                         st.markdown(f'''
-                        <div style="background:#ffcdd2; border:1px solid #b71c1c; border-radius:6px; padding:8px; margin:4px 0;">
+                        <div style="background:#bbdefb; border:1px solid #0d47a1; border-radius:6px; padding:8px; margin:4px 0;">
                             <div style="font-weight:700; font-size:12px;">{c.get("NAMA_GURU", "")}</div>
                             <div style="font-size:10px;">{c.get("KOD_SEKOLAH_ASAL", "")} | {c.get("IC_GURU", "")}</div>
                         </div>
@@ -5081,13 +5159,13 @@ elif st.session_state.role == "PPD":
 
             # ===== KOLUM TIMBALAN KETUA PENGAWAS =====
             with col_tkp:
-                st.markdown('<div style="background:#fff3e0; border:2px solid #e65100; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">🎖️</div><div style="font-weight:700; color:#e65100; font-size:12px;">TIMBALAN KP</div></div>', unsafe_allow_html=True)
+                st.markdown('<div style="background:#e3f2fd; border:2px solid #0d47a1; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">🎖️</div><div style="font-weight:700; color:#0d47a1; font-size:12px;">TIMBALAN KP</div></div>', unsafe_allow_html=True)
 
                 if tkp_curr:
                     st.markdown("**Semasa:**")
                     for c in tkp_curr:
                         st.markdown(f'''
-                        <div style="background:#ffe0b2; border:1px solid #e65100; border-radius:6px; padding:8px; margin:4px 0;">
+                        <div style="background:#e3f2fd; border:1px solid #0d47a1; border-radius:6px; padding:8px; margin:4px 0;">
                             <div style="font-weight:700; font-size:12px;">{c.get("NAMA_GURU", "")}</div>
                             <div style="font-size:10px;">{c.get("KOD_SEKOLAH_ASAL", "")} | {c.get("IC_GURU", "")}</div>
                         </div>
@@ -5156,13 +5234,13 @@ elif st.session_state.role == "PPD":
             with col_peng:
                 perlu_p = int(info_pusat["PERLU"].values[0]) if not info_pusat.empty else 10
                 perlu_pengawas = max(0, perlu_p - 1 - 1)
-                st.markdown(f'<div style="background:#e8f5e9; border:2px solid #1b5e20; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">👨‍🏫</div><div style="font-weight:700; color:#1b5e20; font-size:12px;">PENGAWAS ({perlu_pengawas})</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#ffffff; border:2px solid #0d47a1; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">👨‍🏫</div><div style="font-weight:700; color:#0d47a1; font-size:12px;">PENGAWAS ({perlu_pengawas})</div></div>', unsafe_allow_html=True)
 
                 if peng_curr:
                     st.markdown(f"**Semasa: {len(peng_curr)}/{perlu_pengawas}**")
                     for c in peng_curr[:5]:
                         st.markdown(f'''
-                        <div style="background:#c8e6c9; border:1px solid #1b5e20; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;">
+                        <div style="background:#ffffff; border:1px solid #0d47a1; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;">
                             <b>{c.get("NAMA_GURU", "")[:20]}</b> - {c.get("KOD_SEKOLAH_ASAL", "")}
                         </div>
                         ''', unsafe_allow_html=True)
@@ -5260,12 +5338,12 @@ elif st.session_state.role == "PPD":
 
             # ===== KOLUM JURU TULIS (Pengawas Khas - Tak Termasuk Kiraan Biasa) =====
             with col_jt:
-                st.markdown('<div style="background:#ede7f6; border:2px solid #4527a0; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">✍️</div><div style="font-weight:700; color:#4527a0; font-size:12px;">JURU TULIS</div></div>', unsafe_allow_html=True)
+                st.markdown('<div style="background:#e3f2fd; border:2px solid #0d47a1; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">✍️</div><div style="font-weight:700; color:#0d47a1; font-size:12px;">JURU TULIS</div></div>', unsafe_allow_html=True)
                 jt_curr = [c for k,c in tugas_pusat_ini.items() if "JURU TULIS" in str(c.get("JAWATAN_CADANGAN") or "").upper()]
                 if jt_curr:
                     st.markdown(f"**Semasa: {len(jt_curr)} (Khas)**")
                     for c in jt_curr[:3]:
-                        st.markdown(f'<div style="background:#d1c4e9; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="background:#e3f2fd; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
                     if st.button("🗑️ Buang Juru Tulis", key="buang_jt", use_container_width=True):
                         for c in jt_curr:
                             supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
@@ -5295,12 +5373,12 @@ elif st.session_state.role == "PPD":
 
             # ===== KOLUM JURU BACA (Pengawas Khas) =====
             with col_jb:
-                st.markdown('<div style="background:#e0f7fa; border:2px solid #006064; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">📖</div><div style="font-weight:700; color:#006064; font-size:12px;">JURU BACA</div></div>', unsafe_allow_html=True)
+                st.markdown('<div style="background:#e3f2fd; border:2px solid #0d47a1; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">📖</div><div style="font-weight:700; color:#0d47a1; font-size:12px;">JURU BACA</div></div>', unsafe_allow_html=True)
                 jb_curr = [c for k,c in tugas_pusat_ini.items() if "JURU BACA" in str(c.get("JAWATAN_CADANGAN") or "").upper()]
                 if jb_curr:
                     st.markdown(f"**Semasa: {len(jb_curr)} (Khas)**")
                     for c in jb_curr[:3]:
-                        st.markdown(f'<div style="background:#b2ebf2; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="background:#e3f2fd; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
                     if st.button("🗑️ Buang Juru Baca", key="buang_jb", use_container_width=True):
                         for c in jb_curr:
                             supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
@@ -5330,12 +5408,12 @@ elif st.session_state.role == "PPD":
 
             # ===== KOLUM PENGEMAS BILIK (Pengawas Khas) =====
             with col_pb:
-                st.markdown('<div style="background:#fff3e0; border:2px solid #e65100; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">🧹</div><div style="font-weight:700; color:#e65100; font-size:12px;">PENGEMAS BILIK</div></div>', unsafe_allow_html=True)
+                st.markdown('<div style="background:#e3f2fd; border:2px solid #0d47a1; border-radius:8px; padding:8px; text-align:center; margin-bottom:6px;"><div style="font-size:20px;">🧹</div><div style="font-weight:700; color:#0d47a1; font-size:12px;">PENGEMAS BILIK</div></div>', unsafe_allow_html=True)
                 pb_curr = [c for k,c in tugas_pusat_ini.items() if "PENGEMAS BILIK" in str(c.get("JAWATAN_CADANGAN") or "").upper()]
                 if pb_curr:
                     st.markdown(f"**Semasa: {len(pb_curr)} (Khas)**")
                     for c in pb_curr[:3]:
-                        st.markdown(f'<div style="background:#ffe0b2; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="background:#e3f2fd; border-radius:6px; padding:6px; margin:3px 0; font-size:11px;"><b>{c.get("NAMA_GURU","")[:18]}</b> - {c.get("KOD_SEKOLAH_ASAL","")}</div>', unsafe_allow_html=True)
                     if st.button("🗑️ Buang Pengemas Bilik", key="buang_pb", use_container_width=True):
                         for c in pb_curr:
                             supa.table("cadangan_sup").update({"kod_pusat": None, "status": "DICADANGKAN"}).eq("id", c.get("id")).execute()
@@ -5803,9 +5881,9 @@ elif st.session_state.role == "PPD":
 
         elif menu == "semakan":
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #4a148c 0%, #6a1b9a 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+            <div style="background: linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
                 <h2 style="margin:0; color:white;">🔍 Semakan Lantikan Ikut Pusat - PPD {kod_ppd}</h2>
-                <p style="margin:5px 0 0 0; color:#e1bee7;">Pilih pusat, akan keluar 4 table ikut jawatan: Penyelia Kawasan, Ketua Pengawas, Timbalan, Pengawas. PPD boleh batalkan lantikan & guru masuk semula ke cadangan untuk pilih pusat lain. Boleh isi kekosongan dengan guru lain.</p>
+                <p style="margin:5px 0 0 0; color:#e3f2fd;">Pilih pusat, akan keluar 4 table ikut jawatan: Penyelia Kawasan, Ketua Pengawas, Timbalan, Pengawas. PPD boleh batalkan lantikan & guru masuk semula ke cadangan untuk pilih pusat lain. Boleh isi kekosongan dengan guru lain.</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -5950,10 +6028,10 @@ elif st.session_state.role == "PPD":
                                     st.error(f"Gagal batal: {e}")
 
                 # Display 4 tables
-                display_jawatan_table(df_penyelia, "Penyelia Kawasan", "🔐", "linear-gradient(135deg, #e65100 0%, #ef6c00 100%)", "penyelia")
-                display_jawatan_table(df_kp, "Ketua Pengawas", "👑", "linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%)", "kp")
-                display_jawatan_table(df_tkp, "Timbalan Ketua Pengawas", "🎖️", "linear-gradient(135deg, #e65100 0%, #f57c00 100%)", "tkp")
-                display_jawatan_table(df_peng, "Pengawas Peperiksaan", "👨‍🏫", "linear-gradient(135deg, #2e7d32 0%, #43a047 100%)", "pengawas")
+                display_jawatan_table(df_penyelia, "Penyelia Kawasan", "🔐", "linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%)", "penyelia")
+                display_jawatan_table(df_kp, "Ketua Pengawas", "👑", "linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%)", "kp")
+                display_jawatan_table(df_tkp, "Timbalan Ketua Pengawas", "🎖️", "linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%)", "tkp")
+                display_jawatan_table(df_peng, "Pengawas Peperiksaan", "👨‍🏫", "linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%)", "pengawas")
 
             if fly_cur == "kosong":
                 st.markdown("---")
@@ -6078,9 +6156,9 @@ elif st.session_state.role == "PPD":
 
         elif menu == "kelulusan":
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
+            <div style="background: linear-gradient(135deg, #0d47a1 0%, #0d47a1 100%); padding:20px; border-radius:12px; color:white; margin-bottom:20px;">
                 <h2 style="margin:0; color:white;">✅ Kelulusan - PPD {kod_ppd} - {PPD_MAP.get(kod_ppd,'')}</h2>
-                <p style="margin:5px 0 0 0; color:#a5d6a7;">Pilihan: Kelulusan Keseluruhan (Lulus Semua & Jana Surat Keseluruhan) atau Lulus Mengikut Pusat (Pilih Pusat & Lulus Jana Surat) - No Surat Berturutan Ikut Daerah, Tak Berulang, Auto Sequential</p>
+                <p style="margin:5px 0 0 0; color:#ffffff;">Pilihan: Kelulusan Keseluruhan (Lulus Semua & Jana Surat Keseluruhan) atau Lulus Mengikut Pusat (Pilih Pusat & Lulus Jana Surat) - No Surat Berturutan Ikut Daerah, Tak Berulang, Auto Sequential</p>
             </div>
             """, unsafe_allow_html=True)
 
