@@ -2502,6 +2502,48 @@ if st.session_state.role == "SUP":
                     ('import', '📤 Import Excel'), ('buang', '🗑️ Buang Guru'), ('cadangan', '📝 Cadangan Lantikan'),
                     ('hantar', '📤 Hantar ke PPD'), ('petugas', '👥 Petugas Hadir di Sekolah Saya'), ('surat', '📄 Surat Lantikan Saya'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu SUP", [k for k, _ in MENU_SUP], format_func=dict(MENU_SUP).get, label_visibility="collapsed", key="sup_menu_radio")
+
+        # ===== SUB MENU POPUP DI SEBELAH MENU ASAL - HANYA BILA DASHBOARD =====
+        if menu == "dashboard":
+            if "sup_dash_sub" not in st.session_state:
+                st.session_state.sup_dash_sub = "utama"
+
+            # CSS untuk popup sub menu di sebelah menu asal
+            st.markdown(f'''
+            <div style="background: linear-gradient(135deg, {JPN_COLORS["putih"]} 0%, {JPN_COLORS["biru_cair"]} 100%); border: 2px solid {JPN_COLORS["biru_tua"]}; border-radius:12px; padding:12px; margin-top:16px; box-shadow: 0 4px 12px rgba(13,71,161,0.15); animation: slideIn 0.2s ease;">
+                <div style="font-weight:900; color:{JPN_COLORS["biru_tua"]}; font-size:0.85rem; margin-bottom:8px; border-bottom:1.5px solid {JPN_COLORS["biru_border"]}; padding-bottom:6px;">📌 SUB MENU DASHBOARD</div>
+                <div style="font-size:0.72rem; color:{JPN_COLORS["kelabu_teks"]}; margin-bottom:8px;">Klik untuk tukar paparan:</div>
+            </div>
+            ''', unsafe_allow_html=True)
+
+            # Tentukan warna aktif
+            sub_aktif = st.session_state.sup_dash_sub
+
+            def _sub_btn_style(aktif):
+                if aktif:
+                    return f"background: linear-gradient(135deg, {JPN_COLORS['biru_sederhana']} 0%, {JPN_COLORS['biru_tua']} 100%) !important; color:white !important; border:none !important;"
+                else:
+                    return f"background:{JPN_COLORS['putih']} !important; color:{JPN_COLORS['biru_tua']} !important; border:1.5px solid {JPN_COLORS['biru_border']} !important;"
+
+            col_sub1, col_sub2 = st.columns(2)
+            with col_sub1:
+                is_utama = sub_aktif == "utama"
+                if st.button("🏠 Dashboard", use_container_width=True, key="nav_sub_utama", help="Paparan utama dashboard"):
+                    st.session_state.sup_dash_sub = "utama"
+                    st.rerun()
+            with col_sub2:
+                is_pusat = sub_aktif == "pusat"
+                if st.button("📍 Pusat", use_container_width=True, key="nav_sub_pusat", type="primary" if is_pusat else "secondary", help="Senarai pusat sekolah anda"):
+                    st.session_state.sup_dash_sub = "pusat"
+                    st.rerun()
+
+            if st.button("👥 Guru Terkini", use_container_width=True, key="nav_sub_guru", type="primary" if sub_aktif == "guru" else "secondary"):
+                st.session_state.sup_dash_sub = "guru"
+                st.rerun()
+
+            # Indicator aktif
+            st.markdown(f'<div style="margin-top:8px; padding:6px 10px; background:{JPN_COLORS["biru_muda"]}; border-radius:6px; font-size:0.75rem; font-weight:700; color:{JPN_COLORS["biru_tua"]}; text-align:center;">Aktif: {sub_aktif.upper()}</div>', unsafe_allow_html=True)
+
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_main:
@@ -2514,42 +2556,16 @@ if st.session_state.role == "SUP":
 
 
         elif menu == "dashboard":
+            # ===== SUB MENU FUNCTION - DASHBOARD SUP =====
+            if "sup_dash_sub" not in st.session_state:
+                st.session_state.sup_dash_sub = "utama"  # utama / pusat / guru
+
+            def set_sub_menu(sub_name):
+                st.session_state.sup_dash_sub = sub_name
+                st.rerun()
+
             st.header(f"Dashboard SUP - {kod} {info.get('nama_sekolah', '')}")
             st.markdown(f"**Kod Sekolah:** `{kod}` | **PPD:** `{info.get('kod_ppd','')} - {PPD_MAP.get(info.get('kod_ppd',''),'')}` | **Nama:** {info.get('nama_sekolah','')}")
-
-            # ===== POPUP DIALOGS UNTUK DASHBOARD =====
-            @st.dialog("📍 Senarai Pusat Sekolah Anda")
-            def dlg_pusat_popup(pusat_list_df):
-                st.markdown(f"**Sekolah:** {kod} - {info.get('nama_sekolah','')}")
-                if pusat_list_df is not None and not pusat_list_df.empty:
-                    st.dataframe(pusat_list_df, use_container_width=True, hide_index=True)
-                    st.success(f"Ada {len(pusat_list_df)} pusat")
-                else:
-                    st.warning("Tiada pusat dijumpai")
-                if st.button("Tutup", key="close_pusat_dlg"):
-                    st.rerun()
-
-            @st.dialog("👥 Guru Terkini")
-            def dlg_guru_popup(df_g):
-                st.markdown(f"**Sekolah:** {kod} - {info.get('nama_sekolah','')}")
-                if df_g is not None and not df_g.empty:
-                    cols = [c for c in ["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN"] if c in df_g.columns]
-                    st.dataframe(df_g[cols] if cols else df_g, use_container_width=True, hide_index=True)
-                    st.info(f"Jumlah: {len(df_g)} guru")
-                else:
-                    st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
-                if st.button("Tutup", key="close_guru_dlg"):
-                    st.rerun()
-
-            @st.dialog("📊 Ringkasan Dashboard")
-            def dlg_ringkasan_popup():
-                st.markdown(jpn_kad_pusat(no_pusat_list, total_kelas, total_petugas, total_perlu, kod), unsafe_allow_html=True)
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.metric("Jumlah Guru", len(df_guru))
-                with c2:
-                    st.metric("Pusat Sekolah Ini", len(pusat_sekolah) if 'pusat_sekolah' in locals() else 0)
-                st.caption("Klik butang di dashboard utama untuk detail")
 
             try:
                 df_pusat_all = get_pusat_df()
@@ -2581,26 +2597,23 @@ if st.session_state.role == "SUP":
                 total_petugas = sum([p["PETUGAS_K9"] for p in pusat_sekolah])
                 total_perlu = sum([p["SEKOLAH_PERLU"] for p in pusat_sekolah])
                 no_pusat_list = ", ".join([f"{p['NO_PUSAT']}" for p in pusat_sekolah if p['NO_PUSAT']])
-                # KAD RINGKAS - AUTO PAPAR
-                st.markdown(jpn_kad_pusat(no_pusat_list, total_kelas, total_petugas, total_perlu, kod), unsafe_allow_html=True)
+            else:
+                total_calon = 0; total_kelas = 0; total_petugas = 0; total_perlu = 0; no_pusat_list = "-"
 
-                # BUTTON POPUP PILIHAN - KONSEP POPUP
-                st.markdown("### 🎯 Pilih Untuk Lihat Detail (Klik Popup)")
-                b1, b2, b3 = st.columns(3)
-                with b1:
-                    if st.button("📍 Lihat Senarai Pusat", use_container_width=True, type="primary", key="btn_popup_pusat"):
-                        df_pusat_display = pd.DataFrame(pusat_sekolah)
-                        cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
-                        df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
-                        dlg_pusat_popup(df_pusat_display)
-                with b2:
-                    if st.button("👥 Lihat Guru Terkini", use_container_width=True, type="primary", key="btn_popup_guru"):
-                        dlg_guru_popup(df_guru)
-                with b3:
-                    if st.button("📊 Ringkasan Penuh", use_container_width=True, key="btn_popup_ringkas"):
-                        dlg_ringkasan_popup()
+            # ===== PAPARAN IKUT SUB MENU =====
+            sub = st.session_state.sup_dash_sub
 
-                # METRIK RINGKAS - AUTO
+            if sub == "utama":
+                # --- UTAMA: DASHBOARD RINGKAS ---
+                if pusat_sekolah:
+                    st.markdown(jpn_kad_pusat(no_pusat_list, total_kelas, total_petugas, total_perlu, kod), unsafe_allow_html=True)
+                else:
+                    st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
+
+                # SUB MENU BUTTONS SEKARANG DI SEBELAH MENU ASAL (POPUP) - TAK PERLU DI SINI
+                st.markdown(f'<div style="background:{JPN_COLORS["biru_muda"]}; border:1px dashed {JPN_COLORS["biru_border"]}; border-radius:8px; padding:8px 12px; font-size:0.8rem; color:{JPN_COLORS["kelabu_teks"]}; text-align:center;">📌 Sub-menu ada di sebelah kiri (popup) - pilih Senarai Pusat / Guru Terkini di sana</div>', unsafe_allow_html=True)
+
+                # METRIK RINGKAS
                 c1, c2, c3, c4 = st.columns(4)
                 with c1: st.metric("Jumlah Guru", len(df_guru))
                 with c2:
@@ -2608,26 +2621,41 @@ if st.session_state.role == "SUP":
                         cnt = supa.table("guru_master").select("id", count="exact").execute()
                         st.metric("Total Guru Selangor", cnt.count)
                     except: st.metric("Total Guru Selangor", "-")
-                with c3: st.metric("Pusat Sekolah Ini", len(pusat_sekolah) if 'pusat_sekolah' in locals() else 0)
+                with c3: st.metric("Pusat Sekolah Ini", len(pusat_sekolah))
                 with c4:
                     try:
                         cad = get_cadangan_df(kod_sekolah=kod)
                         st.metric("Cadangan Dihantar", len(cad))
                     except: st.metric("Cadangan", "0")
 
-            else:
-                st.warning(f"⚠️ Tiada pusat dijumpai untuk sekolah {kod}")
-                st.info("Sistem cuba cari pusat dengan kod_sekolah_tuan_rumah = kod sekolah anda. Hubungi PPD untuk semak pusat sekolah anda di table pusat_master.")
+            elif sub == "pusat":
+                # --- SUB MENU: SENARAI PUSAT - HILANGKAN DASHBOARD TADI ---
+                st.markdown(f'<div style="background:{JPN_COLORS["putih"]}; border:2px solid {JPN_COLORS["biru_tua"]}; border-radius:12px; padding:14px 16px; margin-bottom:14px;"><div style="font-weight:900; color:{JPN_COLORS["biru_tua"]}; font-size:1.1rem;">📍 Senarai Pusat Sekolah Anda - {kod}</div><div style="font-size:0.85rem; color:{JPN_COLORS["kelabu_teks"]}; margin-top:4px;">Paparan dashboard utama disembunyikan. Klik Kembali untuk ke dashboard.</div></div>', unsafe_allow_html=True)
+                if st.button("⬅️ Kembali ke Dashboard", key="back_dash_from_pusat"):
+                    set_sub_menu("utama")
 
-            # Guru Terkini - versi ringkas juga, klik popup untuk penuh
-            st.markdown("---")
-            st.subheader("Guru Terkini (Ringkasan 5 Terbaru)")
-            if not df_guru.empty:
-                st.dataframe(df_guru[["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN"]].head(5), use_container_width=True, hide_index=True)
-                if st.button("🔍 Buka Popup Guru Terkini Penuh", key="btn_popup_guru2"):
-                    dlg_guru_popup(df_guru)
-            else:
-                st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
+                if pusat_sekolah:
+                    df_pusat_display = pd.DataFrame(pusat_sekolah)
+                    cols_order = ["NO_PUSAT", "NAMA_PUSAT", "CALON", "KELAS", "PETUGAS_K9", "SEKOLAH_PERLU"]
+                    df_pusat_display = df_pusat_display[cols_order] if all(c in df_pusat_display.columns for c in cols_order) else df_pusat_display
+                    st.dataframe(df_pusat_display, use_container_width=True, hide_index=True)
+                    st.success(f"Ada {len(pusat_sekolah)} pusat | {total_calon} calon | {total_kelas} kelas")
+                else:
+                    st.warning("Tiada pusat dijumpai")
+
+            elif sub == "guru":
+                # --- SUB MENU: GURU TERKINI - HILANGKAN DASHBOARD TADI ---
+                st.markdown(f'<div style="background:{JPN_COLORS["putih"]}; border:2px solid {JPN_COLORS["biru_tua"]}; border-radius:12px; padding:14px 16px; margin-bottom:14px;"><div style="font-weight:900; color:{JPN_COLORS["biru_tua"]}; font-size:1.1rem;">👥 Guru Terkini - {kod}</div><div style="font-size:0.85rem; color:{JPN_COLORS["kelabu_teks"]}; margin-top:4px;">Paparan dashboard utama disembunyikan. Klik Kembali untuk ke dashboard.</div></div>', unsafe_allow_html=True)
+                if st.button("⬅️ Kembali ke Dashboard", key="back_dash_from_guru"):
+                    set_sub_menu("utama")
+
+                if not df_guru.empty:
+                    cols_show = [c for c in ["NAMA GURU", "IC", "TELEFON", "JAWATAN CADANGAN", "POSKOD_RUMAH"] if c in df_guru.columns]
+                    st.dataframe(df_guru[cols_show] if cols_show else df_guru, use_container_width=True, hide_index=True)
+                    st.info(f"Jumlah: {len(df_guru)} guru")
+                    st.download_button("📥 Export Guru Terkini", to_excel(df_guru), file_name=f"guru_terkini_{kod}.xlsx")
+                else:
+                    st.warning("Belum ada guru. Sila Tambah Guru atau Import Excel.")
 
         elif menu == "senarai":
             st.header(f"Senarai Guru - {kod} - Lengkap")
