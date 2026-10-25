@@ -2503,46 +2503,46 @@ if st.session_state.role == "SUP":
                     ('hantar', '📤 Hantar ke PPD'), ('petugas', '👥 Petugas Hadir di Sekolah Saya'), ('surat', '📄 Surat Lantikan Saya'), ('keluar', '🚪 Log Keluar')]
         menu = st.radio("Menu SUP", [k for k, _ in MENU_SUP], format_func=dict(MENU_SUP).get, label_visibility="collapsed", key="sup_menu_radio")
 
-        # ===== SUB MENU POPUP DI SEBELAH MENU ASAL - HANYA BILA DASHBOARD =====
-        if menu == "dashboard":
-            if "sup_dash_sub" not in st.session_state:
-                st.session_state.sup_dash_sub = "utama"
+        # Untuk flyout side, kita simpan menu dulu, tapi sub menu popup akan di-render sebagai flyout di sebelah kanan Dashboard
+        # Simpan menu ke session untuk flyout logic
+        if "sup_dash_sub" not in st.session_state:
+            st.session_state.sup_dash_sub = "utama"
 
-            # CSS untuk popup sub menu di sebelah menu asal
-            st.markdown(f'''
-            <div style="background: linear-gradient(135deg, {JPN_COLORS["putih"]} 0%, {JPN_COLORS["biru_cair"]} 100%); border: 2px solid {JPN_COLORS["biru_tua"]}; border-radius:12px; padding:12px; margin-top:16px; box-shadow: 0 4px 12px rgba(13,71,161,0.15); animation: slideIn 0.2s ease;">
-                <div style="font-weight:900; color:{JPN_COLORS["biru_tua"]}; font-size:0.85rem; margin-bottom:8px; border-bottom:1.5px solid {JPN_COLORS["biru_border"]}; padding-bottom:6px;">📌 SUB MENU DASHBOARD</div>
-                <div style="font-size:0.72rem; color:{JPN_COLORS["kelabu_teks"]}; margin-bottom:8px;">Klik untuk tukar paparan:</div>
-            </div>
-            ''', unsafe_allow_html=True)
+        MENU_SUP = [('dashboard', '📊 Dashboard'), ('senarai', '📋 Senarai Guru'), ('tambah', '➕ Tambah Guru'),
+                    ('import', '📤 Import Excel'), ('buang', '🗑️ Buang Guru'), ('cadangan', '📝 Cadangan Lantikan'),
+                    ('hantar', '📤 Hantar ke PPD'), ('petugas', '👥 Petugas Hadir di Sekolah Saya'), ('surat', '📄 Surat Lantikan Saya'), ('keluar', '🚪 Log Keluar')]
+        # Container utama menu + flyout side by side
+        col_nav_main, col_nav_flyout = st.columns([1.3, 0.9], gap="small")
 
-            # Tentukan warna aktif
-            sub_aktif = st.session_state.sup_dash_sub
+        with col_nav_main:
+            menu = st.radio("Menu SUP", [k for k, _ in MENU_SUP], format_func=dict(MENU_SUP).get, label_visibility="collapsed", key="sup_menu_radio")
 
-            def _sub_btn_style(aktif):
-                if aktif:
-                    return f"background: linear-gradient(135deg, {JPN_COLORS['biru_sederhana']} 0%, {JPN_COLORS['biru_tua']} 100%) !important; color:white !important; border:none !important;"
-                else:
-                    return f"background:{JPN_COLORS['putih']} !important; color:{JPN_COLORS['biru_tua']} !important; border:1.5px solid {JPN_COLORS['biru_border']} !important;"
+        with col_nav_flyout:
+            # Hanya tunjuk flyout bila dashboard dipilih - ini yang tuan lukis: Dashboard -> arrow -> kotak senarai pusat & guru terkini
+            if menu == "dashboard":
+                sub_aktif = st.session_state.sup_dash_sub
+                # CSS flyout box seperti dalam lukisan tangan tuan
+                st.markdown(f'''
+                <div style="background: white; border: 2.5px solid {JPN_COLORS["biru_tua"]}; border-radius:12px; padding:12px 10px; box-shadow: 6px 6px 18px rgba(13,71,161,0.18); position:relative; margin-left:-8px; margin-top:2px;">
+                    <div style="position:absolute; left:-10px; top:18px; width:0; height:0; border-top:10px solid transparent; border-bottom:10px solid transparent; border-right:10px solid {JPN_COLORS["biru_tua"]};"></div>
+                    <div style="font-weight:900; color:{JPN_COLORS["biru_tua"]}; font-size:0.8rem; margin-bottom:10px; text-align:center; border-bottom:1.5px solid {JPN_COLORS["biru_border"]}; padding-bottom:6px;">➡️ SUB MENU</div>
+                </div>
+                ''', unsafe_allow_html=True)
 
-            col_sub1, col_sub2 = st.columns(2)
-            with col_sub1:
-                is_utama = sub_aktif == "utama"
-                if st.button("🏠 Dashboard", use_container_width=True, key="nav_sub_utama", help="Paparan utama dashboard"):
-                    st.session_state.sup_dash_sub = "utama"
-                    st.rerun()
-            with col_sub2:
-                is_pusat = sub_aktif == "pusat"
-                if st.button("📍 Pusat", use_container_width=True, key="nav_sub_pusat", type="primary" if is_pusat else "secondary", help="Senarai pusat sekolah anda"):
+                # Butang dalam flyout - kecil, padat
+                if st.button("📍 Senarai Pusat", use_container_width=True, key="flyout_pusat", type="primary" if sub_aktif == "pusat" else "secondary"):
                     st.session_state.sup_dash_sub = "pusat"
                     st.rerun()
+                if st.button("👥 Guru Terkini", use_container_width=True, key="flyout_guru", type="primary" if sub_aktif == "guru" else "secondary"):
+                    st.session_state.sup_dash_sub = "guru"
+                    st.rerun()
+                if st.button("🏠 Utama", use_container_width=True, key="flyout_utama"):
+                    st.session_state.sup_dash_sub = "utama"
+                    st.rerun()
 
-            if st.button("👥 Guru Terkini", use_container_width=True, key="nav_sub_guru", type="primary" if sub_aktif == "guru" else "secondary"):
-                st.session_state.sup_dash_sub = "guru"
-                st.rerun()
-
-            # Indicator aktif
-            st.markdown(f'<div style="margin-top:8px; padding:6px 10px; background:{JPN_COLORS["biru_muda"]}; border-radius:6px; font-size:0.75rem; font-weight:700; color:{JPN_COLORS["biru_tua"]}; text-align:center;">Aktif: {sub_aktif.upper()}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-top:6px; padding:4px; background:{JPN_COLORS["biru_muda"]}; border-radius:5px; font-size:0.68rem; font-weight:800; color:{JPN_COLORS["biru_tua"]}; text-align:center;">{sub_aktif.upper()}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div style="height:120px; display:flex; align-items:center; justify-content:center; color:{JPN_COLORS["kelabu_teks"]}; font-size:0.7rem; text-align:center; border:1px dashed {JPN_COLORS["biru_border"]}; border-radius:8px; padding:8px;">Sub-menu hanya untuk Dashboard</div>', unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
