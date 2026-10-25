@@ -306,42 +306,29 @@ def get_jpn_templates_one():
 # ===== NEW: JPN TEMPLATE FETCHER UNTUK PDF - WAJIB GUNA INI =====
 @st.cache_data(ttl=300, show_spinner=False)
 def get_jpn_template_for_jawatan(jawatan_str):
-    """Ambil template JPN ikut jawatan - PPD punya akan diganti dengan template JPN"""
+    """Ambil template JPN ikut jawatan (tepat dahulu; kalau tiada, padanan nama paling panjang)."""
     try:
-        jw = str(jawatan_str or "").upper().strip()
+        jw = re.sub(r"\s+", " ", str(jawatan_str or "")).upper().strip()
         if not jw:
             return None
-        # cuba exact match dulu
-        res = supa.table("surat_templates_jpn").select("template_html, jawatan").eq("jawatan", jw).limit(1).execute()
-        if res.data and len(res.data) > 0:
-            html = res.data[0].get("template_html")
-            if html and len(html) > 30:
-                return html
-        # cuba ilike
-        try:
-            res2 = supa.table("surat_templates_jpn").select("template_html, jawatan").ilike("jawatan", f"%{jw}%").limit(1).execute()
-            if res2.data:
-                html = res2.data[0].get("template_html")
-                if html and len(html) > 30:
-                    return html
-        except:
-            pass
-        # fallback dari cache dict
         all_t = get_jpn_templates_one()
-        for k,v in all_t.items():
-            if jw in k or k in jw:
-                return v
+        norm = {re.sub(r"\s+", " ", k).upper().strip(): v for k, v in all_t.items() if v and len(v) > 30}
+        if jw in norm:
+            return norm[jw]
+        # padanan separa: pilih nama jawatan paling panjang yang sepadan (elak "PENGAWAS" tersalah ambil "KETUA PENGAWAS")
+        cands = [k for k in norm if k in jw or jw in k]
+        if cands:
+            return norm[max(cands, key=len)]
         return None
-    except:
+    except Exception:
         return None
 
-def render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh):
-    """Render template JPN dengan placeholder - ini yang PPD wajib guna"""
+def render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, bilik_kebal=""):
+    """Render template JPN dengan placeholder. Boleh guna {{NAMA}}, {{ nama }}, [NAMA] (huruf besar/kecil sama sahaja)."""
     try:
         tmpl = get_jpn_template_for_jawatan(jawatan)
         if not tmpl:
             return None
-        # Bersihkan
         nama = clean_nan(nama) or "Nama Guru"
         ic = clean_nan(ic)
         jawatan = clean_nan(jawatan) or "Petugas"
@@ -353,41 +340,68 @@ def render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, 
         kod_ppd = clean_nan(kod_ppd)
         ppd_name = clean_nan(ppd_name) or kod_ppd
         tarikh = clean_nan(tarikh) or str(datetime.date.today().strftime("%d %B %Y"))
+        bilik_kebal = clean_nan(bilik_kebal)
+
+        sek_penuh = f"{sek_asal} - {nama_sek_asal}" if nama_sek_asal and nama_sek_asal.upper() != str(sek_asal).upper() else (nama_sek_asal or sek_asal)
+        pusat_penuh = f"{pusat} - {nama_pusat}" if nama_pusat and nama_pusat.upper() != str(pusat).upper() else pusat
 
         replacements = {
-            "NAMA": nama,
-            "NAMA_GURU": nama,
-            "IC": ic,
-            "IC_GURU": ic,
-            "JAWATAN": jawatan,
-            "JAWATAN_CADANGAN": jawatan,
-            "SEKOLAH_ASAL": sek_asal,
-            "KOD_SEKOLAH_ASAL": sek_asal,
+            "NAMA": nama, "NAMA_GURU": nama,
+            "IC": ic, "IC_GURU": ic,
+            "JAWATAN": jawatan, "JAWATAN_CADANGAN": jawatan,
+            "SEKOLAH_ASAL": sek_asal, "KOD_SEKOLAH_ASAL": sek_asal,
             "NAMA_SEKOLAH_ASAL": nama_sek_asal,
-            "PUSAT": pusat,
-            "KOD_PUSAT": pusat,
+            "SEKOLAH_ASAL_PENUH": sek_penuh,
+            "PUSAT": pusat, "KOD_PUSAT": pusat, "NO_PUSAT": pusat,
             "NAMA_PUSAT": nama_pusat,
+            "PUSAT_PENUH": pusat_penuh,
+            "BILIK_KEBAL": bilik_kebal, "KOD_BILIK_KEBAL": bilik_kebal,
             "NO_SURAT": no_surat,
-            "PPD": kod_ppd,
-            "KOD_PPD": kod_ppd,
-            "PPD_NAME": ppd_name,
-            "NAMA_PPD": ppd_name,
+            "PPD": kod_ppd, "KOD_PPD": kod_ppd,
+            "PPD_NAME": ppd_name, "NAMA_PPD": ppd_name,
             "TARIKH": tarikh,
-            "sekolah_asal": sek_asal,
-            "nama_sekolah_asal": nama_sek_asal,
-            "pusat": pusat,
-            "nama_pusat": nama_pusat,
         }
         html = tmpl
-        for k,v in replacements.items():
-            html = html.replace("{{"+k+"}}", str(v))
-            html = html.replace("{{ "+k+" }}", str(v))
-            html = html.replace("{{"+k.lower()+"}}", str(v))
-            html = html.replace("{{ "+k.lower()+" }}", str(v))
-            html = html.replace(f"[{k}]", str(v))
+        for k, v in replacements.items():
+            v = str(v)
+            esc = re.escape(k)
+            html = re.sub(r"\{\{\s*" + esc + r"\s*\}\}", lambda m, v=v: v, html, flags=re.IGNORECASE)
+            html = re.sub(r"\[" + esc + r"\]", lambda m, v=v: v, html, flags=re.IGNORECASE)
         return html
     except Exception as e:
         _log.debug(f"render JPN error: {e}")
+        return None
+
+
+def _bungkus_html_surat(html):
+    """Pastikan HTML templat lengkap (A4, UTF-8) sebelum jadi PDF / dipaparkan."""
+    if "<html" in html.lower():
+        return html
+    return ("<html><head><meta charset='UTF-8'><style>@page { size: A4; margin: 15mm; } "
+            "body { font-family: Helvetica, Arial, sans-serif; font-size: 10.5pt; }</style></head><body>"
+            + html + "</body></html>")
+
+
+def enjin_pdf_templat_ada():
+    try:
+        import xhtml2pdf  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def html_to_pdf_bytes(html):
+    """Tukar HTML templat JPN kepada PDF (xhtml2pdf). Pulang None jika enjin tiada / gagal."""
+    try:
+        from xhtml2pdf import pisa
+        import io
+        buf = io.BytesIO()
+        res = pisa.CreatePDF(src=_bungkus_html_surat(html), dest=buf, encoding="utf-8")
+        if res.err:
+            return None
+        return buf.getvalue()
+    except Exception as e:
+        _log.debug(f"html_to_pdf error: {e}")
         return None
 
 supa = get_supabase()
@@ -781,6 +795,11 @@ def generate_surat_html(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, nama_
     kod_ppd = clean_nan(kod_ppd) or "BA"
     ppd_name = clean_nan(ppd_name) or kod_ppd
 
+    # === V37: TEMPLAT JPN DIUTAMAKAN (baca dari jadual surat_templates_jpn) ===
+    _h37 = render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh)
+    if _h37:
+        return _bungkus_html_surat(_h37)
+
     # === CEK TEMPLATE JPN DULU - Jika JPN dah selaraskan, guna template JPN (PPD punya diganti) ===
     try:
         # Try load from surat_templates_jpn table
@@ -917,6 +936,16 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
         display_sek_asal = sek_asal
         display_pusat = pusat
 
+    # ===== V37: templat JPN diutamakan =====
+    try:
+        _h37 = render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh)
+        if _h37:
+            _pdf37 = html_to_pdf_bytes(_h37)
+            if _pdf37:
+                return _pdf37
+    except Exception:
+        pass
+
     # Cuba dengan reportlab
     try:
         from reportlab.lib.pagesizes import A4
@@ -1028,7 +1057,13 @@ def generate_surat_pdf_bytes(nama, ic, jawatan, sek_asal, nama_sek_asal, pusat, 
 
 
 def generate_surat_kolektif_pdf_bytes(surat_list, kod_ppd, ppd_name, title="SURAT LANTIKAN KESELURUHAN"):
-    """Generate kolektif PDF - FORMAT RASMI KPM JPN SELANGOR (Logo tepi kiri + Ruj Kanan = No Surat) - UNTUK SUP & PPD DOWNLOAD PUKAL"""
+    """Generate kolektif PDF - V37: gabung surat individu ikut templat JPN; jika gagal guna ringkasan lama"""
+    try:
+        _kol = generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, ppd_name, title_prefix=title)
+        if _kol:
+            return _kol
+    except Exception:
+        pass
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -1811,6 +1846,13 @@ def generate_surat_pdf_bytes_FIXED(nama, ic, jawatan, sek_asal, nama_sek_asal, p
         if len(no_pusat_display) < 3:
             no_pusat_display = pusat
 
+        # ===== V37: TEMPLAT JPN DIUTAMAKAN - kalau JPN dah cipta templat jawatan ini, PDF dijana dari templat itu =====
+        _h37 = render_jpn_template_html(jawatan, nama, ic, sek_asal, nama_sek_asal, pusat, nama_pusat, no_surat, kod_ppd, ppd_name, tarikh, bilik_kebal)
+        if _h37:
+            _pdf37 = html_to_pdf_bytes(_h37)
+            if _pdf37:
+                return _pdf37
+        # (jika templat tiada / enjin PDF tiada -> guna susun atur lama di bawah)
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, Image as RLImage
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -2024,6 +2066,31 @@ def generate_surat_kolektif_pdf_bytes_JPN(surat_list, kod_ppd, ppd_name, title_p
         surat_list = surat_list[:MAX_PDF_KOLEKTIF]
     # RINGAN-START
     """Jana PDF kolektif guna template JPN - untuk PPD download pukal"""
+    # ===== V37: gabung PDF individu (templat JPN) menjadi satu PDF kolektif =====
+    try:
+        from pypdf import PdfWriter, PdfReader
+        import io as _io
+        _w = PdfWriter()
+        _n = 0
+        for _s in surat_list:
+            _pdf = generate_surat_pdf_bytes_FIXED(
+                _s.get("nama",""), _s.get("ic",""), _s.get("jawatan",""),
+                _s.get("sekolah_asal",""), _s.get("nama_sekolah_asal","") or _s.get("sekolah_asal",""),
+                _s.get("pusat",""), _s.get("nama_pusat","") or _s.get("pusat",""),
+                _s.get("no_surat",""), kod_ppd, ppd_name,
+                datetime.date.today().strftime("%d %B %Y"),
+                bilik_kebal=_s.get("bilik_kebal","") or _s.get("kod_bilik_kebal","")
+            )
+            if _pdf:
+                for _pg in PdfReader(_io.BytesIO(_pdf)).pages:
+                    _w.add_page(_pg)
+                _n += 1
+        if _n > 0:
+            _out = _io.BytesIO()
+            _w.write(_out)
+            return _out.getvalue()
+    except Exception as _e:
+        _log.debug(f"Gabung PDF kolektif gagal, guna kaedah lama: {_e}")
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
@@ -8042,10 +8109,23 @@ elif st.session_state.role == "JPN":
                     if st.button("🔄 Clear Cache", use_container_width=True, key="clear_fix"):
                         st.cache_data.clear()
                         st.rerun()
-                # Preview
+                # ===== V37: Panduan placeholder, preview sebenar & ujian PDF =====
+                st.caption("Placeholder boleh guna (huruf besar/kecil sama): {{NAMA}} {{IC}} {{JAWATAN}} {{SEKOLAH_ASAL}} {{NAMA_SEKOLAH_ASAL}} {{SEKOLAH_ASAL_PENUH}} {{PUSAT}} {{NAMA_PUSAT}} {{PUSAT_PENUH}} {{BILIK_KEBAL}} {{NO_SURAT}} {{PPD}} {{PPD_NAME}} {{TARIKH}}")
+                if enjin_pdf_templat_ada():
+                    st.success("✅ Enjin PDF templat aktif - butang PDF / ZIP / kolektif PPD akan ikut templat ini.")
+                else:
+                    st.warning("⚠️ Enjin PDF templat (xhtml2pdf) belum dipasang di server. Surat PDF masih guna susun atur lama. Minta pentadbir tambah `xhtml2pdf` dalam requirements.txt (sekali sahaja).")
+                _sample = {"NAMA":"ALI BIN ABU","IC":"800101-01-1234","JAWATAN":pilih,"SEKOLAH_ASAL":"BAA0001","NAMA_SEKOLAH_ASAL":"SK CONTOH","PUSAT":"BA001","NAMA_PUSAT":"SMK CONTOH","NO_SURAT":"JPNS.SPP 600-7/17/5 Jld.2 (01)","PPD":"BA","PPD_NAME":"KLANG","TARIKH":datetime.date.today().strftime("%d %B %Y"),"BILIK_KEBAL":"BK01"}
+                _prev_html = edited
+                for _k, _v in _sample.items():
+                    _prev_html = re.sub(r"\{\{\s*" + re.escape(_k) + r"\s*\}\}", lambda m, _v=_v: _v, _prev_html, flags=re.IGNORECASE)
+                    _prev_html = re.sub(r"\[" + re.escape(_k) + r"\]", lambda m, _v=_v: _v, _prev_html, flags=re.IGNORECASE)
                 if st.checkbox("Preview", key=f"prev_check_{pilih}"):
-                    prev = edited.replace("{{NAMA}}","ALI BIN ABU").replace("{{PUSAT}}","BA001").replace("{{NO_SURAT}}","JPN/0001").replace("{{PPD}}","KLANG").replace("{{IC}}","800101-01-1234")
-                    st.markdown(prev, unsafe_allow_html=True)
+                    import streamlit.components.v1 as _cv1
+                    _cv1.html(_bungkus_html_surat(_prev_html), height=700, scrolling=True)
+                _pdf_uji = html_to_pdf_bytes(_prev_html) if enjin_pdf_templat_ada() else None
+                if _pdf_uji:
+                    st.download_button("⬇️ Uji PDF (data contoh)", data=_pdf_uji, file_name=f"uji_{pilih.replace(' ','_')}.pdf", mime="application/pdf", key=f"uji_pdf_{pilih}")
             except Exception as e:
                 st.error("Maaf, template tidak dapat dipaparkan. Sila cuba lagi.")
 
